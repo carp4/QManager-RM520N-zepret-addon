@@ -113,11 +113,6 @@ const data = {
       ],
     },
     {
-      title: "Antenna Measurements",
-      url: "/cellular/antenna",
-      icon: AntennaIcon,
-    },
-    {
       title: "SMS Center",
       url: "/cellular/sms",
       icon: MessageCircleIcon,
