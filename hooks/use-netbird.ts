@@ -191,6 +191,9 @@ export function useNetBird(): UseNetBirdReturn {
           return false;
         }
 
+        // Brief delay for daemon state to propagate before refetch
+        await new Promise((r) => setTimeout(r, 2000));
+        if (!mountedRef.current) return false;
         await fetchStatus(true);
         return true;
       } catch (err) {
@@ -217,6 +220,8 @@ export function useNetBird(): UseNetBirdReturn {
         return false;
       }
 
+      await new Promise((r) => setTimeout(r, 2000));
+      if (!mountedRef.current) return false;
       await fetchStatus(true);
       return true;
     } catch (err) {
@@ -241,6 +246,8 @@ export function useNetBird(): UseNetBirdReturn {
         return false;
       }
 
+      await new Promise((r) => setTimeout(r, 2000));
+      if (!mountedRef.current) return false;
       await fetchStatus(true);
       return true;
     } catch (err) {
@@ -265,6 +272,8 @@ export function useNetBird(): UseNetBirdReturn {
         return false;
       }
 
+      await new Promise((r) => setTimeout(r, 2000));
+      if (!mountedRef.current) return false;
       await fetchStatus(true);
       return true;
     } catch (err) {

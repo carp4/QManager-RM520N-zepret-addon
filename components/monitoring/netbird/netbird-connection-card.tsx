@@ -269,6 +269,68 @@ export function NetBirdConnectionCard({
     </>
   );
 
+  // Uninstall section (follows Email Alerts / Video Optimizer pattern)
+  const uninstallSection = (
+    <>
+      <Separator className="mt-4" />
+      <div className="flex items-center justify-between pt-4">
+        <div>
+          <p className="text-sm font-medium">Remove NetBird</p>
+          <p className="text-xs text-muted-foreground">
+            Uninstall the NetBird package and firewall rules from this device.
+          </p>
+        </div>
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button
+              variant="destructive"
+              size="sm"
+              disabled={isUninstalling}
+            >
+              {isUninstalling ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  Removing...
+                </>
+              ) : (
+                <>
+                  <Trash2Icon className="size-4" />
+                  Uninstall
+                </>
+              )}
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Uninstall NetBird?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will remove the NetBird package, firewall rules, and
+                all connection state from this device. You will need to
+                reinstall and re-register to use NetBird again.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={async () => {
+                  const success = await uninstall();
+                  if (success) {
+                    toast.success("NetBird uninstalled");
+                  } else {
+                    toast.error("Failed to uninstall NetBird");
+                  }
+                }}
+              >
+                Uninstall
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
+    </>
+  );
+
   // Setup key input (reused in disconnected / needs-connect states)
   const setupKeyInput = (
     <div className="space-y-2">
@@ -336,54 +398,8 @@ export function NetBirdConnectionCard({
                 )}
               </Button>
 
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    disabled={isUninstalling}
-                  >
-                    {isUninstalling ? (
-                      <>
-                        <Loader2 className="size-4 animate-spin" />
-                        Removing...
-                      </>
-                    ) : (
-                      <>
-                        <Trash2Icon className="size-4" />
-                        Uninstall
-                      </>
-                    )}
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Uninstall NetBird?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      This will remove the NetBird package and all connection
-                      state from this device. You will need to reinstall and
-                      re-register to use NetBird again.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction
-                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                      onClick={async () => {
-                        const success = await uninstall();
-                        if (success) {
-                          toast.success("NetBird uninstalled");
-                        } else {
-                          toast.error("Failed to uninstall NetBird");
-                        }
-                      }}
-                    >
-                      Uninstall
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
             </div>
+            {uninstallSection}
           </div>
         </CardContent>
       </Card>
@@ -602,7 +618,9 @@ export function NetBirdConnectionCard({
                 "Stop Service"
               )}
             </Button>
+
           </div>
+            {uninstallSection}
         </div>
       </CardContent>
     </Card>
