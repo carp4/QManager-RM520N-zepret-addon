@@ -575,7 +575,6 @@ export function NetBirdConnectionCard({
                 </>
               ) : (
                 <>
-                  <KeyIcon className="size-4" />
                   Connect
                 </>
               )}

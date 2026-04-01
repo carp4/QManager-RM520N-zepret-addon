@@ -134,53 +134,88 @@ parse_netbird_status() {
         p_transfer_rx = ""; p_transfer_tx = ""
     }
 
-    # Header section
+    # Skip version lines anywhere in output
     /^Daemon version:/ { next }
     /^CLI version:/ { next }
+    /^-- detail --/ { next }
+    /^[[:space:]]+Public key:/ { next }
+    /^[[:space:]]+ICE candidate/ { next }
 
-    !in_peers && /^Management:/ {
+    # --- Header fields (can appear BEFORE or AFTER peers section) ---
+    # Management: "Connected" or "Connected to https://..."
+    /^Management:/ {
         sub(/^Management:[[:space:]]*/, "")
-        management = $0
+        # Extract just "Connected" from "Connected to https://..."
+        if ($0 ~ /^Connected/) management = "Connected"
+        else management = $0
         next
     }
-    !in_peers && /^Signal:/ {
+    /^Signal:/ {
         sub(/^Signal:[[:space:]]*/, "")
-        signal = $0
+        if ($0 ~ /^Connected/) signal = "Connected"
+        else signal = $0
         next
     }
-    !in_peers && /^FQDN:/ {
+    /^FQDN:/ {
         sub(/^FQDN:[[:space:]]*/, "")
         fqdn = $0
         next
     }
-    !in_peers && /^NetBird IP:/ {
+    /^NetBird IP:/ {
         sub(/^NetBird IP:[[:space:]]*/, "")
         nb_ip = $0
         next
     }
-    !in_peers && /^Interface type:/ {
+    /^Interface type:/ {
         sub(/^Interface type:[[:space:]]*/, "")
         iface_type = $0
         next
     }
-    !in_peers && /^Peers count:/ {
+    /^Peers count:/ {
         sub(/^Peers count:[[:space:]]*/, "")
         # Format: "1/1 Connected" or "0/2 Connected"
         split($0, pc, "/")
         peers_connected = pc[1] + 0
-        # pc[2] is like "1 Connected" — extract leading number
         peers_total = pc[2] + 0
         next
     }
 
-    # Transition to peers section
+    # --- Transition to peers section ---
     /^Peers detail:/ || /^NetBird Peers/ {
         in_peers = 1
         next
     }
 
-    # Peer parsing — hostname line (single-space indent or no indent, ends with colon)
-    in_peers && /^[[:space:]]?[[:alnum:]]/ && /:$/ {
+    # Leaving peers section when we hit a non-indented header line
+    in_peers && /^[A-Z][a-z].*:/ && !/^[[:space:]]/ {
+        flush_peer()
+        in_peers = 0
+        # Re-process this line as a header field
+        if (/^Management:/) {
+            sub(/^Management:[[:space:]]*/, "")
+            if ($0 ~ /^Connected/) management = "Connected"
+            else management = $0
+            next
+        }
+        if (/^Signal:/) {
+            sub(/^Signal:[[:space:]]*/, "")
+            if ($0 ~ /^Connected/) signal = "Connected"
+            else signal = $0
+            next
+        }
+        if (/^FQDN:/) { sub(/^FQDN:[[:space:]]*/, ""); fqdn = $0; next }
+        if (/^NetBird IP:/) { sub(/^NetBird IP:[[:space:]]*/, ""); nb_ip = $0; next }
+        if (/^Interface type:/) { sub(/^Interface type:[[:space:]]*/, ""); iface_type = $0; next }
+        if (/^Peers count:/) {
+            sub(/^Peers count:[[:space:]]*/, "")
+            split($0, pc, "/"); peers_connected = pc[1] + 0; peers_total = pc[2] + 0
+            next
+        }
+    }
+
+    # --- Peer parsing (indented lines within peers section) ---
+    # Hostname line: " hostname:" (indented, ends with colon)
+    in_peers && /^[[:space:]]+[[:alnum:]]/ && /:$/ {
         flush_peer()
         p_hostname = $0
         sub(/^[[:space:]]*/, "", p_hostname)
@@ -188,7 +223,6 @@ parse_netbird_status() {
         next
     }
 
-    # Peer detail lines (indented with spaces)
     in_peers && /^[[:space:]]+NetBird IP:/ {
         sub(/^[[:space:]]*NetBird IP:[[:space:]]*/, "")
         p_ip = $0
@@ -209,13 +243,17 @@ parse_netbird_status() {
         p_direct = $0
         next
     }
+    in_peers && /^[[:space:]]+Last connection update:/ {
+        sub(/^[[:space:]]*Last connection update:[[:space:]]*/, "")
+        p_last_seen = $0
+        next
+    }
     in_peers && /^[[:space:]]+(Last|Last WireGuard) [Hh]andshake:/ {
         sub(/^[[:space:]]*Last[^:]*:[[:space:]]*/, "")
         p_last_seen = $0
         next
     }
     in_peers && /^[[:space:]]+Transfer status/ {
-        # "Transfer status (received/sent): X/Y"
         sub(/^.*:[[:space:]]*/, "")
         split($0, tr, "/")
         if (length(tr) >= 2) {
