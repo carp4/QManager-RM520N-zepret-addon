@@ -1,5 +1,6 @@
 #!/bin/sh
 . /usr/lib/qmanager/cgi_base.sh
+. /usr/lib/qmanager/vpn_firewall.sh
 # =============================================================================
 # tailscale.sh — CGI Endpoint: Tailscale VPN Management (GET + POST)
 # =============================================================================
@@ -73,14 +74,20 @@ get_ts_version() {
 # =============================================================================
 if [ "$REQUEST_METHOD" = "GET" ]; then
 
+    other_vpn_installed=$(vpn_check_other_installed "netbird")
+
     # --- Tier 1: Not installed -----------------------------------------------
     if ! is_installed; then
         qlog_info "Tailscale not installed"
-        jq -n '{
-            success: true,
-            installed: false,
-            install_hint: "opkg update && opkg install luci-app-tailscale"
-        }'
+        jq -n \
+            --argjson other_vpn_installed "$other_vpn_installed" \
+            '{
+                success: true,
+                installed: false,
+                install_hint: "opkg update && opkg install luci-app-tailscale",
+                other_vpn_installed: $other_vpn_installed,
+                other_vpn_name: "NetBird"
+            }'
         exit 0
     fi
 
@@ -95,12 +102,15 @@ if [ "$REQUEST_METHOD" = "GET" ]; then
             --argjson daemon_running false \
             --argjson enabled_on_boot "$boot_enabled" \
             --arg version "$ts_version" \
+            --argjson other_vpn_installed "$other_vpn_installed" \
             '{
                 success: true,
                 installed: $installed,
                 daemon_running: $daemon_running,
                 enabled_on_boot: $enabled_on_boot,
-                version: $version
+                version: $version,
+                other_vpn_installed: $other_vpn_installed,
+                other_vpn_name: "NetBird"
             }'
         exit 0
     fi
@@ -194,6 +204,7 @@ if [ "$REQUEST_METHOD" = "GET" ]; then
         --argjson tailnet "$tailnet_json" \
         --argjson peers "$peers_json" \
         --argjson health "$health_json" \
+        --argjson other_vpn_installed "$other_vpn_installed" \
         '{
             success: true,
             installed: $installed,
@@ -205,7 +216,9 @@ if [ "$REQUEST_METHOD" = "GET" ]; then
             self: $self,
             tailnet: $tailnet,
             peers: $peers,
-            health: $health
+            health: $health,
+            other_vpn_installed: $other_vpn_installed,
+            other_vpn_name: "NetBird"
         }'
     exit 0
 fi
@@ -230,6 +243,12 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
     if [ "$ACTION" = "install" ]; then
         TS_INSTALL_RESULT="/tmp/qmanager_tailscale_install.json"
         TS_INSTALL_PID="/tmp/qmanager_tailscale_install.pid"
+
+        # Mutual exclusion: refuse if other VPN is installed
+        if command -v netbird >/dev/null 2>&1; then
+            cgi_error "other_vpn_installed" "NetBird is already installed. Uninstall it before installing Tailscale."
+            exit 0
+        fi
 
         # Check if already running
         if [ -f "$TS_INSTALL_PID" ] && kill -0 "$(cat "$TS_INSTALL_PID" 2>/dev/null)" 2>/dev/null; then
@@ -264,6 +283,7 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
 
             # Verify
             if command -v tailscale >/dev/null 2>&1; then
+                vpn_fw_ensure_zone "tailscale" "tailscale0"
                 printf '{"success":true,"status":"complete","message":"Tailscale installed successfully"}' > "$TS_INSTALL_RESULT"
             else
                 printf '{"success":false,"status":"error","message":"Package installed but binary not found"}' > "$TS_INSTALL_RESULT"
@@ -417,6 +437,7 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
         fi
         sleep 1
         if is_daemon_running; then
+            vpn_fw_ensure_zone "tailscale" "tailscale0"
             qlog_info "Tailscale daemon started"
             cgi_success
         else
@@ -487,6 +508,9 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
 
         # Disable boot entry if init script exists
         [ -x /etc/init.d/tailscale ] && /etc/init.d/tailscale disable >/dev/null 2>&1
+
+        # Remove firewall zone
+        vpn_fw_remove_zone "tailscale"
 
         # Remove packages
         opkg remove tailscale tailscaled 2>/dev/null

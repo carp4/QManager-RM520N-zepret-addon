@@ -5,67 +5,54 @@ import { authFetch } from "@/lib/auth-fetch";
 import type { InstallResult } from "@/types/video-optimizer";
 
 // =============================================================================
-// useTailscale — Fetch & Action Hook for Tailscale VPN Management
+// useNetBird — Fetch & Action Hook for NetBird VPN Management
 // =============================================================================
-// Fetches Tailscale status on mount (tiered: not installed → stopped → full).
-// Provides action methods for connect, disconnect, logout, service, boot toggle.
-// Adaptive polling: 10s normal, 3s during auth wait.
+// Fetches NetBird status on mount (tiered: not installed → stopped → full).
+// Provides action methods for connect, disconnect, service, boot toggle.
+// Fixed 10s polling (no adaptive auth-wait like Tailscale).
 //
-// Backend: GET/POST /cgi-bin/quecmanager/vpn/tailscale.sh
+// Backend: GET/POST /cgi-bin/quecmanager/vpn/netbird.sh
 // =============================================================================
 
-const CGI_ENDPOINT = "/cgi-bin/quecmanager/vpn/tailscale.sh";
+const CGI_ENDPOINT = "/cgi-bin/quecmanager/vpn/netbird.sh";
 
-const POLL_NORMAL_MS = 10_000;
-const POLL_AUTH_MS = 3_000;
+const POLL_INTERVAL_MS = 10_000;
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
-export interface TailscaleSelf {
+export interface NetBirdPeer {
   hostname: string;
-  dns_name: string;
-  tailscale_ips: string[];
-  online: boolean;
-  os: string;
-  relay: string;
-}
-
-export interface TailscaleTailnet {
-  name: string;
-  magic_dns_suffix: string;
-  magic_dns_enabled: boolean;
-}
-
-export interface TailscalePeer {
-  hostname: string;
-  dns_name: string;
-  tailscale_ips: string[];
-  os: string;
-  online: boolean;
+  netbird_ip: string;
+  status: string;
+  connection_type: string;
+  direct: string;
   last_seen: string;
-  relay: string;
-  exit_node: boolean;
+  transfer_received: string;
+  transfer_sent: string;
 }
 
-export interface TailscaleStatus {
+export interface NetBirdStatus {
   installed: boolean;
   daemon_running?: boolean;
   enabled_on_boot?: boolean;
   version?: string;
   backend_state?: string;
-  auth_url?: string;
-  self?: TailscaleSelf;
-  tailnet?: TailscaleTailnet;
-  peers?: TailscalePeer[];
-  health?: string[];
+  management?: string;
+  signal?: string;
+  fqdn?: string;
+  netbird_ip?: string;
+  interface_type?: string;
+  peers_connected?: number;
+  peers_total?: number;
+  peers?: NetBirdPeer[];
   install_hint?: string;
   error_detail?: string;
   other_vpn_installed?: boolean;
   other_vpn_name?: string;
 }
 
-export interface UseTailscaleReturn {
-  status: TailscaleStatus | null;
+export interface UseNetBirdReturn {
+  status: NetBirdStatus | null;
   isLoading: boolean;
   isConnecting: boolean;
   isDisconnecting: boolean;
@@ -73,9 +60,8 @@ export interface UseTailscaleReturn {
   isUninstalling: boolean;
   installResult: InstallResult;
   error: string | null;
-  connect: () => Promise<boolean>;
+  connect: (setupKey?: string) => Promise<boolean>;
   disconnect: () => Promise<boolean>;
-  logout: () => Promise<boolean>;
   startService: () => Promise<boolean>;
   stopService: () => Promise<boolean>;
   setBootEnabled: (enabled: boolean) => Promise<boolean>;
@@ -86,8 +72,8 @@ export interface UseTailscaleReturn {
 
 // ─── Hook ──────────────────────────────────────────────────────────────────
 
-export function useTailscale(): UseTailscaleReturn {
-  const [status, setStatus] = useState<TailscaleStatus | null>(null);
+export function useNetBird(): UseNetBirdReturn {
+  const [status, setStatus] = useState<NetBirdStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
@@ -128,7 +114,7 @@ export function useTailscale(): UseTailscaleReturn {
       if (!mountedRef.current) return;
 
       if (!json.success) {
-        setError(json.error || "Failed to fetch Tailscale status");
+        setError(json.error || "Failed to fetch NetBird status");
         return;
       }
 
@@ -136,7 +122,7 @@ export function useTailscale(): UseTailscaleReturn {
     } catch (err) {
       if (!mountedRef.current) return;
       setError(
-        err instanceof Error ? err.message : "Failed to fetch Tailscale status",
+        err instanceof Error ? err.message : "Failed to fetch NetBird status",
       );
     } finally {
       if (mountedRef.current && !silent) {
@@ -146,24 +132,20 @@ export function useTailscale(): UseTailscaleReturn {
   }, []);
 
   // ---------------------------------------------------------------------------
-  // Adaptive polling — faster during auth wait
+  // Fixed-interval polling
   // ---------------------------------------------------------------------------
   useEffect(() => {
     fetchStatus();
   }, [fetchStatus]);
 
   useEffect(() => {
-    const isAuthWaiting =
-      status?.backend_state === "NeedsLogin" && !!status?.auth_url;
-    const interval = isAuthWaiting ? POLL_AUTH_MS : POLL_NORMAL_MS;
-
     if (pollRef.current) clearInterval(pollRef.current);
-    pollRef.current = setInterval(() => fetchStatus(true), interval);
+    pollRef.current = setInterval(() => fetchStatus(true), POLL_INTERVAL_MS);
 
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
-  }, [fetchStatus, status?.backend_state, status?.auth_url]);
+  }, [fetchStatus]);
 
   // ---------------------------------------------------------------------------
   // POST helper
@@ -171,8 +153,6 @@ export function useTailscale(): UseTailscaleReturn {
   const postAction = useCallback(
     async (body: Record<string, unknown>): Promise<{
       success: boolean;
-      auth_url?: string;
-      already_authenticated?: boolean;
       error?: string;
       detail?: string;
     }> => {
@@ -194,30 +174,35 @@ export function useTailscale(): UseTailscaleReturn {
   // ---------------------------------------------------------------------------
   // Actions
   // ---------------------------------------------------------------------------
-  const connect = useCallback(async (): Promise<boolean> => {
-    setIsConnecting(true);
-    setError(null);
+  const connect = useCallback(
+    async (setupKey?: string): Promise<boolean> => {
+      setIsConnecting(true);
+      setError(null);
 
-    try {
-      const json = await postAction({ action: "connect" });
-      if (!mountedRef.current) return false;
+      try {
+        const body: Record<string, unknown> = { action: "connect" };
+        if (setupKey) body.setup_key = setupKey;
 
-      if (!json.success) {
-        setError(json.detail || json.error || "Failed to connect");
+        const json = await postAction(body);
+        if (!mountedRef.current) return false;
+
+        if (!json.success) {
+          setError(json.detail || json.error || "Failed to connect");
+          return false;
+        }
+
+        await fetchStatus(true);
+        return true;
+      } catch (err) {
+        if (!mountedRef.current) return false;
+        setError(err instanceof Error ? err.message : "Failed to connect");
         return false;
+      } finally {
+        if (mountedRef.current) setIsConnecting(false);
       }
-
-      // Refetch to pick up auth_url or Running state
-      await fetchStatus(true);
-      return true;
-    } catch (err) {
-      if (!mountedRef.current) return false;
-      setError(err instanceof Error ? err.message : "Failed to connect");
-      return false;
-    } finally {
-      if (mountedRef.current) setIsConnecting(false);
-    }
-  }, [postAction, fetchStatus]);
+    },
+    [postAction, fetchStatus],
+  );
 
   const disconnect = useCallback(async (): Promise<boolean> => {
     setIsDisconnecting(true);
@@ -237,30 +222,6 @@ export function useTailscale(): UseTailscaleReturn {
     } catch (err) {
       if (!mountedRef.current) return false;
       setError(err instanceof Error ? err.message : "Failed to disconnect");
-      return false;
-    } finally {
-      if (mountedRef.current) setIsDisconnecting(false);
-    }
-  }, [postAction, fetchStatus]);
-
-  const logout = useCallback(async (): Promise<boolean> => {
-    setIsDisconnecting(true);
-    setError(null);
-
-    try {
-      const json = await postAction({ action: "logout" });
-      if (!mountedRef.current) return false;
-
-      if (!json.success) {
-        setError(json.detail || json.error || "Failed to logout");
-        return false;
-      }
-
-      await fetchStatus(true);
-      return true;
-    } catch (err) {
-      if (!mountedRef.current) return false;
-      setError(err instanceof Error ? err.message : "Failed to logout");
       return false;
     } finally {
       if (mountedRef.current) setIsDisconnecting(false);
@@ -423,7 +384,6 @@ export function useTailscale(): UseTailscaleReturn {
     error,
     connect,
     disconnect,
-    logout,
     startService,
     stopService,
     setBootEnabled,

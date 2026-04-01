@@ -10,6 +10,7 @@ import {
   LucideSignal,
   EthernetPortIcon,
   MonitorCloudIcon,
+  BirdIcon,
   MessageCircleIcon,
   DogIcon,
   RouterIcon,
@@ -232,6 +233,11 @@ const data = {
       title: "Tailscale",
       url: "/monitoring/tailscale",
       icon: MonitorCloudIcon,
+    },
+    {
+      title: "NetBird",
+      url: "/monitoring/netbird",
+      icon: BirdIcon,
     },
     {
       title: "Watchdog",

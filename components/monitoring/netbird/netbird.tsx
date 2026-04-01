@@ -1,8 +1,8 @@
 "use client";
 
-import { useTailscale } from "@/hooks/use-tailscale";
-import { TailscaleConnectionCard } from "./tailscale-connection-card";
-import { TailscalePeersCard } from "./tailscale-peers-card";
+import { useNetBird } from "@/hooks/use-netbird";
+import { NetBirdConnectionCard } from "./netbird-connection-card";
+import { NetBirdPeersCard } from "./netbird-peers-card";
 
 import {
   Card,
@@ -12,17 +12,17 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle } from "lucide-react";
 import Link from "next/link";
 
-const TailscaleComponent = () => {
-  const hookData = useTailscale();
+const NetBirdComponent = () => {
+  const hookData = useNetBird();
 
   // Mutual exclusion guard — other VPN is installed
   if (!hookData.isLoading && hookData.status?.other_vpn_installed) {
     return (
       <div className="@container/main mx-auto p-2">
         <div className="mb-6">
-          <h1 className="text-3xl font-bold mb-2">Tailscale VPN</h1>
+          <h1 className="text-3xl font-bold mb-2">NetBird VPN</h1>
           <p className="text-muted-foreground">
-            Manage your Tailscale mesh VPN connection and network peers.
+            Manage your NetBird mesh VPN connection and network peers.
           </p>
         </div>
         <Card>
@@ -36,7 +36,7 @@ const TailscaleComponent = () => {
                 Only one VPN can be installed at a time. Uninstall{" "}
                 {hookData.status.other_vpn_name} from the{" "}
                 <Link
-                  href="/monitoring/netbird"
+                  href="/monitoring/tailscale"
                   className="underline font-medium"
                 >
                   {hookData.status.other_vpn_name} page
@@ -53,14 +53,14 @@ const TailscaleComponent = () => {
   return (
     <div className="@container/main mx-auto p-2">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold mb-2">Tailscale VPN</h1>
+        <h1 className="text-3xl font-bold mb-2">NetBird VPN</h1>
         <p className="text-muted-foreground">
-          Manage your Tailscale mesh VPN connection and network peers.
+          Manage your NetBird mesh VPN connection and network peers.
         </p>
       </div>
       <div className="grid grid-cols-1 @3xl/main:grid-cols-2 grid-flow-row gap-4">
-        <TailscaleConnectionCard {...hookData} />
-        <TailscalePeersCard
+        <NetBirdConnectionCard {...hookData} />
+        <NetBirdPeersCard
           status={hookData.status}
           isLoading={hookData.isLoading}
           error={hookData.error}
@@ -70,4 +70,4 @@ const TailscaleComponent = () => {
   );
 };
 
-export default TailscaleComponent;
+export default NetBirdComponent;
