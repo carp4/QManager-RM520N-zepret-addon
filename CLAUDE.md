@@ -51,6 +51,7 @@ All status badges use `variant="outline"` with semantic color classes and `size-
 |--------------|------------------------------|--------------------------------------------------------|----------------------|---------|
 | Video Optimizer | `network/video_optimizer.sh` | `use-video-optimizer.ts` + `use-cdn-hostlist.ts` | `video-optimizer.ts` | No |
 | Traffic Masquerade | `network/video_optimizer.sh` | `use-traffic-masquerade.ts` | `video-optimizer.ts` | No |
+| NetBird VPN | `vpn/netbird.sh` | `use-netbird.ts` | In hook file | Yes (uninstall) |
 
 ## Feature-Specific Notes
 
