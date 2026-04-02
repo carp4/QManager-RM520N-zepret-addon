@@ -536,7 +536,7 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
         [ -x /etc/init.d/tailscale ] && /etc/init.d/tailscale disable >/dev/null 2>&1
 
         # Remove packages
-        opkg remove luci-app-tailscale >/dev/null 2>&1
+        opkg remove luci-app-tailscale tailscale >/dev/null 2>&1
 
         # Clean up state files
         rm -rf /var/lib/tailscale/

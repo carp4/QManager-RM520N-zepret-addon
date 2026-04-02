@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { motion } from "motion/react";
 import { toast } from "sonner";
 
@@ -90,6 +90,22 @@ export function TailscaleConnectionCard({
   runInstall,
   refresh,
 }: TailscaleConnectionCardProps) {
+  const [showRebootDialog, setShowRebootDialog] = useState(false);
+  const [isRebooting, setIsRebooting] = useState(false);
+
+  const handleReboot = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsRebooting(true);
+    fetch("/cgi-bin/quecmanager/system/reboot.sh", { method: "POST" }).catch(
+      () => {}
+    );
+    setTimeout(() => {
+      sessionStorage.setItem("qm_rebooting", "1");
+      document.cookie = "qm_logged_in=; Path=/; Max-Age=0";
+      window.location.href = "/reboot/";
+    }, 2000);
+  };
+
   // --- Loading skeleton ------------------------------------------------------
   if (isLoading) {
     return (
@@ -324,8 +340,8 @@ export function TailscaleConnectionCard({
               <AlertDialogTitle>Uninstall Tailscale?</AlertDialogTitle>
               <AlertDialogDescription>
                 This will remove the Tailscale packages, firewall rules, and
-                all connection state from this device. You will need to
-                reinstall and re-authenticate to use Tailscale again.
+                all connection state from this device. The device will reboot
+                to clean up any remaining artifacts.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -336,6 +352,7 @@ export function TailscaleConnectionCard({
                   const success = await uninstall();
                   if (success) {
                     toast.success("Tailscale uninstalled");
+                    setShowRebootDialog(true);
                   } else {
                     toast.error("Failed to uninstall Tailscale");
                   }
@@ -348,6 +365,41 @@ export function TailscaleConnectionCard({
         </AlertDialog>
       </div>
     </>
+  );
+
+  // Reboot confirmation dialog (shown after successful uninstall)
+  const rebootDialog = (
+    <AlertDialog open={showRebootDialog} onOpenChange={(open) => {
+      if (!isRebooting) setShowRebootDialog(open);
+    }}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Reboot Required</AlertDialogTitle>
+          <AlertDialogDescription>
+            Tailscale has been removed. A reboot is recommended to clean up
+            firewall rules and other artifacts. Would you like to reboot now?
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={isRebooting}>
+            Reboot Later
+          </AlertDialogCancel>
+          <AlertDialogAction
+            disabled={isRebooting}
+            onClick={handleReboot}
+          >
+            {isRebooting ? (
+              <>
+                <Loader2 className="size-4 animate-spin" />
+                Rebooting…
+              </>
+            ) : (
+              "Reboot Now"
+            )}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 
   // --- Service Stopped -------------------------------------------------------
@@ -398,6 +450,7 @@ export function TailscaleConnectionCard({
               </Button>
             </div>
             {uninstallSection}
+            {rebootDialog}
           </div>
         </CardContent>
       </Card>
@@ -778,6 +831,7 @@ export function TailscaleConnectionCard({
             </AlertDialog>
           </div>
           {uninstallSection}
+          {rebootDialog}
         </div>
       </CardContent>
     </Card>
