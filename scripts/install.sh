@@ -52,7 +52,7 @@ SRC_FRONTEND="$INSTALL_DIR/out"
 SRC_SCRIPTS="$INSTALL_DIR/scripts"
 
 # Required packages
-REQUIRED_PACKAGES="jq sms-tool websocat"
+REQUIRED_PACKAGES="jq sms-tool coreutils-timeout websocat"
 # Optional packages (installed if available, non-fatal if missing)
 OPTIONAL_PACKAGES="msmtp ethtool ookla-speedtest"
 
