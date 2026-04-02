@@ -1,13 +1,17 @@
 #!/bin/sh
 # =============================================================================
-# vpn_firewall.sh — Shared VPN Firewall Zone Management
+# vpn_firewall.sh — Shared VPN Firewall & Routing Management
 # =============================================================================
-# Sourced by VPN CGI scripts (tailscale.sh, netbird.sh) to create/remove
-# fw4 firewall zones for VPN interfaces. Without a dedicated zone, fw4's
-# default DROP policy blocks all inbound traffic on VPN interfaces.
+# Sourced by VPN CGI scripts (tailscale.sh, netbird.sh) to:
+#   1. Create/remove fw4 firewall zones for VPN interfaces
+#   2. Add/remove mwan3 ipset exception for VPN CGNAT range
 #
-# Zones persist across reboots (stored in UCI config). Created on install/
-# start, removed on uninstall.
+# Without the zone, fw4's default DROP policy blocks inbound VPN traffic.
+# Without the ipset exception, mwan3 marks VPN reply packets for WAN routing
+# instead of sending them back through the VPN tunnel.
+#
+# Zones persist across reboots (UCI config). The ipset entry is ephemeral
+# and must be re-applied on each service start.
 #
 # Usage:
 #   . /usr/lib/qmanager/vpn_firewall.sh
@@ -52,9 +56,10 @@ vpn_fw_ensure_zone() {
         return 1
     fi
 
-    # Already exists — nothing to do
+    # Zone already exists — still ensure mwan3 exception (ephemeral, lost on reboot)
     if vpn_fw_zone_exists "$zone_name"; then
-        qlog_info "Firewall zone '$zone_name' already exists, skipping"
+        qlog_info "Firewall zone '$zone_name' already exists, skipping zone creation"
+        vpn_fw_ensure_mwan3_exception
         return 0
     fi
 
@@ -81,7 +86,62 @@ vpn_fw_ensure_zone() {
     uci commit firewall
     /etc/init.d/firewall restart >/dev/null 2>&1
 
+    # Add mwan3 ipset exception for VPN CGNAT range
+    vpn_fw_ensure_mwan3_exception
+
     qlog_info "Firewall zone '$zone_name' created successfully"
+    return 0
+}
+
+# -----------------------------------------------------------------------------
+# vpn_fw_ensure_mwan3_exception
+#   Adds the VPN CGNAT range (100.64.0.0/10) to the mwan3_connected_ipv4
+#   ipset so mwan3 skips marking VPN-bound traffic. Without this, mwan3
+#   marks reply packets for WAN routing and they never reach the VPN tunnel.
+#   Idempotent — safe to call multiple times. Ephemeral (cleared on reboot),
+#   so must be called on every service start.
+# -----------------------------------------------------------------------------
+VPN_CGNAT_RANGE="100.64.0.0/10"
+
+vpn_fw_ensure_mwan3_exception() {
+    if ! command -v ipset >/dev/null 2>&1; then
+        qlog_info "ipset not available, skipping mwan3 exception"
+        return 0
+    fi
+
+    # Check if the ipset exists (mwan3 may not be installed)
+    if ! ipset list mwan3_connected_ipv4 >/dev/null 2>&1; then
+        qlog_info "mwan3_connected_ipv4 ipset not found, skipping"
+        return 0
+    fi
+
+    # Check if already present
+    if ipset test mwan3_connected_ipv4 "$VPN_CGNAT_RANGE" 2>/dev/null; then
+        qlog_info "mwan3 exception for $VPN_CGNAT_RANGE already present"
+        return 0
+    fi
+
+    ipset add mwan3_connected_ipv4 "$VPN_CGNAT_RANGE" 2>/dev/null
+    qlog_info "Added $VPN_CGNAT_RANGE to mwan3_connected_ipv4 ipset"
+    return 0
+}
+
+# -----------------------------------------------------------------------------
+# vpn_fw_remove_mwan3_exception
+#   Removes the VPN CGNAT range from mwan3 ipset. Only called when BOTH
+#   VPNs are being removed (if either is still installed, keep the exception).
+# -----------------------------------------------------------------------------
+vpn_fw_remove_mwan3_exception() {
+    if ! command -v ipset >/dev/null 2>&1; then
+        return 0
+    fi
+
+    if ! ipset list mwan3_connected_ipv4 >/dev/null 2>&1; then
+        return 0
+    fi
+
+    ipset del mwan3_connected_ipv4 "$VPN_CGNAT_RANGE" 2>/dev/null
+    qlog_info "Removed $VPN_CGNAT_RANGE from mwan3_connected_ipv4 ipset"
     return 0
 }
 
@@ -133,6 +193,21 @@ vpn_fw_remove_zone() {
 
     uci commit firewall
     /etc/init.d/firewall restart >/dev/null 2>&1
+
+    # Only remove mwan3 exception if the OTHER VPN is also not installed.
+    # Both Tailscale and NetBird use the same CGNAT range.
+    local other_vpn_present=false
+    if [ "$zone_name" = "tailscale" ] && command -v netbird >/dev/null 2>&1; then
+        other_vpn_present=true
+    elif [ "$zone_name" = "netbird" ] && command -v tailscale >/dev/null 2>&1; then
+        other_vpn_present=true
+    fi
+
+    if [ "$other_vpn_present" = "false" ]; then
+        vpn_fw_remove_mwan3_exception
+    else
+        qlog_info "Other VPN still installed, keeping mwan3 exception"
+    fi
 
     qlog_info "Firewall zone '$zone_name' removed successfully"
     return 0

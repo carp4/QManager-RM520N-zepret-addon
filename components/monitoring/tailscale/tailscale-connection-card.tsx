@@ -288,6 +288,68 @@ export function TailscaleConnectionCard({
     </>
   );
 
+  // Uninstall section (follows Email Alerts / Video Optimizer pattern)
+  const uninstallSection = (
+    <>
+      <Separator className="mt-4" />
+      <div className="flex items-center justify-between pt-4">
+        <div>
+          <p className="text-sm font-medium">Remove Tailscale</p>
+          <p className="text-xs text-muted-foreground">
+            Uninstall the Tailscale packages and firewall rules from this device.
+          </p>
+        </div>
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button
+              variant="destructive"
+              size="sm"
+              disabled={isUninstalling}
+            >
+              {isUninstalling ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  Removing…
+                </>
+              ) : (
+                <>
+                  <Trash2Icon className="size-4" />
+                  Uninstall
+                </>
+              )}
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Uninstall Tailscale?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will remove the Tailscale packages, firewall rules, and
+                all connection state from this device. You will need to
+                reinstall and re-authenticate to use Tailscale again.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={async () => {
+                  const success = await uninstall();
+                  if (success) {
+                    toast.success("Tailscale uninstalled");
+                  } else {
+                    toast.error("Failed to uninstall Tailscale");
+                  }
+                }}
+              >
+                Uninstall
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
+    </>
+  );
+
   // --- Service Stopped -------------------------------------------------------
   if (!daemonRunning) {
     return (
@@ -334,55 +396,8 @@ export function TailscaleConnectionCard({
                   "Start Service"
                 )}
               </Button>
-
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    disabled={isUninstalling}
-                  >
-                    {isUninstalling ? (
-                      <>
-                        <Loader2 className="size-4 animate-spin" />
-                        Removing…
-                      </>
-                    ) : (
-                      <>
-                        <Trash2Icon className="size-4" />
-                        Uninstall
-                      </>
-                    )}
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Uninstall Tailscale?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      This will remove the Tailscale packages and all connection
-                      state from this device. You will need to reinstall and
-                      re-authenticate to use Tailscale again.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction
-                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                      onClick={async () => {
-                        const success = await uninstall();
-                        if (success) {
-                          toast.success("Tailscale uninstalled");
-                        } else {
-                          toast.error("Failed to uninstall Tailscale");
-                        }
-                      }}
-                    >
-                      Uninstall
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
             </div>
+            {uninstallSection}
           </div>
         </CardContent>
       </Card>
@@ -762,6 +777,7 @@ export function TailscaleConnectionCard({
               </AlertDialogContent>
             </AlertDialog>
           </div>
+          {uninstallSection}
         </div>
       </CardContent>
     </Card>
