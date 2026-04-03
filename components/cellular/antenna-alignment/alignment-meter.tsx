@@ -322,15 +322,12 @@ function RecordingSlotCard({
       className={cn(
         "relative rounded-xl border p-4 space-y-3 transition-all",
         isRecording && "ring-2 ring-primary border-primary",
-        isBest && snapshot && "ring-2 ring-success border-success"
+        isBest && snapshot && "ring-2 ring-primary border-primary"
       )}
     >
       {isBest && snapshot && (
-        <div className="absolute -top-2.5 left-1/2 -translate-x-1/2">
-          <Badge
-            variant="outline"
-            className="gap-1 text-[10px] bg-success/15 text-success hover:bg-success/20 border-success/30"
-          >
+        <div className="absolute -top-2.5 left-1/2 -translate-x-1/2 z-10">
+          <Badge className="gap-1 text-[10px]">
             <TrophyIcon className="size-3" />
             Best
           </Badge>
@@ -594,14 +591,14 @@ export default function AlignmentMeterSection({
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
-              className="rounded-lg border border-success/30 bg-success/5 p-4"
+              className="rounded-lg border border-primary/30 bg-primary/5 p-4"
             >
               <div className="flex items-start gap-3">
-                <TrophyIcon className="h-5 w-5 text-success shrink-0 mt-0.5" />
+                <TrophyIcon className="h-5 w-5 text-primary shrink-0 mt-0.5" />
                 <div className="space-y-1">
                   <p className="text-sm font-semibold">
                     Recommended:{" "}
-                    <span className="text-success">
+                    <span className="text-primary">
                       {slots[bestSlot]!.label}
                     </span>
                   </p>

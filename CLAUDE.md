@@ -45,6 +45,12 @@ All status badges use `variant="outline"` with semantic color classes and `size-
 4. **Consistent, systematic** — Use the established shadcn/ui components and design tokens uniformly. No one-off styles. Cards, forms, tables, and dialogs should feel like they belong to one coherent system.
 5. **Responsive and resilient** — Works on desktop monitors and tablets in the field. Degrade gracefully. Handle loading, empty, and error states intentionally — never show a blank screen.
 
+### UI Component Conventions
+
+- **CardHeader**: Always plain `CardTitle` + `CardDescription` without icons. Icons belong in badges or separate action areas, not in the card header itself.
+- **Primary action buttons**: Use default variant (not outline) for main actions like Record, Save, Apply. Use `SaveButton` component for save-specific actions with loading animation.
+- **Step-based progress**: Use `Loader2Icon` spinner + dot indicators for step/sample progress. Reserve fill/progress bars for data visualization (signal strength, quality meters) only.
+
 ## CGI Endpoint Reference (Additions)
 
 | Feature      | CGI Script                   | Hook                                                   | Types                | Reboot? |
@@ -76,3 +82,20 @@ All status badges use `variant="outline"` with semantic color classes and `size-
 - **Init.d**: `qmanager_dpi` (procd, START=99, UCI-gated, single nfqws instance in either VO or masquerade mode)
 - **Installer jq caveat**: OpenWRT's jq lacks oniguruma — `test()` silently fails. Use `endswith()`/`contains()` instead (see memory: jq-no-regex)
 - **Dependencies**: `libnetfilter-queue`, `libnfnetlink`, `libmnl`, full `curl` (not BusyBox); kernel NFQUEUE support (built-in or `kmod-nft-queue`)
+
+### Antenna Alignment
+
+- **Route**: `/cellular/antenna-alignment`
+- **No CGI endpoint** — reads exclusively from `useModemStatus` hook (poller cache `signal_per_antenna` field)
+- **Component structure**: Coordinator pattern — `antenna-alignment.tsx` (coordinator) + `antenna-card.tsx` (per-port detail) + `alignment-meter.tsx` (3-position recording tool) + `utils.ts` (shared helpers/constants)
+- **Shared constant**: Uses `ANTENNA_PORTS` from `types/modem-status.ts` (re-exported via local `utils.ts`)
+- **Signal quality gotcha**: `getSignalQuality()` returns **lowercase** strings (`"excellent"`, `"good"`, `"fair"`, `"poor"`, `"none"`). All `switch`/map consumers MUST use lowercase keys.
+- **Alignment Meter**: 3-slot recording tool that averages `SAMPLES_PER_RECORDING` (3) samples per slot. Compares composite RSRP+SINR scores (60/40 weight) to recommend best antenna position or angle.
+- **Two antenna types**: Directional (angles: 0/45/90) and Omni (positions: A/B/C) — user-selectable via toggle group, labels are editable
+- **Recording progress**: Uses `Loader2Icon` spinner + step dots (NOT fill bars — those are reserved for signal quality visualization per UI Component Conventions)
+- **Radio mode detection**: `detectRadioMode()` inspects all 4 antennas for valid LTE/NR data and returns `"lte"`, `"nr"`, or `"endc"`
+- **Best recommendation**: Appears after 2+ slots recorded; composite score = 60% RSRP + 40% SINR (primary antenna, NR preferred over LTE in EN-DC mode)
+
+## Shared Constants
+
+- **`ANTENNA_PORTS`** (`types/modem-status.ts`): Canonical metadata for 4 antenna ports (Main/PRX, Diversity/DRX, MIMO 3/RX2, MIMO 4/RX3). Used by `antenna-statistics` and `antenna-alignment`. Any new per-antenna UI must import from here — do not duplicate port definitions.

@@ -34,7 +34,7 @@ set -e
 
 # --- Configuration -----------------------------------------------------------
 
-VERSION="v0.1.10"
+VERSION="v0.1.11"
 INSTALL_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # Destinations
