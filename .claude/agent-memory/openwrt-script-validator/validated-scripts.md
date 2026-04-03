@@ -124,3 +124,22 @@ Fixed lines in `qmanager_poller`:
 - `local mem_total mem_available` → split (update_proc_metrics)
 - `local lte_mimo_result nr_mimo_result` → split ×2 (collect_boot_data, poll_tier2)
 - `local ping_ts now age` → split; `// empty` → `if . == null then empty else tostring end` (read_ping_data)
+
+---
+
+### 2026-04-03 — RM520N-GL Variant Scripts (qcmd_rm520n, sms_rm520n.sh, qcmd_test_rm520n)
+
+| Script | Status | LF | Issues |
+|---|---|---|---|
+| `scripts/usr/bin/qcmd_rm520n` | PASS | OK | 0 |
+| `scripts/www/cgi-bin/quecmanager/cellular/sms_rm520n.sh` | PASS | OK | 1 INFO |
+| `scripts/usr/bin/qcmd_test_rm520n` | PASS | OK | 0 |
+
+#### Notes
+
+- These scripts target **RM520N-GL (vanilla Linux with bash)**, NOT OpenWRT/BusyBox. Written in POSIX sh for compatibility.
+- Unquoted `$SMS_TOOL_ARGS` pattern (`SMS_TOOL_ARGS="-d $_sms_dev"`) is intentional word-split for sms_tool arguments — correct and safe since device paths never contain spaces.
+- `jq // empty` on `.action`, `.phone`, `.message`, `.indexes` fields in sms_rm520n.sh — all safe (string/array only, never boolean `false`).
+- `command -v sms_tool` in qcmd_test_rm520n — correct usage (checking install presence, NOT post-removal verification).
+- `grep -qE` with `{15}` in test script — GNU grep ERE, valid on Linux target.
+- INFO: sms_rm520n.sh — temp file `/tmp/qmanager_sms_idx.tmp` not cleaned up if script exits mid-delete via signal. Suggest `trap 'rm -f /tmp/qmanager_sms_idx.tmp' EXIT INT TERM` before the delete loop. Low severity (fast CGI, small file).

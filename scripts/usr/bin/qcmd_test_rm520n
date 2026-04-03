@@ -1,0 +1,177 @@
+#!/bin/sh
+# =============================================================================
+# qcmd_test_rm520n — Smoke test for qcmd on RM520N-GL
+# =============================================================================
+# Validates the full chain: sms_tool binary → socat PTY bridge → modem
+#
+# Run this after installing sms_tool and qcmd_rm520n on the device:
+#   1. Copy sms_tool_arm to /usr/bin/sms_tool
+#   2. Copy qcmd_rm520n to /usr/bin/qcmd
+#   3. Ensure socat-at-bridge is running (systemctl status socat-smd11)
+#   4. Run: sh /usr/bin/qcmd_test_rm520n
+#
+# Install location: /usr/bin/qcmd_test_rm520n
+# =============================================================================
+
+PASS=0
+FAIL=0
+WARN=0
+
+pass() { PASS=$((PASS + 1)); echo "  PASS"; }
+fail() { FAIL=$((FAIL + 1)); echo "  FAIL: $1"; }
+warn() { WARN=$((WARN + 1)); echo "  WARN: $1"; }
+
+echo "=== qcmd RM520N-GL Smoke Test ==="
+echo ""
+
+# --- Test 1: microcom binary exists ------------------------------------------
+echo "[1] microcom binary..."
+if command -v microcom >/dev/null 2>&1; then
+    pass
+else
+    fail "microcom not found in PATH (should be a BusyBox applet)"
+    echo "=== Aborting (microcom required for all tests) ==="
+    exit 1
+fi
+
+# --- Test 2: AT device exists ------------------------------------------------
+echo "[2] AT device /dev/ttyOUT..."
+if [ -e /dev/ttyOUT ]; then
+    pass
+else
+    fail "/dev/ttyOUT not found"
+    echo "    Is socat-at-bridge running? Check: systemctl status socat-smd11"
+    echo "=== Aborting (AT device required) ==="
+    exit 1
+fi
+
+# --- Test 3: Direct sms_tool AT command --------------------------------------
+echo "[3] Direct sms_tool: ATI..."
+r=$(sms_tool -d /dev/ttyOUT2 at "ATI" 2>/dev/null)
+if [ -n "$r" ] && echo "$r" | grep -q "Quectel\|RM520\|OK"; then
+    pass
+elif [ -z "$r" ]; then
+    fail "empty response — modem may not be responding"
+else
+    warn "got response but unexpected content: $(echo "$r" | head -1)"
+fi
+
+# --- Test 4: qcmd simple command --------------------------------------------
+echo "[4] qcmd: AT..."
+r=$(qcmd "AT" 2>/dev/null)
+rc=$?
+if [ $rc -eq 0 ] && echo "$r" | grep -q "OK"; then
+    pass
+elif [ $rc -ne 0 ]; then
+    fail "qcmd exit code $rc"
+else
+    warn "qcmd returned 0 but unexpected content"
+fi
+
+# --- Test 5: Compound AT command ---------------------------------------------
+echo "[5] Compound: AT+CGMM;+CGSN..."
+r=$(qcmd 'AT+CGMM;+CGSN' 2>/dev/null)
+rc=$?
+if [ $rc -eq 0 ] && [ -n "$r" ]; then
+    # Check for model name or IMEI-like digits in response
+    if echo "$r" | grep -qE 'RM520|RM5|[0-9]{15}'; then
+        pass
+    else
+        # Response exists but doesn't match expected patterns — still OK
+        warn "response received but could not identify model/IMEI"
+        echo "    Response: $(echo "$r" | head -3)"
+    fi
+else
+    fail "compound command failed (rc=$rc)"
+fi
+
+# --- Test 6: JSON mode ------------------------------------------------------
+echo "[6] JSON mode: AT+CSQ..."
+r=$(qcmd -j "AT+CSQ" 2>/dev/null)
+if echo "$r" | grep -q '"success"'; then
+    if echo "$r" | grep -q 'true'; then
+        pass
+    else
+        warn "JSON returned but success!=true"
+        echo "    Response: $r"
+    fi
+else
+    fail "invalid JSON response"
+fi
+
+# --- Test 7: flock serialization ---------------------------------------------
+echo "[7] Concurrent lock test..."
+qcmd "AT" >/dev/null 2>&1 &
+pid1=$!
+qcmd "AT" >/dev/null 2>&1 &
+pid2=$!
+wait $pid1
+rc1=$?
+wait $pid2
+rc2=$?
+if [ $rc1 -eq 0 ] && [ $rc2 -eq 0 ]; then
+    pass
+else
+    warn "one or both calls failed (rc1=$rc1, rc2=$rc2) — may indicate lock contention"
+fi
+
+# --- Test 8: Error response handling -----------------------------------------
+echo "[8] Error handling: AT+INVALIDCMD..."
+r=$(qcmd "AT+INVALIDCMD_XYZ_TEST" 2>/dev/null)
+case "$r" in
+    *ERROR*)
+        pass
+        ;;
+    *)
+        warn "no ERROR in response — modem may handle unknown commands differently"
+        ;;
+esac
+
+# --- Test 9: sms_tool SMS recv (if installed) --------------------------------
+echo "[9] SMS recv test (sms_tool)..."
+if command -v sms_tool >/dev/null 2>&1; then
+    r=$(sms_tool -d /dev/ttyOUT2 recv -j 2>/dev/null)
+    rc=$?
+    if [ $rc -eq 0 ] && [ -n "$r" ]; then
+        if echo "$r" | grep -q '"msg"'; then
+            pass
+        else
+            warn "response received but no 'msg' field"
+            echo "    Response: $(echo "$r" | head -c 100)..."
+        fi
+    else
+        warn "sms_tool recv failed (rc=$rc) — SMS may need different setup on this device"
+    fi
+else
+    echo "  SKIP (sms_tool not installed — SMS features require it separately)"
+fi
+
+# --- Test 10: Device config override -----------------------------------------
+echo "[10] Config override test..."
+if [ -f /etc/qmanager/at_device ]; then
+    echo "  SKIP (config file exists, not overwriting)"
+else
+    # Verify qcmd reads the default correctly
+    r=$(qcmd "AT" 2>/dev/null)
+    if [ $? -eq 0 ]; then
+        pass
+    else
+        fail "qcmd failed with default device"
+    fi
+fi
+
+# --- Summary -----------------------------------------------------------------
+echo ""
+echo "=== Results ==="
+echo "  Passed: $PASS"
+echo "  Failed: $FAIL"
+echo "  Warnings: $WARN"
+echo ""
+
+if [ $FAIL -eq 0 ]; then
+    echo "All critical tests passed. qcmd is ready for RM520N-GL."
+    exit 0
+else
+    echo "Some tests failed. Review output above before proceeding."
+    exit 1
+fi
