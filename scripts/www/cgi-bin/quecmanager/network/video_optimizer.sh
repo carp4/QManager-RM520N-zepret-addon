@@ -190,12 +190,16 @@ POST)
         fi
         uci commit quecmanager
 
-        # Restart or stop service
+        # Restart or stop service + manage boot persistence
         if [ "$new_enabled" = "true" ]; then
+            /etc/init.d/qmanager_dpi enable 2>/dev/null
             /etc/init.d/qmanager_dpi restart
-            qlog_info "Video Optimizer enabled"
+            qlog_info "Video Optimizer enabled (boot: on)"
         else
             /etc/init.d/qmanager_dpi stop
+            # Disable boot if masquerade is also off
+            masq_check=$(uci -q get quecmanager.traffic_masquerade.enabled)
+            [ "$masq_check" != "1" ] && /etc/init.d/qmanager_dpi disable 2>/dev/null
             qlog_info "Video Optimizer disabled"
         fi
 
@@ -295,12 +299,16 @@ POST)
         fi
         uci commit quecmanager
 
-        # Restart or stop service
+        # Restart or stop service + manage boot persistence
         if [ "$new_enabled" = "true" ]; then
+            /etc/init.d/qmanager_dpi enable 2>/dev/null
             /etc/init.d/qmanager_dpi restart
-            qlog_info "Traffic Masquerade enabled (sni=$new_sni)"
+            qlog_info "Traffic Masquerade enabled (sni=$new_sni, boot: on)"
         else
             /etc/init.d/qmanager_dpi stop
+            # Disable boot if video optimizer is also off
+            vo_check=$(uci -q get quecmanager.video_optimizer.enabled)
+            [ "$vo_check" != "1" ] && /etc/init.d/qmanager_dpi disable 2>/dev/null
             qlog_info "Traffic Masquerade disabled"
         fi
 
@@ -374,8 +382,11 @@ POST)
 
         qlog_info "Uninstalling nfqws binary"
 
-        # Stop service and clean up nftables rules
-        [ -x /etc/init.d/qmanager_dpi ] && /etc/init.d/qmanager_dpi stop >/dev/null 2>&1
+        # Stop service, disable boot, and clean up nftables rules
+        [ -x /etc/init.d/qmanager_dpi ] && {
+            /etc/init.d/qmanager_dpi stop >/dev/null 2>&1
+            /etc/init.d/qmanager_dpi disable 2>/dev/null
+        }
 
         # Disable both features in UCI
         uci -q set quecmanager.video_optimizer.enabled='0'

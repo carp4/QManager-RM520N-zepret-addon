@@ -83,6 +83,19 @@ All status badges use `variant="outline"` with semantic color classes and `size-
 - **Installer jq caveat**: OpenWRT's jq lacks oniguruma — `test()` silently fails. Use `endswith()`/`contains()` instead (see memory: jq-no-regex)
 - **Dependencies**: `libnetfilter-queue`, `libnfnetlink`, `libmnl`, full `curl` (not BusyBox); kernel NFQUEUE support (built-in or `kmod-nft-queue`)
 
+### Custom SIM Profiles
+
+- **Route**: `/cellular/custom-profiles`
+- **IMEI is optional** — empty string = don't change. Profile can be created without an IMEI.
+- **Apply is async**: `profiles/apply.sh` spawns `qmanager_profile_apply` detached, frontend polls `profiles/apply_status.sh` at 500ms
+- **3 steps**: APN → TTL/HL → IMEI (least → most disruptive). Each step has skip logic (unchanged = skipped).
+- **Active marker**: `/etc/qmanager/active_profile` (plain text file with profile ID). Set on complete/partial apply, cleared on deactivate/delete.
+- **Activate ≠ Toggle**: "Activate" runs the full 3-step apply pipeline. "Deactivate" only clears the active marker — zero modem changes.
+- **SIM mismatch auto-deactivation**: Poller `collect_boot_data()` checks active profile's `sim_iccid` against current SIM at boot. If mismatch → auto-clears active marker + emits `profile_deactivated` warning event. Profiles with empty `sim_iccid` are left alone (not SIM-bound).
+- **SIM mismatch UI**: `custom-profile-table.tsx` compares active profile's `sim_iccid` against `modemStatus.device.iccid`. Mismatch → warning badge ("SIM Mismatch" with `TriangleAlertIcon`) instead of blue "Active" badge.
+- **Profile events**: `profile_applied` (info/warning), `profile_failed` (error), `profile_deactivated` (info/warning) — emitted by `qmanager_profile_apply` and `deactivate.sh`, displayed in Network Events (dataConnection tab)
+- **TTL override**: `ttl-settings-card.tsx` disables form when active profile has TTL/HL > 0
+
 ### Antenna Alignment
 
 - **Route**: `/cellular/antenna-alignment`

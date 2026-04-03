@@ -36,6 +36,14 @@
 qlog_init "profile_apply"
 . /usr/lib/qmanager/cgi_at.sh
 
+# --- Events (for append_event) -----------------------------------------------
+# Must define EVENTS_FILE and MAX_EVENTS before sourcing events.sh
+EVENTS_FILE="/tmp/qmanager_events.json"
+MAX_EVENTS=50
+. /usr/lib/qmanager/events.sh 2>/dev/null || {
+    append_event() { :; }
+}
+
 # --- Source profile manager library ------------------------------------------
 . /usr/lib/qmanager/profile_mgr.sh
 
@@ -426,6 +434,15 @@ write_state
 # Set active profile on success or partial success
 if [ "$apply_status" = "complete" ] || [ "$apply_status" = "partial" ]; then
     set_active_profile "$PROFILE_ID"
+fi
+
+# --- Emit network event ------------------------------------------------------
+if [ "$apply_status" = "complete" ]; then
+    append_event "profile_applied" "Profile '$p_name' applied successfully" "info"
+elif [ "$apply_status" = "partial" ]; then
+    append_event "profile_applied" "Profile '$p_name' partially applied ($steps_failed step(s) failed)" "warning"
+else
+    append_event "profile_failed" "Profile '$p_name' failed to apply ($steps_failed step(s) failed)" "error"
 fi
 
 qlog_info "Profile apply finished: status=$apply_status (done=$steps_done, failed=$steps_failed, skipped=$steps_skipped)"

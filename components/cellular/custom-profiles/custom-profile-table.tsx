@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { motion } from "motion/react";
+import { TriangleAlertIcon } from "lucide-react";
 import {
   TbCircleCheckFilled,
   TbDotsVertical,
@@ -65,6 +66,7 @@ interface ProfileTableProps {
   onDelete: (id: string) => Promise<boolean>;
   onActivate?: (id: string) => void;
   onDeactivate?: () => void;
+  currentIccid?: string | null;
 }
 
 export function ProfileTable({
@@ -74,6 +76,7 @@ export function ProfileTable({
   onDelete,
   onActivate,
   onDeactivate,
+  currentIccid,
 }: ProfileTableProps) {
   const [deleteTarget, setDeleteTarget] = React.useState<ProfileSummary | null>(
     null
@@ -112,15 +115,34 @@ export function ProfileTable({
         header: "Status",
         cell: ({ row }) => {
           const isActive = row.original.id === activeProfileId;
-          return isActive ? (
-            <Badge
-              variant="outline"
-              className="px-1.5 text-blue-600 border-blue-200 bg-blue-50 dark:bg-blue-950 dark:border-blue-800"
-            >
-              <TbCircleCheckFilled className="fill-blue-500 dark:fill-blue-400" />
-              Active
-            </Badge>
-          ) : (
+          if (isActive) {
+            const profileIccid = row.original.sim_iccid;
+            const isMismatch =
+              profileIccid && currentIccid && profileIccid !== currentIccid;
+
+            if (isMismatch) {
+              return (
+                <Badge
+                  variant="outline"
+                  className="px-1.5 bg-warning/15 text-warning hover:bg-warning/20 border-warning/30"
+                >
+                  <TriangleAlertIcon className="size-3" />
+                  SIM Mismatch
+                </Badge>
+              );
+            }
+
+            return (
+              <Badge
+                variant="outline"
+                className="px-1.5 text-blue-600 border-blue-200 bg-blue-50 dark:bg-blue-950 dark:border-blue-800"
+              >
+                <TbCircleCheckFilled className="fill-blue-500 dark:fill-blue-400" />
+                Active
+              </Badge>
+            );
+          }
+          return (
             <Badge
               variant="outline"
               className="px-1.5 text-muted-foreground"
@@ -156,20 +178,20 @@ export function ProfileTable({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-40">
               <DropdownMenuItem onClick={() => onEdit(row.original.id)}>
-                <TbEdit className="mr-2 size-4" />
+                <TbEdit className="size-4" />
                 Edit
               </DropdownMenuItem>
               {onActivate && row.original.id !== activeProfileId && (
                 <DropdownMenuItem
                   onClick={() => onActivate(row.original.id)}
                 >
-                  <TbPlayerPlay className="mr-2 size-4" />
+                  <TbPlayerPlay className="size-4" />
                   Activate
                 </DropdownMenuItem>
               )}
               {onDeactivate && row.original.id === activeProfileId && (
                 <DropdownMenuItem onClick={onDeactivate}>
-                  <TbPlayerStop className="mr-2 size-4" />
+                  <TbPlayerStop className="size-4" />
                   Deactivate
                 </DropdownMenuItem>
               )}
@@ -186,7 +208,7 @@ export function ProfileTable({
         ),
       },
     ],
-    [activeProfileId, onEdit, onActivate, onDeactivate]
+    [activeProfileId, onEdit, onActivate, onDeactivate, currentIccid]
   );
 
   const table = useReactTable({

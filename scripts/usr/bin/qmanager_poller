@@ -475,6 +475,24 @@ collect_boot_data() {
             fi
         fi
         printf '%s' "$boot_iccid" > "$LAST_ICCID_FILE"
+
+        # --- Auto-deactivate profile on SIM mismatch ---
+        # If the active profile was created for a different SIM, clear it so
+        # the UI no longer shows a stale "Active" badge.
+        local _ap_file="/etc/qmanager/active_profile"
+        if [ -f "$_ap_file" ]; then
+            local _ap_id _ap_iccid _ap_name
+            _ap_id=$(cat "$_ap_file" 2>/dev/null | tr -d ' \r\n')
+            if [ -n "$_ap_id" ] && [ -f "/etc/qmanager/profiles/${_ap_id}.json" ]; then
+                _ap_iccid=$(jq -r '(.sim_iccid) | if . == null then empty else . end' "/etc/qmanager/profiles/${_ap_id}.json" 2>/dev/null)
+                if [ -n "$_ap_iccid" ] && [ "$_ap_iccid" != "$boot_iccid" ]; then
+                    _ap_name=$(jq -r '(.name) | if . == null then empty else . end' "/etc/qmanager/profiles/${_ap_id}.json" 2>/dev/null)
+                    rm -f "$_ap_file"
+                    qlog_warn "Auto-deactivated profile '$_ap_name' — SIM ICCID mismatch (profile: ...$(printf '%s' "$_ap_iccid" | tail -c 4), current: ...$(printf '%s' "$boot_iccid" | tail -c 4))"
+                    append_event "profile_deactivated" "Profile '$_ap_name' auto-deactivated (SIM mismatch)" "warning"
+                fi
+            fi
+        fi
     fi
 
     # =========================================================================

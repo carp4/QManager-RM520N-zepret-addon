@@ -20,6 +20,9 @@ export const EVENT_LABELS: Record<NetworkEventType, string> = {
   sim_failover: "SIM Failover",
   sim_swap_detected: "SIM Swap Detected",
   airplane_mode: "Airplane Mode",
+  profile_applied: "Profile Applied",
+  profile_failed: "Profile Failed",
+  profile_deactivated: "Profile Deactivated",
 };
 
 /** Tab categories used by the monitoring Network Events card */
@@ -46,4 +49,7 @@ export const EVENT_TAB_CATEGORIES: Record<NetworkEventType, EventTabCategory> =
     sim_failover: "dataConnection",
     sim_swap_detected: "dataConnection",
     airplane_mode: "networkMode",
+    profile_applied: "dataConnection",
+    profile_failed: "dataConnection",
+    profile_deactivated: "dataConnection",
   };

@@ -20,6 +20,7 @@ import {
   SettingsIcon,
   TerminalIcon,
   DownloadIcon,
+  PackageOpenIcon,
 } from "lucide-react";
 
 import QManagerLogo from "@/public/qmanager-logo.svg";
@@ -83,6 +84,11 @@ const data = {
       url: "/system-settings/at-terminal",
       icon: TerminalIcon,
     },
+    {
+      title: "Luci",
+      url: "/cgi-bin/luci",
+      icon: PackageOpenIcon,
+    }
   ],
   navSecondary: [
     {
