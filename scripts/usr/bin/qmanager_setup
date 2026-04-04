@@ -11,6 +11,10 @@
 # Ensure required directories exist
 mkdir -p /var/lock /etc/qmanager /usr/lib/qmanager /tmp/quecmanager
 
+# Lock files — both root (daemons) and www-data (CGI) need access
+touch /var/lock/qmanager.lock /var/lock/qmanager.pid
+chmod 666 /var/lock/qmanager.lock /var/lock/qmanager.pid
+
 # Session directory — www-data needs write access (cleared on reboot since /tmp is tmpfs)
 mkdir -p /tmp/qmanager_sessions
 chown www-data:www-data /tmp/qmanager_sessions

@@ -38,9 +38,9 @@ fi
 qlog_init "qcmd"
 
 # --- Configuration -----------------------------------------------------------
-LOCK_FILE="/var/lock/qmanager.lock"
+LOCK_FILE="/tmp/qmanager_at.lock"
 LONG_FLAG="/tmp/qmanager_long_running"
-PID_FILE="/var/lock/qmanager.pid"
+PID_FILE="/tmp/qmanager_at.pid"
 
 SHORT_TIMEOUT=3        # seconds for normal AT commands
 LONG_TIMEOUT=240       # seconds for AT+QSCAN and similar
@@ -48,8 +48,11 @@ LONG_SAFETY_TIMEOUT=260 # outer timeout safety net (20s beyond LONG_TIMEOUT)
 LOCK_WAIT_SHORT=5      # seconds to wait for lock (normal commands)
 LOCK_WAIT_LONG=10      # seconds to wait for lock (long commands)
 
-# Ensure lock directory exists
-mkdir -p /var/lock 2>/dev/null
+# Ensure lock/pid files exist and are accessible by both root and www-data.
+# The poller (root) and CGI scripts (www-data) share these files via flock.
+[ ! -f "$LOCK_FILE" ] && touch "$LOCK_FILE" 2>/dev/null
+[ ! -f "$PID_FILE" ] && touch "$PID_FILE" 2>/dev/null
+chmod 666 "$LOCK_FILE" "$PID_FILE" 2>/dev/null
 
 # --- AT device configuration (RM520N-GL: socat PTY bridge) -------------------
 # Default: /dev/ttyOUT2 (smd7 via socat bridge, requires killsmd7bridge at boot)

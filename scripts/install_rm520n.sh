@@ -373,13 +373,17 @@ install_backend() {
 
     # --- Create required directories ---
     # www-data (lighttpd CGI) needs write access to config dir (auth.json, profiles)
-    # and session dir (session tokens)
+    # and session dir (session tokens). Also needs dialout group for serial device access.
+    addgroup www-data dialout 2>/dev/null || true
     mkdir -p "$CONF_DIR/profiles"
     chown -R www-data:www-data "$CONF_DIR"
     mkdir -p "$SESSION_DIR"
     chown www-data:www-data "$SESSION_DIR"
     chmod 700 "$SESSION_DIR"
     mkdir -p /var/lock
+    # Lock files — both root (daemons) and www-data (CGI) need flock access
+    touch /var/lock/qmanager.lock /var/lock/qmanager.pid
+    chmod 666 /var/lock/qmanager.lock /var/lock/qmanager.pid
 
     # --- Config files (deploy new, don't overwrite existing) ---
     if [ -d "$SRC_SCRIPTS/etc/qmanager" ]; then
