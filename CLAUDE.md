@@ -80,6 +80,7 @@ All status badges use `variant="outline"` with semantic color classes and `size-
 - **Verification**: `qmanager_dpi_verify` — curl with `--connect-to` SNI spoofing against speed.cloudflare.com
 - **Kernel support**: `dpi_check_kmod()` checks `/proc/config.gz` for `CONFIG_NETFILTER_NETLINK_QUEUE=y` (built-in) before trying lsmod/modprobe
 - **Init.d**: `qmanager_dpi` (procd, START=99, UCI-gated, single nfqws instance in either VO or masquerade mode)
+- **Boot persistence**: CGI `save`/`save_masquerade` calls `enable`/`disable` on init.d. Enabling either feature → `enable` (survives boot). Disabling → `disable` only if the other feature is also off. Uninstall always `disable`s.
 - **Installer jq caveat**: OpenWRT's jq lacks oniguruma — `test()` silently fails. Use `endswith()`/`contains()` instead (see memory: jq-no-regex)
 - **Dependencies**: `libnetfilter-queue`, `libnfnetlink`, `libmnl`, full `curl` (not BusyBox); kernel NFQUEUE support (built-in or `kmod-nft-queue`)
 
@@ -89,7 +90,8 @@ All status badges use `variant="outline"` with semantic color classes and `size-
 - **IMEI is optional** — empty string = don't change. Profile can be created without an IMEI.
 - **Apply is async**: `profiles/apply.sh` spawns `qmanager_profile_apply` detached, frontend polls `profiles/apply_status.sh` at 500ms
 - **3 steps**: APN → TTL/HL → IMEI (least → most disruptive). Each step has skip logic (unchanged = skipped).
-- **Active marker**: `/etc/qmanager/active_profile` (plain text file with profile ID). Set on complete/partial apply, cleared on deactivate/delete.
+- **Active marker**: `/etc/qmanager/active_profile` (plain text file with profile ID). Set on complete/partial apply, cleared on deactivate/delete/total-failure.
+- **IMEI pre-set**: Active marker is written BEFORE `AT+CFUN=1,1` (modem reboot can trigger system reboot on some USB configs, killing the script before finalization). Finalization re-sets on success/partial, clears on total failure.
 - **Activate ≠ Toggle**: "Activate" runs the full 3-step apply pipeline. "Deactivate" only clears the active marker — zero modem changes.
 - **SIM mismatch auto-deactivation**: Poller `collect_boot_data()` checks active profile's `sim_iccid` against current SIM at boot. If mismatch → auto-clears active marker + emits `profile_deactivated` warning event. Profiles with empty `sim_iccid` are left alone (not SIM-bound).
 - **SIM mismatch UI**: `custom-profile-table.tsx` compares active profile's `sim_iccid` against `modemStatus.device.iccid`. Mismatch → warning badge ("SIM Mismatch" with `TriangleAlertIcon`) instead of blue "Active" badge.
