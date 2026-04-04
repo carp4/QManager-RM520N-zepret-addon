@@ -27,6 +27,7 @@ interface CustomProfileViewProps {
   onActivate: (id: string) => void;
   onDeactivate: () => void;
   onRefresh: () => void;
+  currentIccid?: string | null;
 }
 
 const CustomProfileViewComponent = ({
@@ -39,6 +40,7 @@ const CustomProfileViewComponent = ({
   onActivate,
   onDeactivate,
   onRefresh,
+  currentIccid,
 }: CustomProfileViewProps) => {
   if (isLoading) {
     return (
@@ -81,6 +83,7 @@ const CustomProfileViewComponent = ({
           onDelete={onDelete}
           onActivate={onActivate}
           onDeactivate={onDeactivate}
+          currentIccid={currentIccid}
         />
       </CardContent>
     </Card>

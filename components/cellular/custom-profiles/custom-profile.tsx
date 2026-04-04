@@ -8,6 +8,7 @@ import { ApplyProgressDialog } from "@/components/cellular/custom-profiles/apply
 import { useSimProfiles, type ProfileFormData } from "@/hooks/use-sim-profiles";
 import { useProfileApply } from "@/hooks/use-profile-apply";
 import { useCurrentSettings } from "@/hooks/use-current-settings";
+import { useModemStatus } from "@/hooks/use-modem-status";
 import type { SimProfile } from "@/types/sim-profile";
 import {
   AlertDialog,
@@ -54,6 +55,9 @@ const CustomProfileComponent = () => {
 
   const { settings: currentSettings, refresh: refreshCurrentSettings } =
     useCurrentSettings(false);
+
+  const { data: modemStatus } = useModemStatus();
+  const currentIccid = modemStatus?.device?.iccid ?? null;
 
   const [editingProfile, setEditingProfile] = useState<SimProfile | null>(null);
 
@@ -196,6 +200,7 @@ const CustomProfileComponent = () => {
           onActivate={handleActivateRequest}
           onDeactivate={handleDeactivateRequest}
           onRefresh={refresh}
+          currentIccid={currentIccid}
         />
       </div>
 

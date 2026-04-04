@@ -501,7 +501,10 @@ export type NetworkEventType =
   | "watchcat_recovery"   // Watchcat executed a recovery action (Tier 1-4)
   | "sim_failover"        // SIM failover event (Tier 3 switch/fallback)
   | "sim_swap_detected"   // Physical SIM card swap detected at boot
-  | "airplane_mode";      // Airplane mode enabled/disabled (CFUN changed)
+  | "airplane_mode"       // Airplane mode enabled/disabled (CFUN changed)
+  | "profile_applied"     // Custom SIM Profile applied (complete or partial)
+  | "profile_failed"      // Custom SIM Profile apply failed (all steps)
+  | "profile_deactivated"; // Custom SIM Profile deactivated by user
 
 /** Severity level for UI icon coloring */
 export type EventSeverity = "info" | "warning" | "error";

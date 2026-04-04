@@ -99,6 +99,46 @@ The following features have been **completely removed** from the `dev-rm520` bra
 
 ## Feature-Specific Notes
 
+<<<<<<< HEAD
+=======
+### DPI Settings (Video Optimizer + Traffic Masquerade)
+
+- **Two separate pages**: `/local-network/video-optimizer` (2-card grid: settings + CDN hostlist) and `/local-network/traffic-masquerade` (single card)
+- **Old route** `/local-network/dpi-masking` redirects to video-optimizer
+- **Binary**: nfqws from zapret project, installed at `/usr/bin/nfqws`
+- **Not bundled**: nfqws is downloaded on demand from [zapret GitHub releases](https://github.com/bol-van/zapret/releases) via `qmanager_dpi_install` — avoids opkg dependency issues on custom firmware
+- **Installer**: `qmanager_dpi_install` — detects arch, fetches `openwrt-embedded.tar.gz`, extracts arch-specific binary, installs to `/usr/bin/nfqws`
+- **Installer state**: `/tmp/qmanager_dpi_install.json` (progress file), `/tmp/qmanager_dpi_install.pid` (singleton guard)
+- **Hostname list**: `/etc/qmanager/video_domains.txt` (user-editable, curated video CDNs)
+- **Default hostname list**: `/etc/qmanager/video_domains_default.txt` (immutable factory default for restore)
+- **Hostlist CGI**: GET `?section=hostlist` returns domains array; POST `save_hostlist` (full replace + atomic write); POST `restore_hostlist` (copy default over active)
+- **Single shared nfqws instance**: VO and masquerade are mutually exclusive modes of ONE nfqws process on queue 200 — single PID file (`/var/run/nfqws.pid`), single set of nftables rules (comment `qmanager_dpi`), single packet counter
+- **Mutual exclusion**: Backend enforces in `save`/`save_masquerade` — enabling one disables the other in UCI. Init.d `start_service()` checks masquerade first, then VO (if/elif)
+- **Video Optimizer mode**: NFQUEUE queue 200, `bypass` flag; TCP SNI split (`--dpi-desync=split2`) + QUIC desync (`--dpi-desync-udplen-increment`), filtered by `--hostlist`
+- **Traffic Masquerade mode**: same queue 200; fake TLS ClientHello with spoofed SNI (default: `speedtest.net`) using `--dpi-desync=fake --dpi-desync-fake-tls-mod=sni=<domain> --dpi-desync-fooling=badseq`, applies to all traffic (no hostlist)
+- **Status isolation**: CGI GET handlers gate live stats (status/uptime/packets) on UCI `enabled` flag — prevents cross-contamination since both modes share the same process/counters
+- **Verification**: `qmanager_dpi_verify` — curl with `--connect-to` SNI spoofing against speed.cloudflare.com
+- **Kernel support**: `dpi_check_kmod()` checks `/proc/config.gz` for `CONFIG_NETFILTER_NETLINK_QUEUE=y` (built-in) before trying lsmod/modprobe
+- **Init.d**: `qmanager_dpi` (procd, START=99, UCI-gated, single nfqws instance in either VO or masquerade mode)
+- **Boot persistence**: CGI `save`/`save_masquerade` calls `enable`/`disable` on init.d. Enabling either feature → `enable` (survives boot). Disabling → `disable` only if the other feature is also off. Uninstall always `disable`s.
+- **Installer jq caveat**: OpenWRT's jq lacks oniguruma — `test()` silently fails. Use `endswith()`/`contains()` instead (see memory: jq-no-regex)
+- **Dependencies**: `libnetfilter-queue`, `libnfnetlink`, `libmnl`, full `curl` (not BusyBox); kernel NFQUEUE support (built-in or `kmod-nft-queue`)
+
+### Custom SIM Profiles
+
+- **Route**: `/cellular/custom-profiles`
+- **IMEI is optional** — empty string = don't change. Profile can be created without an IMEI.
+- **Apply is async**: `profiles/apply.sh` spawns `qmanager_profile_apply` detached, frontend polls `profiles/apply_status.sh` at 500ms
+- **3 steps**: APN → TTL/HL → IMEI (least → most disruptive). Each step has skip logic (unchanged = skipped).
+- **Active marker**: `/etc/qmanager/active_profile` (plain text file with profile ID). Set on complete/partial apply, cleared on deactivate/delete/total-failure.
+- **IMEI pre-set**: Active marker is written BEFORE `AT+CFUN=1,1` (modem reboot can trigger system reboot on some USB configs, killing the script before finalization). Finalization re-sets on success/partial, clears on total failure.
+- **Activate ≠ Toggle**: "Activate" runs the full 3-step apply pipeline. "Deactivate" only clears the active marker — zero modem changes.
+- **SIM mismatch auto-deactivation**: Poller `collect_boot_data()` checks active profile's `sim_iccid` against current SIM at boot. If mismatch → auto-clears active marker + emits `profile_deactivated` warning event. Profiles with empty `sim_iccid` are left alone (not SIM-bound).
+- **SIM mismatch UI**: `custom-profile-table.tsx` compares active profile's `sim_iccid` against `modemStatus.device.iccid`. Mismatch → warning badge ("SIM Mismatch" with `TriangleAlertIcon`) instead of blue "Active" badge.
+- **Profile events**: `profile_applied` (info/warning), `profile_failed` (error), `profile_deactivated` (info/warning) — emitted by `qmanager_profile_apply` and `deactivate.sh`, displayed in Network Events (dataConnection tab)
+- **TTL override**: `ttl-settings-card.tsx` disables form when active profile has TTL/HL > 0
+
+>>>>>>> development-home
 ### Antenna Alignment
 
 - **Route**: `/cellular/antenna-alignment`

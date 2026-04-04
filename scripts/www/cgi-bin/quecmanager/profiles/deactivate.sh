@@ -23,6 +23,13 @@ cgi_handle_options
 # --- Source profile manager library ------------------------------------------
 . /usr/lib/qmanager/profile_mgr.sh
 
+# --- Events (for append_event) -----------------------------------------------
+EVENTS_FILE="/tmp/qmanager_events.json"
+MAX_EVENTS=50
+. /usr/lib/qmanager/events.sh 2>/dev/null || {
+    append_event() { :; }
+}
+
 # --- Validate method ---------------------------------------------------------
 if [ "$REQUEST_METHOD" != "POST" ]; then
     cgi_error "method_not_allowed" "Use POST"
@@ -31,7 +38,19 @@ fi
 
 qlog_info "Profile deactivate request"
 
+# --- Look up profile name before clearing ------------------------------------
+_deact_id=$(get_active_profile)
+_deact_name=""
+if [ -n "$_deact_id" ] && [ -f "$PROFILE_DIR/${_deact_id}.json" ]; then
+    _deact_name=$(jq -r '.name // empty' "$PROFILE_DIR/${_deact_id}.json" 2>/dev/null)
+fi
+
 # --- Clear active profile ----------------------------------------------------
 clear_active_profile
+
+# --- Emit network event ------------------------------------------------------
+if [ -n "$_deact_name" ]; then
+    append_event "profile_deactivated" "Profile '$_deact_name' deactivated" "info"
+fi
 
 cgi_success
