@@ -1,5 +1,6 @@
 #!/bin/sh
 . /usr/lib/qmanager/cgi_base.sh
+. /usr/lib/qmanager/config.sh
 # =============================================================================
 # sms.sh — CGI Endpoint: SMS Center (GET + POST)
 # =============================================================================
@@ -29,7 +30,7 @@ cgi_handle_options
 
 # --- SMS tool device override (e.g. "-d /dev/smd7") -------------------------
 SMS_TOOL_ARGS=""
-_sms_dev=$(uci -q get quecmanager.settings.sms_tool_device 2>/dev/null)
+_sms_dev=$(qm_config_get settings sms_tool_device "")
 [ -n "$_sms_dev" ] && SMS_TOOL_ARGS="-d $_sms_dev"
 
 # Strip sms_tool tty diagnostics (stdout noise when device is not a real tty)
