@@ -1,5 +1,6 @@
 #!/bin/sh
 . /usr/lib/qmanager/cgi_base.sh
+. /usr/lib/qmanager/config.sh
 # =============================================================================
 # update.sh — CGI Endpoint: Software Update (GET + POST)
 # =============================================================================
@@ -42,18 +43,11 @@ get_current_version() {
 }
 
 uci_update_get() {
-    local val
-    val=$(uci -q get "quecmanager.update.$1" 2>/dev/null)
-    if [ -z "$val" ]; then echo "$2"; else echo "$val"; fi
+    qm_config_get update "$1" "$2"
 }
 
 ensure_update_config() {
-    uci -q get quecmanager.update >/dev/null 2>&1 && return
-    uci set quecmanager.update=update
-    uci set quecmanager.update.include_prerelease=1
-    uci set quecmanager.update.auto_update_enabled=0
-    uci set quecmanager.update.auto_update_time=03:00
-    uci commit quecmanager
+    qm_config_init
 }
 
 strip_leading_zero() {
@@ -345,11 +339,10 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
         ensure_update_config
         enabled=$(printf '%s' "$POST_DATA" | jq -r '(.enabled) | if . == null then empty else tostring end')
         case "$enabled" in
-            true)  uci set quecmanager.update.include_prerelease=1 ;;
-            false) uci set quecmanager.update.include_prerelease=0 ;;
+            true)  qm_config_set update include_prerelease 1 ;;
+            false) qm_config_set update include_prerelease 0 ;;
             *) cgi_error "invalid_value" "enabled must be true or false"; exit 0 ;;
         esac
-        uci commit quecmanager
         cgi_success
         exit 0
     fi
@@ -369,11 +362,10 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
         }
 
         case "$enabled" in
-            true)  uci set quecmanager.update.auto_update_enabled=1 ;;
-            false) uci set quecmanager.update.auto_update_enabled=0 ;;
+            true)  qm_config_set update auto_update_enabled 1 ;;
+            false) qm_config_set update auto_update_enabled 0 ;;
         esac
-        uci set quecmanager.update.auto_update_time="$auto_time"
-        uci commit quecmanager
+        qm_config_set update auto_update_time "$auto_time"
 
         # Manage crontab (same pattern as settings.sh scheduled reboot)
         CRON_MARKER="# qmanager_auto_update"
