@@ -38,7 +38,7 @@ const AboutQManagerCard = ({ data, isLoading }: AboutQManagerCardProps) => {
       <CardHeader>
         <CardTitle className="text-2xl font-semibold">About QManager</CardTitle>
         <CardDescription>
-          Modem management interface for OpenWRT.
+          Modem management interface for Quectel modems.
         </CardDescription>
       </CardHeader>
       <CardContent>

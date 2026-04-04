@@ -62,7 +62,7 @@ function buildSections(data: AboutDeviceData): DataSection[] {
       rows: [
         { label: "Hostname", value: data.system.hostname },
         {
-          label: "OpenWRT Version",
+          label: "System Version",
           value: data.system.openwrt_version,
           mono: true,
         },

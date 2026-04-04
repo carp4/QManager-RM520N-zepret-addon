@@ -18,6 +18,7 @@ import {
   TerminalIcon,
   DownloadIcon,
   PackageOpenIcon,
+  TerminalSquareIcon,
 } from "lucide-react";
 
 import QManagerLogo from "@/public/qmanager-logo.svg";
@@ -76,6 +77,11 @@ const data = {
       title: "AT Terminal",
       url: "/system-settings/at-terminal",
       icon: TerminalIcon,
+    },
+    {
+      title: "Web Console",
+      url: "/console",
+      icon: TerminalSquareIcon,
     },
     {
       title: "Luci",
