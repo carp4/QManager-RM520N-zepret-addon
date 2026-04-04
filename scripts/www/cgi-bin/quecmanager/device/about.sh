@@ -118,6 +118,8 @@ sys_kernel=$(uname -r 2>/dev/null || echo "")
 sys_openwrt=""
 if [ -f /etc/openwrt_release ]; then
     sys_openwrt=$(. /etc/openwrt_release && echo "$DISTRIB_RELEASE")
+elif [ -f /etc/quectel-project-version ]; then
+    sys_openwrt=$(cat /etc/quectel-project-version 2>/dev/null | tr -d '[:space:]')
 fi
 
 # =============================================================================
