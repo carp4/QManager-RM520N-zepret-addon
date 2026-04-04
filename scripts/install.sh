@@ -649,10 +649,9 @@ uninstall() {
     if [ -x "$INITD_DIR/qmanager" ]; then
         "$INITD_DIR/qmanager" stop 2>/dev/null || true
     fi
-    for svc in qmanager_eth_link qmanager_mtu qmanager_imei_check \
-               qmanager_wan_guard qmanager_watchcat qmanager_tower_failover \
-               qmanager_ttl qmanager_low_power_check qmanager_bandwidth \
-               qmanager_dpi; do
+    for svc in qmanager_mtu qmanager_imei_check \
+               qmanager_watchcat qmanager_tower_failover \
+               qmanager_ttl; do
         if [ -x "$INITD_DIR/$svc" ]; then
             "$INITD_DIR/$svc" stop 2>/dev/null || true
         fi
@@ -662,20 +661,17 @@ uninstall() {
                 qmanager_tower_schedule qmanager_cell_scanner \
                 qmanager_neighbour_scanner qmanager_mtu_apply \
                 qmanager_profile_apply qmanager_imei_check \
-                qmanager_wan_guard qmanager_low_power \
-                qmanager_low_power_check qmanager_scheduled_reboot \
-                qmanager_update qmanager_auto_update \
-                bridge_traffic_monitor_rm551 websocat nfqws; do
+                qmanager_scheduled_reboot \
+                qmanager_update qmanager_auto_update; do
         killall "$proc" 2>/dev/null || true
     done
     sleep 1
     info "All services stopped"
 
     # Disable and remove init.d services
-    for svc in qmanager qmanager_eth_link qmanager_ttl qmanager_mtu \
-               qmanager_wan_guard qmanager_watchcat qmanager_imei_check \
-               qmanager_tower_failover qmanager_low_power_check \
-               qmanager_bandwidth qmanager_dpi; do
+    for svc in qmanager qmanager_ttl qmanager_mtu \
+               qmanager_watchcat qmanager_imei_check \
+               qmanager_tower_failover; do
         if [ -x "$INITD_DIR/$svc" ]; then
             "$INITD_DIR/$svc" disable 2>/dev/null || true
             rm -f "$INITD_DIR/$svc"
@@ -686,8 +682,6 @@ uninstall() {
     # Remove daemons
     rm -f "$BIN_DIR/qcmd"
     rm -f "$BIN_DIR"/qmanager_*
-    rm -f "$BIN_DIR/bridge_traffic_monitor_rm551"
-    rm -f "$BIN_DIR/nfqws"
     info "Removed daemons from $BIN_DIR"
 
     # Remove libraries
@@ -723,9 +717,6 @@ uninstall() {
 
     # Remove firewall rules
     rm -f /etc/firewall.user.ttl /etc/firewall.user.mtu 2>/dev/null || true
-
-    # Remove bandwidth SSL certs
-    rm -rf /etc/qmanager/bandwidth_certs 2>/dev/null || true
 
     # Remove runtime state
     rm -f /tmp/qmanager_*.json /tmp/qmanager.log* 2>/dev/null || true
