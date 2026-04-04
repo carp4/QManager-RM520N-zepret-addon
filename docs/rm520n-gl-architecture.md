@@ -691,50 +691,45 @@ The RM520N-GL already has Tailscale support, making the port of QManager's Tails
 
 ## Porting Strategy Summary
 
-Organized by priority and risk level.
+### Phase 1: AT Transport Layer ✅ COMPLETE
 
-### Phase 1: AT Transport Layer (Critical Path)
+Delivered `qcmd_rm520n` (microcom + flock serialization), `sms_rm520n.sh` (SMS CGI), and `qcmd_test_rm520n` (smoke tests).
 
-1. **Create `qcmd` wrapper** using `microcom` + `flock` serialization (see [example above](#1-replace-qcmd-with-a-new-at-wrapper))
-2. **Validate compound AT commands** work through the PTY bridge with the new wrapper
-3. **Implement dual-channel strategy** (smd11 for poller, smd7 for interactive/writes)
-4. **Add timeout profiles** for different command categories
+### Phase 2: Init System & Config Migration ✅ COMPLETE
 
-### Phase 2: Init System Migration
+Delivered 9 systemd unit files, `config.sh` (UCI replacement library with JSON config at `/etc/qmanager/qmanager.conf`), `qmanager_setup` one-shot, and daemon UCI removal.
 
-1. **Convert procd init.d scripts to systemd units** — 8 services to port:
-   - `qmanager_poller` → `qmanager-poller.service`
-   - `qmanager_ping` → `qmanager-ping.service`
-   - `qmanager_watchcat` → `qmanager-watchcat.service`
-   - `qmanager_wan_guard` → `qmanager-wan-guard.service` (oneshot)
-   - `qmanager_dpi` → `qmanager-dpi.service`
-   - `qmanager_bandwidth` → `qmanager-bandwidth.service`
-   - `qmanager_low_power` → `qmanager-low-power.timer` + `.service`
-   - `qmanager_low_power_check` → `qmanager-low-power-check.service` (oneshot)
-2. **Replace `procd_set_param` patterns** with systemd unit directives
-3. **Add `After=socat-smd11.service`** to all services that use AT commands
+### Phase 3: CGI & Script Migration ✅ COMPLETE
 
-### Phase 3: Config System Migration
+All UCI, `/etc/init.d/`, `ifdown`/`ifup`, and procd patterns removed from CGI scripts, library scripts, and daemon scripts. Created `platform.sh` (systemd service control abstraction with sudo for www-data), `system_config.sh` (hostname/timezone via standard Linux APIs). Watchcat Tier 1 recovery migrated from `ifdown`/`ifup` to `AT+COPS=2`/`AT+COPS=0`.
 
-1. **Replace all UCI calls** with file-based config in `/usrdata/qmanager/`
-2. **Decide config format** — JSON files (already used for some QManager configs) vs. flat key-value
-3. **Implement LAN config** via xmlstarlet and AT commands instead of UCI
-4. **Migrate firewall rules** from nftables to iptables syntax
-
-### Phase 4: Web Server and Auth
+### Phase 4: Web Server and Auth (NEXT)
 
 1. **Configure lighttpd** for QManager's CGI scripts and static frontend
-2. **Port auth system** — either adapt cookie-based sessions to lighttpd or extend HTTP Basic Auth
-3. **Handle `www-data` permissions** — add `sudo` rules for privileged operations
+2. **Port auth system** — adapt cookie-based sessions to lighttpd or implement alternative
+3. **Create sudoers file** — `/etc/sudoers.d/qmanager` for iptables, systemctl, reboot under `www-data`
 4. **Deploy frontend** to lighttpd's document root
+5. **Update install/uninstall scripts** for RM520N-GL (Entware opkg, iptables cleanup)
 
 ### Phase 5: Feature-Specific Adaptation
 
-1. **TTL/HL** — Update interface from `wwan0` to `rmnet+`, persist to `/usrdata/`
-2. **Video Optimizer / DPI** — Verify kernel NFQUEUE support, adapt nfqws installer for ARM32
-3. **Bandwidth Monitor** — Verify `/proc/net/dev` interface names, update binary for ARM32
-4. **Ethernet Settings** — Adapt for RGMII (bridge0/eth0) vs. USB Ethernet
-5. **NetBird VPN** — Verify ARM32 binary availability
+1. **IP Passthrough** — verify AT+QMAP commands work identically on RM520N-GL
+2. **Device About** — add RM520N-GL OS version detection (replace `/etc/openwrt_release`)
+3. **Frontend labels** — change "OpenWRT Version" to "System Version" in device info card
+
+### Deferred Features (Not Ported)
+
+The following features have been removed from the `dev-rm520` branch and are not planned for the initial RM520N-GL release:
+
+| Feature | Reason |
+|---------|--------|
+| VPN Management (Tailscale + NetBird) | Depends on fw4 zones, mwan3 ipset, nftables — no equivalent on RM520N-GL |
+| Video Optimizer / Traffic Masquerade (DPI) | Depends on nftables NFQUEUE; nfqws ARM32 binary not validated |
+| Bandwidth Monitor | ARM64 binary not portable to ARM32; websocat WSS dependency |
+| Ethernet Status & Link Speed | RM520N-GL uses RGMII (bridge0/eth0) vs USB Ethernet — different management model |
+| Custom DNS | Depends on UCI network config — no equivalent on RM520N-GL |
+| WAN Interface Guard | OpenWRT netifd-specific (ifdown/uci network) — no netifd on RM520N-GL |
+| Low Power Mode (daemons) | Daemon scripts removed; cron/config management retained in settings CGI |
 
 ---
 

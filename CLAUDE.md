@@ -83,37 +83,21 @@ Key platform differences from RM551E (current target):
 
 **Source reference:** `simpleadmin-source/` contains the original RM520N-GL admin panel that this work builds upon.
 
-## CGI Endpoint Reference (Additions)
+## Removed/Deferred Features (dev-rm520 Branch)
 
-| Feature      | CGI Script                   | Hook                                                   | Types                | Reboot? |
-|--------------|------------------------------|--------------------------------------------------------|----------------------|---------|
-| Video Optimizer | `network/video_optimizer.sh` | `use-video-optimizer.ts` + `use-cdn-hostlist.ts` | `video-optimizer.ts` | No |
-| Traffic Masquerade | `network/video_optimizer.sh` | `use-traffic-masquerade.ts` | `video-optimizer.ts` | No |
-| NetBird VPN | `vpn/netbird.sh` | `use-netbird.ts` | In hook file | Yes (uninstall) |
+The following features have been **completely removed** from the `dev-rm520` branch. Their backend scripts, frontend components, hooks, and types no longer exist. Do NOT reference, modify, or create code for these features unless explicitly re-porting them.
+
+| Feature | Reason | Scope of Removal |
+|---------|--------|-----------------|
+| VPN Management (Tailscale + NetBird) | Third-party binaries, fw4/mwan3 dependencies | CGI, hooks, components, vpn_firewall.sh |
+| Video Optimizer / Traffic Masquerade (DPI) | nftables dependency, nfqws ARM32 not validated | CGI, hooks, components, types, dpi_helper.sh, installer |
+| Bandwidth Monitor | ARM64 binary not portable, websocat dependency | CGI, hooks, components, types, binary, systemd units |
+| Ethernet Status & Link Speed | Different NIC architecture (RGMII vs USB), ethtool differences | CGI, components, ethtool_helper.sh |
+| Custom DNS | UCI network dependency, no equivalent on RM520N-GL | CGI, hooks, components |
+| WAN Interface Guard | OpenWRT netifd-specific (ifdown/uci network) | Daemon, init.d script |
+| Low Power Mode (daemons) | Daemon scripts removed; cron/config management retained in settings.sh | qmanager_low_power, qmanager_low_power_check |
 
 ## Feature-Specific Notes
-
-### DPI Settings (Video Optimizer + Traffic Masquerade)
-
-- **Two separate pages**: `/local-network/video-optimizer` (2-card grid: settings + CDN hostlist) and `/local-network/traffic-masquerade` (single card)
-- **Old route** `/local-network/dpi-masking` redirects to video-optimizer
-- **Binary**: nfqws from zapret project, installed at `/usr/bin/nfqws`
-- **Not bundled**: nfqws is downloaded on demand from [zapret GitHub releases](https://github.com/bol-van/zapret/releases) via `qmanager_dpi_install` — avoids opkg dependency issues on custom firmware
-- **Installer**: `qmanager_dpi_install` — detects arch, fetches `openwrt-embedded.tar.gz`, extracts arch-specific binary, installs to `/usr/bin/nfqws`
-- **Installer state**: `/tmp/qmanager_dpi_install.json` (progress file), `/tmp/qmanager_dpi_install.pid` (singleton guard)
-- **Hostname list**: `/etc/qmanager/video_domains.txt` (user-editable, curated video CDNs)
-- **Default hostname list**: `/etc/qmanager/video_domains_default.txt` (immutable factory default for restore)
-- **Hostlist CGI**: GET `?section=hostlist` returns domains array; POST `save_hostlist` (full replace + atomic write); POST `restore_hostlist` (copy default over active)
-- **Single shared nfqws instance**: VO and masquerade are mutually exclusive modes of ONE nfqws process on queue 200 — single PID file (`/var/run/nfqws.pid`), single set of nftables rules (comment `qmanager_dpi`), single packet counter
-- **Mutual exclusion**: Backend enforces in `save`/`save_masquerade` — enabling one disables the other in UCI. Init.d `start_service()` checks masquerade first, then VO (if/elif)
-- **Video Optimizer mode**: NFQUEUE queue 200, `bypass` flag; TCP SNI split (`--dpi-desync=split2`) + QUIC desync (`--dpi-desync-udplen-increment`), filtered by `--hostlist`
-- **Traffic Masquerade mode**: same queue 200; fake TLS ClientHello with spoofed SNI (default: `speedtest.net`) using `--dpi-desync=fake --dpi-desync-fake-tls-mod=sni=<domain> --dpi-desync-fooling=badseq`, applies to all traffic (no hostlist)
-- **Status isolation**: CGI GET handlers gate live stats (status/uptime/packets) on UCI `enabled` flag — prevents cross-contamination since both modes share the same process/counters
-- **Verification**: `qmanager_dpi_verify` — curl with `--connect-to` SNI spoofing against speed.cloudflare.com
-- **Kernel support**: `dpi_check_kmod()` checks `/proc/config.gz` for `CONFIG_NETFILTER_NETLINK_QUEUE=y` (built-in) before trying lsmod/modprobe
-- **Init.d**: `qmanager_dpi` (procd, START=99, UCI-gated, single nfqws instance in either VO or masquerade mode)
-- **Installer jq caveat**: OpenWRT's jq lacks oniguruma — `test()` silently fails. Use `endswith()`/`contains()` instead (see memory: jq-no-regex)
-- **Dependencies**: `libnetfilter-queue`, `libnfnetlink`, `libmnl`, full `curl` (not BusyBox); kernel NFQUEUE support (built-in or `kmod-nft-queue`)
 
 ### Antenna Alignment
 
