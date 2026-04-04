@@ -1,13 +1,16 @@
 #!/bin/sh
 . /usr/lib/qmanager/cgi_base.sh
-. /usr/lib/qmanager/config.sh
 # =============================================================================
-# sms.sh — CGI Endpoint: SMS Center (GET + POST)
+# sms_rm520n.sh — CGI Endpoint: SMS Center (RM520N-GL Variant)
 # =============================================================================
 # GET:  Returns all received SMS messages and storage status via sms_tool.
 # POST: Sends, deletes individual, or deletes all SMS messages.
 #
-# External tool (pre-installed; port overridable via UCI sms_tool_device):
+# This is the RM520N-GL variant of sms.sh. It targets the socat-at-bridge
+# PTY device (/dev/ttyOUT for smd11) instead of the OpenWRT USB serial device.
+# The API contract is identical to the RM551E variant.
+#
+# External tool (static ARM binary; device configurable via /etc/qmanager/at_device):
 #   sms_tool recv -j              -> JSON: {"msg":[{index,sender,timestamp,content,...}]}
 #   sms_tool send <phone> <msg>   -> Send an SMS
 #   sms_tool delete <index>       -> Delete one message
@@ -28,19 +31,16 @@ qlog_init "cgi_sms"
 cgi_headers
 cgi_handle_options
 
-# --- SMS tool device override (e.g. "-d /dev/smd7") -------------------------
-SMS_TOOL_ARGS=""
-_sms_dev=$(qm_config_get settings sms_tool_device "")
-[ -n "$_sms_dev" ] && SMS_TOOL_ARGS="-d $_sms_dev"
-
-# Strip sms_tool tty diagnostics (stdout noise when device is not a real tty)
-_strip_tty_noise() {
-    if [ -n "$SMS_TOOL_ARGS" ]; then
-        printf '%s\n' "$1" | grep -v -e '^tcgetattr(' -e '^tcsetattr(' -e '^Failed tcsetattr('
-    else
-        printf '%s' "$1"
-    fi
-}
+# --- AT device configuration (RM520N-GL: socat PTY bridge) -------------------
+# Default: /dev/ttyOUT2 (smd7 via socat bridge, requires killsmd7bridge at boot)
+# Override: write device path to /etc/qmanager/at_device
+_DEFAULT_DEV="/dev/ttyOUT2"
+_sms_dev="$_DEFAULT_DEV"
+if [ -f /etc/qmanager/at_device ]; then
+    _dev=$(cat /etc/qmanager/at_device 2>/dev/null)
+    [ -n "$_dev" ] && _sms_dev="$_dev"
+fi
+SMS_TOOL_ARGS="-d $_sms_dev"
 
 # --- MCC to country calling code lookup --------------------------------------
 # Maps the SIM's MCC (first 3 digits of IMSI) to ITU-T calling code.
@@ -382,7 +382,6 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
         qlog_info "Sending SMS to $PHONE (raw: $RAW_PHONE)"
         result=$(sms_tool $SMS_TOOL_ARGS send "$PHONE" "$MESSAGE" 2>&1)
         rc=$?
-        result=$(_strip_tty_noise "$result")
 
         if [ $rc -ne 0 ]; then
             qlog_error "sms_tool send failed (rc=$rc): $result"
@@ -414,7 +413,6 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
         while read -r idx; do
             result=$(sms_tool $SMS_TOOL_ARGS delete "$idx" 2>&1)
             rc=$?
-            result=$(_strip_tty_noise "$result")
             if [ $rc -ne 0 ]; then
                 qlog_warn "Failed to delete index $idx: $result"
                 fail_count=$((fail_count + 1))
@@ -438,7 +436,6 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
         qlog_info "Deleting all SMS messages"
         result=$(sms_tool $SMS_TOOL_ARGS delete all 2>&1)
         rc=$?
-        result=$(_strip_tty_noise "$result")
 
         if [ $rc -ne 0 ]; then
             qlog_error "sms_tool delete all failed (rc=$rc): $result"

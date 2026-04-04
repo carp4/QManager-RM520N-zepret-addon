@@ -1,20 +1,32 @@
 #!/bin/sh
 # =============================================================================
-# qcmd — QManager Gatekeeper
+# qcmd — QManager Gatekeeper (RM520N-GL Variant)
 # =============================================================================
-# The SINGLE entry point for ALL modem communication.
-# Uses flock to serialize access to the modem's serial port.
+# The SINGLE entry point for ALL modem communication on the RM520N-GL.
+# Uses flock to serialize access to the modem's AT channel via socat PTY bridge.
+#
+# This is the RM520N-GL variant of qcmd. It uses sms_tool targeting the
+# socat-at-bridge PTY device (/dev/ttyOUT2 for smd7). The interface contract
+# is identical to the RM551E variant — all callers work without modification.
+#
+# Why ttyOUT2 (smd7) and not ttyOUT (smd11):
+#   - sms_tool works reliably on ttyOUT2 but has timing issues on ttyOUT
+#   - smd7 requires killsmd7bridge to have run at boot (standard with RGMII toolkit)
+#   - ttyOUT (smd11) can still be used via microcom for other purposes
 #
 # Usage:
 #   qcmd "AT+COMMAND"          → Execute AT command, return raw result
 #   qcmd -j "AT+COMMAND"       → Execute AT command, return JSON-wrapped result
 #
 # Install location: /usr/bin/qcmd
-# Dependencies: sms_tool, flock (busybox), timeout (busybox)
+# Dependencies: sms_tool (static ARM binary), flock, timeout, jq (for -j mode)
+# Prerequisite: socat-at-bridge must be running (provides /dev/ttyOUT2)
 # =============================================================================
 
 # --- Logging -----------------------------------------------------------------
-. /usr/lib/qmanager/qlog.sh 2>/dev/null || {
+if [ -f /usr/lib/qmanager/qlog.sh ]; then
+    . /usr/lib/qmanager/qlog.sh
+else
     qlog_init() { :; }
     qlog_debug() { :; }
     qlog_info() { :; }
@@ -22,33 +34,42 @@
     qlog_error() { :; }
     qlog_at_cmd() { :; }
     qlog_lock() { :; }
-}
+fi
 qlog_init "qcmd"
 
 # --- Configuration -----------------------------------------------------------
-LOCK_FILE="/var/lock/qmanager.lock"
+LOCK_FILE="/tmp/qmanager_at.lock"
 LONG_FLAG="/tmp/qmanager_long_running"
-PID_FILE="/var/lock/qmanager.pid"
+PID_FILE="/tmp/qmanager_at.pid"
 
 SHORT_TIMEOUT=3        # seconds for normal AT commands
-LONG_TIMEOUT=240       # seconds for AT+QSCAN and similar (passed to sms_tool -t)
+LONG_TIMEOUT=240       # seconds for AT+QSCAN and similar
 LONG_SAFETY_TIMEOUT=260 # outer timeout safety net (20s beyond LONG_TIMEOUT)
 LOCK_WAIT_SHORT=5      # seconds to wait for lock (normal commands)
 LOCK_WAIT_LONG=10      # seconds to wait for lock (long commands)
 
-# Ensure lock directory exists
-mkdir -p /var/lock 2>/dev/null
+# Ensure lock/pid files exist and are accessible by both root and www-data.
+# The poller (root) and CGI scripts (www-data) share these files via flock.
+[ ! -f "$LOCK_FILE" ] && touch "$LOCK_FILE" 2>/dev/null
+[ ! -f "$PID_FILE" ] && touch "$PID_FILE" 2>/dev/null
+chmod 666 "$LOCK_FILE" "$PID_FILE" 2>/dev/null
 
-# --- SMS tool device override (e.g. "-d /dev/smd7") -------------------------
-SMS_TOOL_ARGS=""
-_sms_dev=""
+# --- AT device configuration (RM520N-GL: socat PTY bridge) -------------------
+# Default: /dev/ttyOUT2 (smd7 via socat bridge, requires killsmd7bridge at boot)
+# Override: write device path to /etc/qmanager/at_device (e.g. /dev/ttyOUT)
+_DEFAULT_DEV="/dev/ttyOUT2"
+_sms_dev="$_DEFAULT_DEV"
 if [ -f /etc/qmanager/at_device ]; then
-    _sms_dev=$(cat /etc/qmanager/at_device 2>/dev/null | tr -d '[:space:]')
-elif [ -f /usr/lib/qmanager/config.sh ]; then
-    . /usr/lib/qmanager/config.sh
-    _sms_dev=$(qm_config_get settings sms_tool_device "")
+    _dev=$(cat /etc/qmanager/at_device 2>/dev/null)
+    [ -n "$_dev" ] && _sms_dev="$_dev"
 fi
-[ -n "$_sms_dev" ] && SMS_TOOL_ARGS="-d $_sms_dev"
+SMS_TOOL_ARGS="-d $_sms_dev"
+
+# Verify AT device exists (socat-at-bridge must be running)
+if [ ! -e "$_sms_dev" ]; then
+    echo "ERROR: AT device $_sms_dev not found. Is socat-at-bridge running?" >&2
+    exit 1
+fi
 
 # --- Parse Arguments ---------------------------------------------------------
 JSON_MODE=0
@@ -67,26 +88,10 @@ fi
 
 qlog_debug "Command received: ${COMMAND}"
 
-# --- Helper: Strip sms_tool tty noise ----------------------------------------
-# sms_tool prints tcgetattr/tcsetattr diagnostics to stdout when the device
-# (e.g. /dev/smd7) is not a real tty. Filter them so parsers see clean output.
-_strip_tty_noise() {
-    if [ -n "$SMS_TOOL_ARGS" ]; then
-        printf '%s\n' "$1" | grep -v -e '^tcgetattr(' -e '^tcsetattr(' -e '^Failed tcsetattr('
-    else
-        printf '%s' "$1"
-    fi
-}
-
 # --- Helper: JSON Output -----------------------------------------------------
 output_result() {
     local raw="$1"
     local err="$2"
-
-    # Clean tty warnings from successful responses
-    if [ -z "$err" ] && [ -n "$raw" ]; then
-        raw=$(_strip_tty_noise "$raw")
-    fi
 
     if [ "$JSON_MODE" -eq 1 ]; then
         if [ -n "$err" ]; then
@@ -142,9 +147,6 @@ check_stale_lock() {
 }
 
 # --- Helper: flock with timeout ----------------------------------------------
-# BusyBox flock does NOT support -w (wait with timeout).
-# We implement it: try -n (non-blocking), retry with sleep until deadline.
-#
 # Usage: flock_wait <fd> <timeout_seconds>
 # Returns: 0 = lock acquired, 1 = timed out
 # -----------------------------------------------------------------------------
@@ -190,9 +192,8 @@ if is_long_command "$COMMAND"; then
             # Warm-up: flush residual serial buffer data + confirm modem responsive
             sms_tool $SMS_TOOL_ARGS at "AT" > /dev/null 2>&1 || { rm -f "$PID_FILE"; exit 3; }
 
-            # Real command with explicit native timeout (sms_tool -t)
-            # Outer timeout is a safety net in case sms_tool hangs
-            timeout "$LONG_SAFETY_TIMEOUT" sms_tool $SMS_TOOL_ARGS -t "$LONG_TIMEOUT" at "$COMMAND" 2>/dev/null
+            # Real command with outer safety timeout
+            timeout "$LONG_SAFETY_TIMEOUT" sms_tool $SMS_TOOL_ARGS at "$COMMAND" 2>/dev/null
             cmd_rc=$?
             rm -f "$PID_FILE"
             exit $cmd_rc
@@ -224,7 +225,7 @@ if is_long_command "$COMMAND"; then
             exit 1
             ;;
         *)
-            qlog_error "Long command failed: ${COMMAND} (sms_tool exit=${exit_code})"
+            qlog_error "Long command failed: ${COMMAND} (exit=${exit_code})"
             output_result "" "command_failed"
             exit 1
             ;;
