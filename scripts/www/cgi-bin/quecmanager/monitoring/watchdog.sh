@@ -1,12 +1,14 @@
 #!/bin/sh
 . /usr/lib/qmanager/cgi_base.sh
+. /usr/lib/qmanager/config.sh
+. /usr/lib/qmanager/platform.sh
 # =============================================================================
 # watchdog.sh — CGI Endpoint: Watchdog Settings & Status (GET + POST)
 # =============================================================================
-# GET:  Returns current watchdog configuration (UCI) + live status.
+# GET:  Returns current watchdog configuration (qmanager.conf) + live status.
 # POST: Saves settings, dismisses SIM swap, or requests SIM revert.
 #
-# Config: UCI quecmanager.watchcat.*
+# Config: /etc/qmanager/qmanager.conf [watchcat] section
 # State:  /tmp/qmanager_watchcat.json (read-only, written by daemon)
 #
 # Endpoint: GET/POST /cgi-bin/quecmanager/monitoring/watchdog.sh
@@ -24,54 +26,26 @@ RELOAD_FLAG="/tmp/qmanager_watchcat_reload"
 REVERT_FLAG="/tmp/qmanager_watchcat_revert_sim"
 DISABLED_FLAG="/tmp/qmanager_watchcat_disabled"
 
-# Ensure UCI section exists with defaults
-ensure_watchcat_config() {
-    uci -q get quecmanager.watchcat >/dev/null 2>&1 && return
-    uci set quecmanager.watchcat=watchcat
-    uci set quecmanager.watchcat.enabled=0
-    uci set quecmanager.watchcat.max_failures=5
-    uci set quecmanager.watchcat.check_interval=10
-    uci set quecmanager.watchcat.cooldown=60
-    uci set quecmanager.watchcat.tier1_enabled=1
-    uci set quecmanager.watchcat.tier2_enabled=1
-    uci set quecmanager.watchcat.tier3_enabled=0
-    uci set quecmanager.watchcat.tier4_enabled=1
-    uci set quecmanager.watchcat.backup_sim_slot=
-    uci set quecmanager.watchcat.max_reboots_per_hour=3
-    uci commit quecmanager
-}
-
-# Read a UCI value with fallback
-uci_get() {
-    local val
-    val=$(uci -q get "quecmanager.watchcat.$1" 2>/dev/null)
-    if [ -z "$val" ]; then
-        echo "$2"
-    else
-        echo "$val"
-    fi
-}
-
 # =============================================================================
 # GET — Fetch settings + live status
 # =============================================================================
 if [ "$REQUEST_METHOD" = "GET" ]; then
     qlog_info "Fetching watchdog settings"
-    ensure_watchcat_config
+    qm_config_init
 
     enabled="" max_failures="" check_interval="" cooldown=""
     tier1="" tier2="" tier3="" tier4="" backup_sim="" max_reboots=""
 
-    enabled=$(uci_get enabled 0)
-    max_failures=$(uci_get max_failures 5)
-    check_interval=$(uci_get check_interval 10)
-    cooldown=$(uci_get cooldown 60)
-    tier1=$(uci_get tier1_enabled 1)
-    tier2=$(uci_get tier2_enabled 1)
-    tier3=$(uci_get tier3_enabled 0)
-    tier4=$(uci_get tier4_enabled 1)
-    backup_sim=$(uci_get backup_sim_slot "")
-    max_reboots=$(uci_get max_reboots_per_hour 3)
+    enabled=$(qm_config_get watchcat enabled 0)
+    max_failures=$(qm_config_get watchcat max_failures 5)
+    check_interval=$(qm_config_get watchcat check_interval 10)
+    cooldown=$(qm_config_get watchcat cooldown 60)
+    tier1=$(qm_config_get watchcat tier1_enabled 1)
+    tier2=$(qm_config_get watchcat tier2_enabled 1)
+    tier3=$(qm_config_get watchcat tier3_enabled 0)
+    tier4=$(qm_config_get watchcat tier4_enabled 1)
+    backup_sim=$(qm_config_get watchcat backup_sim_slot "")
+    max_reboots=$(qm_config_get watchcat max_reboots_per_hour 3)
 
     # Read live status from watchcat daemon state file
     status_json='{}'
@@ -151,7 +125,7 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
     # -------------------------------------------------------------------------
     if [ "$ACTION" = "save_settings" ]; then
         qlog_info "Saving watchdog settings"
-        ensure_watchcat_config
+        qm_config_init
 
         # Extract fields from POST body
         val=""
@@ -159,68 +133,66 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
         val=$(printf '%s' "$POST_DATA" | jq -r '.enabled | if . == null then empty else tostring end')
         if [ -n "$val" ]; then
             case "$val" in
-                true) uci set quecmanager.watchcat.enabled=1 ;;
-                false) uci set quecmanager.watchcat.enabled=0 ;;
+                true)  qm_config_set watchcat enabled 1 ;;
+                false) qm_config_set watchcat enabled 0 ;;
             esac
         fi
 
         val=$(printf '%s' "$POST_DATA" | jq -r '.max_failures // empty')
-        [ -n "$val" ] && uci set quecmanager.watchcat.max_failures="$val"
+        [ -n "$val" ] && qm_config_set watchcat max_failures "$val"
 
         val=$(printf '%s' "$POST_DATA" | jq -r '.check_interval // empty')
-        [ -n "$val" ] && uci set quecmanager.watchcat.check_interval="$val"
+        [ -n "$val" ] && qm_config_set watchcat check_interval "$val"
 
         val=$(printf '%s' "$POST_DATA" | jq -r '.cooldown // empty')
-        [ -n "$val" ] && uci set quecmanager.watchcat.cooldown="$val"
+        [ -n "$val" ] && qm_config_set watchcat cooldown "$val"
 
         val=$(printf '%s' "$POST_DATA" | jq -r '.tier1_enabled | if . == null then empty else tostring end')
         if [ -n "$val" ]; then
-            case "$val" in true) uci set quecmanager.watchcat.tier1_enabled=1 ;; false) uci set quecmanager.watchcat.tier1_enabled=0 ;; esac
+            case "$val" in true) qm_config_set watchcat tier1_enabled 1 ;; false) qm_config_set watchcat tier1_enabled 0 ;; esac
         fi
 
         val=$(printf '%s' "$POST_DATA" | jq -r '.tier2_enabled | if . == null then empty else tostring end')
         if [ -n "$val" ]; then
-            case "$val" in true) uci set quecmanager.watchcat.tier2_enabled=1 ;; false) uci set quecmanager.watchcat.tier2_enabled=0 ;; esac
+            case "$val" in true) qm_config_set watchcat tier2_enabled 1 ;; false) qm_config_set watchcat tier2_enabled 0 ;; esac
         fi
 
         val=$(printf '%s' "$POST_DATA" | jq -r '.tier3_enabled | if . == null then empty else tostring end')
         if [ -n "$val" ]; then
-            case "$val" in true) uci set quecmanager.watchcat.tier3_enabled=1 ;; false) uci set quecmanager.watchcat.tier3_enabled=0 ;; esac
+            case "$val" in true) qm_config_set watchcat tier3_enabled 1 ;; false) qm_config_set watchcat tier3_enabled 0 ;; esac
         fi
 
         val=$(printf '%s' "$POST_DATA" | jq -r '.tier4_enabled | if . == null then empty else tostring end')
         if [ -n "$val" ]; then
-            case "$val" in true) uci set quecmanager.watchcat.tier4_enabled=1 ;; false) uci set quecmanager.watchcat.tier4_enabled=0 ;; esac
+            case "$val" in true) qm_config_set watchcat tier4_enabled 1 ;; false) qm_config_set watchcat tier4_enabled 0 ;; esac
         fi
 
         val=$(printf '%s' "$POST_DATA" | jq -r '.backup_sim_slot // empty')
         if [ -n "$val" ] && [ "$val" != "null" ]; then
-            uci set quecmanager.watchcat.backup_sim_slot="$val"
+            qm_config_set watchcat backup_sim_slot "$val"
         else
-            uci set quecmanager.watchcat.backup_sim_slot=""
+            qm_config_set watchcat backup_sim_slot ""
         fi
 
         val=$(printf '%s' "$POST_DATA" | jq -r '.max_reboots_per_hour // empty')
-        [ -n "$val" ] && uci set quecmanager.watchcat.max_reboots_per_hour="$val"
-
-        uci commit quecmanager
+        [ -n "$val" ] && qm_config_set watchcat max_reboots_per_hour "$val"
 
         # Signal running watchcat daemon to reload config (if it's already running)
         touch "$RELOAD_FLAG"
 
         # Clear auto-disabled flag if user is re-enabling
         new_enabled=""
-        new_enabled=$(uci -q get quecmanager.watchcat.enabled 2>/dev/null)
+        new_enabled=$(qm_config_get watchcat enabled 0)
         if [ "$new_enabled" = "1" ]; then
             rm -f "$DISABLED_FLAG"
-            # Enable and start the watchcat init script
-            /etc/init.d/qmanager_watchcat enable 2>/dev/null
-            ( /etc/init.d/qmanager_watchcat restart >/dev/null 2>&1 & )
+            # Enable and start the watchcat service
+            svc_enable qmanager_watchcat
+            ( svc_restart qmanager_watchcat & )
             qlog_info "Watchdog settings saved, watchcat enabled and started"
         else
-            # Stop and disable the watchcat init script
-            /etc/init.d/qmanager_watchcat stop >/dev/null 2>&1
-            /etc/init.d/qmanager_watchcat disable 2>/dev/null
+            # Stop and disable the watchcat service
+            svc_stop qmanager_watchcat
+            svc_disable qmanager_watchcat
             qlog_info "Watchdog settings saved, watchcat stopped and disabled"
         fi
         echo '{"success":true}'
