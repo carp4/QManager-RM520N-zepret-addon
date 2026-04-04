@@ -703,19 +703,19 @@ Delivered 9 systemd unit files, `config.sh` (UCI replacement library with JSON c
 
 All UCI, `/etc/init.d/`, `ifdown`/`ifup`, and procd patterns removed from CGI scripts, library scripts, and daemon scripts. Created `platform.sh` (systemd service control abstraction with sudo for www-data), `system_config.sh` (hostname/timezone via standard Linux APIs). Watchcat Tier 1 recovery migrated from `ifdown`/`ifup` to `AT+COPS=2`/`AT+COPS=0`.
 
-### Phase 4: Web Server and Auth (NEXT)
+### Phase 4: Web Server, Auth & Deployment ✅ COMPLETE
 
-1. **Configure lighttpd** for QManager's CGI scripts and static frontend
-2. **Port auth system** — adapt cookie-based sessions to lighttpd or implement alternative
-3. **Create sudoers file** — `/etc/sudoers.d/qmanager` for iptables, systemctl, reboot under `www-data`
-4. **Deploy frontend** to lighttpd's document root
-5. **Update install/uninstall scripts** for RM520N-GL (Entware opkg, iptables cleanup)
+Delivered lighttpd config (no HTTP Basic Auth — QManager's cookie-based sessions pass through), sudoers rules for `www-data`, `install_rm520n.sh` and `uninstall_rm520n.sh` (systemd + Entware), TLS cert management, and Web Console nav entry. Build script updated to include RM520N-GL files in tarball.
 
-### Phase 5: Feature-Specific Adaptation
+### Phase 5: Final Cleanup ✅ COMPLETE
 
-1. **IP Passthrough** — verify AT+QMAP commands work identically on RM520N-GL
-2. **Device About** — add RM520N-GL OS version detection (replace `/etc/openwrt_release`)
-3. **Frontend labels** — change "OpenWRT Version" to "System Version" in device info card
+Poller network interface detection (wwan0 → rmnet_ipa0 on RM520N-GL). Email alerts opkg path detection (Entware `/opt/bin/opkg`). Device About OS version fallback (`/etc/quectel-project-version`). Frontend labels updated ("System Version", "Quectel modems"). Removed dead feature defaults from config.sh.
+
+### Remaining: Hardware Validation
+
+1. **IP Passthrough** — verify AT+QMAP commands work identically on RM520N-GL hardware
+2. **End-to-end deployment test** — full install, service startup, frontend access, auth flow
+3. **Network interface confirmation** — verify `rmnet_ipa0` is the correct interface for traffic stats
 
 ### Deferred Features (Not Ported)
 
