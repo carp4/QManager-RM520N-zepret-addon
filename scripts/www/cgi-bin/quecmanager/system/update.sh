@@ -367,10 +367,11 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
         esac
         qm_config_set update auto_update_time "$auto_time"
 
-        # Manage crontab (same pattern as settings.sh scheduled reboot)
+        # Manage crontab (write directly to root's crontab file)
         CRON_MARKER="# qmanager_auto_update"
         AUTO_UPDATE_SCRIPT="/usr/bin/qmanager_auto_update"
-        current_cron=$(crontab -l 2>/dev/null || true)
+        CRON_FILE="/var/spool/cron/crontabs/root"
+        current_cron=$(cat "$CRON_FILE" 2>/dev/null || true)
         filtered_cron=$(printf '%s\n' "$current_cron" | grep -v "$CRON_MARKER")
 
         if [ "$enabled" = "true" ]; then
@@ -381,12 +382,12 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
 
             new_cron=$(printf '%s\n%s %s * * * %s  %s' \
                 "$filtered_cron" "$sched_min" "$sched_hour" "$AUTO_UPDATE_SCRIPT" "$CRON_MARKER")
-            printf '%s\n' "$new_cron" | crontab -
+            printf '%s\n' "$new_cron" > "$CRON_FILE"
         else
             if [ -z "$(printf '%s' "$filtered_cron" | tr -d '[:space:]')" ]; then
-                echo "" | crontab -
+                rm -f "$CRON_FILE"
             else
-                printf '%s\n' "$filtered_cron" | crontab -
+                printf '%s\n' "$filtered_cron" > "$CRON_FILE"
             fi
         fi
 

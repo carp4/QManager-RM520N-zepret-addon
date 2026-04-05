@@ -121,14 +121,14 @@ qlog_info "Schedule update: enabled=$ENABLED start=$START_TIME end=$END_TIME day
 
 tower_config_update_schedule "$ENABLED" "$START_TIME" "$END_TIME" "$DAYS_JSON"
 
-# --- Manage crontab entries --------------------------------------------------
+# --- Manage crontab (write directly to root's crontab file) -----------------
+# CGI runs as www-data but scheduled scripts need root.
+# BusyBox crond reads /var/spool/cron/crontabs/<user> directly.
 CRON_MARKER="qmanager_tower_schedule"
 SCHEDULE_SCRIPT="/usr/bin/qmanager_tower_schedule"
+CRON_FILE="/var/spool/cron/crontabs/root"
 
-# Read current crontab (suppress "no crontab" message)
-current_cron=$(crontab -l 2>/dev/null || true)
-
-# Remove any existing QManager tower schedule entries
+current_cron=$(cat "$CRON_FILE" 2>/dev/null || true)
 cleaned_cron=$(printf '%s\n' "$current_cron" | grep -v "$CRON_MARKER")
 
 if [ "$ENABLED" = "true" ]; then
@@ -144,7 +144,6 @@ if [ "$ENABLED" = "true" ]; then
     [ -z "$end_hour" ] && end_hour="0"
     [ -z "$end_min" ] && end_min="0"
 
-    # Build cron day list (comma-separated, same format as days array)
     day_list="$DAYS_RAW"
 
     new_cron="${cleaned_cron}
@@ -152,15 +151,13 @@ if [ "$ENABLED" = "true" ]; then
 ${start_min} ${start_hour} * * ${day_list} ${SCHEDULE_SCRIPT} apply  # ${CRON_MARKER}
 ${end_min} ${end_hour} * * ${day_list} ${SCHEDULE_SCRIPT} clear  # ${CRON_MARKER}"
 
-    printf '%s\n' "$new_cron" | crontab -
+    printf '%s\n' "$new_cron" > "$CRON_FILE"
     qlog_info "Tower schedule cron entries installed: apply at ${START_TIME}, clear at ${END_TIME}, days=${day_list}"
 else
-    # Remove entries only (already cleaned above)
     if [ -n "$cleaned_cron" ]; then
-        printf '%s\n' "$cleaned_cron" | crontab -
+        printf '%s\n' "$cleaned_cron" > "$CRON_FILE"
     else
-        # Empty crontab
-        echo "" | crontab -
+        rm -f "$CRON_FILE"
     fi
     qlog_info "Tower schedule cron entries removed"
 fi
