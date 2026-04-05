@@ -416,6 +416,11 @@ sim_failover_fallback() {
     # Restart tower failover daemon
     svc_start qmanager_tower_failover
 
+    # Auto-apply matching profile for the reverted SIM
+    local _revert_iccid
+    _revert_iccid=$(qcmd 'AT+QCCID' 2>/dev/null | grep '+QCCID:' | sed 's/+QCCID: //g' | tr -d '\r ')
+    [ -n "$_revert_iccid" ] && auto_apply_profile "$_revert_iccid" "watchdog_revert"
+
     current_sim_slot="$original_sim_slot"
     sim_failover_active="false"
     original_sim_slot="null"
