@@ -553,6 +553,70 @@ collect_boot_data() {
         fi
     fi
 
+    # =========================================================================
+    # Active profile enforcement — detect & fix settings drift at boot
+    # =========================================================================
+    # If an active profile survived the ICCID check above, verify its APN and
+    # TTL/HL still match modem/system state. Fixes drift from manual changes
+    # or lost /etc/ state (tmpfs on RM520N-GL). IMEI persists in modem NVM.
+    # =========================================================================
+    _bpf_ap_file="/etc/qmanager/active_profile"
+    if [ -f "$_bpf_ap_file" ]; then
+        _bpf_id=$(cat "$_bpf_ap_file" 2>/dev/null | tr -d ' \r\n')
+        _bpf_json="/etc/qmanager/profiles/${_bpf_id}.json"
+        if [ -n "$_bpf_id" ] && [ -f "$_bpf_json" ]; then
+            _bpf_name=$(jq -r '.name // empty' "$_bpf_json" 2>/dev/null)
+            _bpf_apn=$(jq -r '.settings.apn.name // empty' "$_bpf_json" 2>/dev/null)
+            _bpf_cid=$(jq -r '(.settings.apn.cid) | if . == null then "1" else tostring end' "$_bpf_json" 2>/dev/null)
+            _bpf_pdp=$(jq -r '.settings.apn.pdp_type // "IPV4V6"' "$_bpf_json" 2>/dev/null)
+            _bpf_ttl=$(jq -r '(.settings.ttl) | if . == null then "0" else tostring end' "$_bpf_json" 2>/dev/null)
+            _bpf_hl=$(jq -r '(.settings.hl) | if . == null then "0" else tostring end' "$_bpf_json" 2>/dev/null)
+
+            _bpf_enforced=""
+
+            # --- APN drift check ---
+            if [ -n "$_bpf_apn" ]; then
+                result=$(qcmd 'AT+CGDCONT?' 2>/dev/null)
+                _bpf_cur_apn=$(printf '%s' "$result" | grep "+CGDCONT: ${_bpf_cid}," | awk -F'"' '{print $4}' | head -1)
+                if [ "$_bpf_cur_apn" != "$_bpf_apn" ]; then
+                    qlog_warn "Profile APN drift: current='$_bpf_cur_apn' expected='$_bpf_apn' — enforcing"
+                    qcmd "AT+CGDCONT=${_bpf_cid},\"${_bpf_pdp}\",\"${_bpf_apn}\"" 2>/dev/null
+                    [ $? -eq 0 ] && _bpf_enforced="${_bpf_enforced}APN "
+                    sleep "$SIP_DELAY"
+                fi
+            fi
+
+            # --- TTL/HL drift check ---
+            # On RM520N-GL /etc/ is tmpfs — firewall rules file lost on reboot.
+            # Re-create rules file and apply iptables if profile has non-zero TTL or HL.
+            if [ "${_bpf_ttl:-0}" -gt 0 ] 2>/dev/null; then
+                if ! iptables -t mangle -C POSTROUTING -o rmnet+ -j TTL --ttl-set "$_bpf_ttl" 2>/dev/null; then
+                    iptables -t mangle -A POSTROUTING -o rmnet+ -j TTL --ttl-set "$_bpf_ttl"
+                    _bpf_enforced="${_bpf_enforced}TTL "
+                fi
+            fi
+            if [ "${_bpf_hl:-0}" -gt 0 ] 2>/dev/null; then
+                if ! ip6tables -t mangle -C POSTROUTING -o rmnet+ -j HL --hl-set "$_bpf_hl" 2>/dev/null; then
+                    ip6tables -t mangle -A POSTROUTING -o rmnet+ -j HL --hl-set "$_bpf_hl"
+                    _bpf_enforced="${_bpf_enforced}HL "
+                fi
+            fi
+            # Recreate firewall rules file (may be on tmpfs, lost at boot)
+            if [ "${_bpf_ttl:-0}" -gt 0 ] 2>/dev/null || [ "${_bpf_hl:-0}" -gt 0 ] 2>/dev/null; then
+                : > /etc/firewall.user.ttl
+                [ "${_bpf_ttl:-0}" -gt 0 ] 2>/dev/null && echo "iptables -t mangle -A POSTROUTING -o rmnet+ -j TTL --ttl-set $_bpf_ttl" >> /etc/firewall.user.ttl
+                [ "${_bpf_hl:-0}" -gt 0 ] 2>/dev/null && echo "ip6tables -t mangle -A POSTROUTING -o rmnet+ -j HL --hl-set $_bpf_hl" >> /etc/firewall.user.ttl
+            fi
+
+            if [ -n "$_bpf_enforced" ]; then
+                qlog_warn "Profile '$_bpf_name' boot enforcement: ${_bpf_enforced}"
+                append_event "profile_applied" "Profile '$_bpf_name' auto-enforced at boot (${_bpf_enforced})" "info"
+            else
+                qlog_debug "Active profile '$_bpf_name' — settings match, no enforcement needed"
+            fi
+        fi
+    fi
+
     log_info "Boot data: FW=$boot_firmware BUILD=$boot_build_date MFG=$boot_manufacturer MODEL=$boot_model"
     log_info "Boot data: IMEI=$boot_imei IMSI=$boot_imsi ICCID=$boot_iccid"
     log_info "Boot data: PHONE=$boot_phone_number CAT=$boot_lte_category MIMO=$t2_mimo"

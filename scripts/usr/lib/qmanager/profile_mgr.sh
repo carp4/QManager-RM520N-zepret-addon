@@ -392,7 +392,7 @@ clear_active_profile() {
 profile_check_lock() {
     if [ -f "$PROFILE_APPLY_PID_FILE" ]; then
         _profile_lock_pid=$(cat "$PROFILE_APPLY_PID_FILE" 2>/dev/null)
-        if [ -n "$_profile_lock_pid" ] && kill -0 "$_profile_lock_pid" 2>/dev/null; then
+        if [ -n "$_profile_lock_pid" ] && [ -d "/proc/$_profile_lock_pid" ]; then
             return 1
         fi
         rm -f "$PROFILE_APPLY_PID_FILE"
