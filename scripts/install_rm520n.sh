@@ -41,7 +41,7 @@ set -e
 
 # --- Configuration -----------------------------------------------------------
 
-VERSION="v0.1.13"
+VERSION="v0.1.1"
 INSTALL_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # Destinations
@@ -416,9 +416,6 @@ install_backend() {
     chown www-data:www-data "$SESSION_DIR"
     chmod 700 "$SESSION_DIR"
     mkdir -p /var/lock
-    # Lock files — both root (daemons) and www-data (CGI) need flock access
-    touch /var/lock/qmanager.lock /var/lock/qmanager.pid
-    chmod 666 /var/lock/qmanager.lock /var/lock/qmanager.pid
 
     # --- Config files (deploy new, don't overwrite existing) ---
     if [ -d "$SRC_SCRIPTS/etc/qmanager" ]; then
