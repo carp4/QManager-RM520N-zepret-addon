@@ -1,7 +1,0 @@
-# /etc/systemd/system/qmanager.target
-[Unit]
-Description=QManager Services
-After=multi-user.target
-
-[Install]
-WantedBy=multi-user.target
