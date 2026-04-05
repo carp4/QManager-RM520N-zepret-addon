@@ -256,11 +256,14 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
         qm_config_set settings sched_reboot_time "$SCHED_TIME"
         qm_config_set settings sched_reboot_days "$DAYS_RAW"
 
-        # --- Manage crontab ---
+        # --- Manage crontab (write directly to root's crontab file) ---
+        # CGI runs as www-data but scheduled scripts need root.
+        # BusyBox crond reads /var/spool/cron/crontabs/<user> directly.
         CRON_MARKER="qmanager_scheduled_reboot"
         SCHEDULE_SCRIPT="/usr/bin/qmanager_scheduled_reboot"
+        CRON_FILE="/var/spool/cron/crontabs/root"
 
-        current_cron=$(crontab -l 2>/dev/null || true)
+        current_cron=$(cat "$CRON_FILE" 2>/dev/null || true)
         cleaned_cron=$(printf '%s\n' "$current_cron" | grep -v "$CRON_MARKER")
 
         if [ "$ENABLED" = "true" ]; then
@@ -273,13 +276,13 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
 # QManager Scheduled Reboot — DO NOT EDIT MANUALLY
 ${sched_min} ${sched_hour} * * ${DAYS_RAW} ${SCHEDULE_SCRIPT}  # ${CRON_MARKER}"
 
-            printf '%s\n' "$new_cron" | crontab -
+            printf '%s\n' "$new_cron" > "$CRON_FILE"
             qlog_info "Scheduled reboot cron installed: ${SCHED_TIME} days=${DAYS_RAW}"
         else
             if [ -n "$cleaned_cron" ]; then
-                printf '%s\n' "$cleaned_cron" | crontab -
+                printf '%s\n' "$cleaned_cron" > "$CRON_FILE"
             else
-                echo "" | crontab -
+                rm -f "$CRON_FILE"
             fi
             qlog_info "Scheduled reboot cron entries removed"
         fi
@@ -363,11 +366,12 @@ ${sched_min} ${sched_hour} * * ${DAYS_RAW} ${SCHEDULE_SCRIPT}  # ${CRON_MARKER}"
         qm_config_set settings low_power_end "$END_TIME"
         qm_config_set settings low_power_days "$DAYS_RAW"
 
-        # --- Manage crontab ---
+        # --- Manage crontab (write directly to root's crontab file) ---
         CRON_MARKER="qmanager_low_power"
         LP_SCRIPT="/usr/bin/qmanager_low_power"
+        CRON_FILE="/var/spool/cron/crontabs/root"
 
-        current_cron=$(crontab -l 2>/dev/null || true)
+        current_cron=$(cat "$CRON_FILE" 2>/dev/null || true)
         cleaned_cron=$(printf '%s\n' "$current_cron" | grep -v "$CRON_MARKER")
 
         if [ "$ENABLED" = "true" ]; then
@@ -386,16 +390,16 @@ ${sched_min} ${sched_hour} * * ${DAYS_RAW} ${SCHEDULE_SCRIPT}  # ${CRON_MARKER}"
 ${start_min} ${start_hour} * * ${DAYS_RAW} ${LP_SCRIPT} enter  # ${CRON_MARKER}
 ${end_min} ${end_hour} * * 0,1,2,3,4,5,6 ${LP_SCRIPT} exit  # ${CRON_MARKER}"
 
-            printf '%s\n' "$new_cron" | crontab -
+            printf '%s\n' "$new_cron" > "$CRON_FILE"
             qlog_info "Low power cron installed: enter=${START_TIME} exit=${END_TIME} days=${DAYS_RAW}"
 
             # Enable boot-time checker
             svc_enable qmanager_low_power_check
         else
             if [ -n "$cleaned_cron" ]; then
-                printf '%s\n' "$cleaned_cron" | crontab -
+                printf '%s\n' "$cleaned_cron" > "$CRON_FILE"
             else
-                echo "" | crontab -
+                rm -f "$CRON_FILE"
             fi
             qlog_info "Low power cron entries removed"
 

@@ -9,9 +9,9 @@ _CONFIG_LOADED=1
 QM_CONFIG="/etc/qmanager/qmanager.conf"
 QM_CONFIG_TMP="/etc/qmanager/qmanager.conf.tmp"
 
-# Create default config if missing
+# Create default config if missing or empty
 qm_config_init() {
-    [ -f "$QM_CONFIG" ] && return 0
+    [ -s "$QM_CONFIG" ] && return 0
     cat > "$QM_CONFIG" << 'DEFAULTS'
 {
   "watchcat": {
