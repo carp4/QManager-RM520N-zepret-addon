@@ -39,7 +39,7 @@ fi
 watcher_running="false"
 if [ -f "$WATCHER_PID_FILE" ]; then
     watcher_pid=$(cat "$WATCHER_PID_FILE" 2>/dev/null | tr -d ' \n\r')
-    if [ -n "$watcher_pid" ] && kill -0 "$watcher_pid" 2>/dev/null; then
+    if pid_alive "$watcher_pid"; then
         watcher_running="true"
     fi
 fi

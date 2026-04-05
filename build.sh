@@ -20,8 +20,10 @@ fail() { printf "${RED}[%s] ERROR:${NC} %s\n" "$(date +%H:%M:%S)" "$1"; exit 1; 
 
 [ -d "$OUT_DIR" ] || fail "'out/' not found — run 'bun run build' first"
 
+DEPS_DIR="$ROOT_DIR/dependencies"
+
 step "Cleaning qmanager_install/..."
-rm -rf "$INSTALL_DIR/out" "$INSTALL_DIR/scripts" "$INSTALL_DIR/install.sh" "$INSTALL_DIR/uninstall.sh" "$INSTALL_DIR/install_rm520n.sh" "$INSTALL_DIR/uninstall_rm520n.sh"
+rm -rf "$INSTALL_DIR"
 mkdir -p "$INSTALL_DIR"
 
 step "Copying frontend build output..."
@@ -31,17 +33,20 @@ step "Copying backend scripts..."
 mkdir -p "$INSTALL_DIR/scripts"
 for item in "$SCRIPTS_DIR"/*; do
   name="$(basename "$item")"
-  case "$name" in install.sh|uninstall.sh|install_rm520n.sh|uninstall_rm520n.sh) continue ;; esac
+  case "$name" in install*.sh|uninstall*.sh) continue ;; esac
   cp -r "$item" "$INSTALL_DIR/scripts/$name"
 done
 
 step "Copying install & uninstall scripts..."
-cp "$SCRIPTS_DIR/install.sh" "$INSTALL_DIR/install.sh"
-cp "$SCRIPTS_DIR/uninstall.sh" "$INSTALL_DIR/uninstall.sh"
-
-step "Copying RM520N-GL install & uninstall scripts..."
 cp "$SCRIPTS_DIR/install_rm520n.sh" "$INSTALL_DIR/install_rm520n.sh"
 cp "$SCRIPTS_DIR/uninstall_rm520n.sh" "$INSTALL_DIR/uninstall_rm520n.sh"
+
+step "Copying bundled dependencies..."
+if [ -d "$DEPS_DIR" ]; then
+  cp -r "$DEPS_DIR" "$INSTALL_DIR/dependencies"
+else
+  fail "'dependencies/' not found — sms_tool, jq.ipk, dropbear.ipk are required"
+fi
 
 step "Creating qmanager.tar.gz..."
 mkdir -p "$BUILD_DIR"

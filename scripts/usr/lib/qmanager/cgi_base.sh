@@ -23,6 +23,13 @@ _CGI_BASE_LOADED=1
 }
 
 # ---------------------------------------------------------------------------
+# Platform helpers — sudo wrappers, service control, pid_alive
+# ---------------------------------------------------------------------------
+. /usr/lib/qmanager/platform.sh 2>/dev/null || {
+    pid_alive() { [ -n "$1" ] && [ -d "/proc/$1" ]; }
+}
+
+# ---------------------------------------------------------------------------
 # HTTP Headers
 # Emit full JSON + CORS headers followed by the required blank line.
 # Call once, before writing any response body.

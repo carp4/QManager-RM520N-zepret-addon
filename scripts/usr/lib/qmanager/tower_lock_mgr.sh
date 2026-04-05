@@ -420,7 +420,7 @@ tower_spawn_failover_watcher() {
     if [ -f "$TOWER_FAILOVER_PID" ]; then
         local pid
         pid=$(cat "$TOWER_FAILOVER_PID" 2>/dev/null | tr -d ' \n\r')
-        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+        if pid_alive "$pid"; then
             qlog_info "Tower failover watcher verified running (PID=$pid)"
             printf 'true'
             return 0

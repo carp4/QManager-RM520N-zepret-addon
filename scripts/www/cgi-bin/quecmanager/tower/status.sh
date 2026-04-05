@@ -117,7 +117,7 @@ fo_val=$(printf '%s' "$config_json" | jq -r '.failover.enabled' 2>/dev/null)
 # Check watcher PID
 if [ -f "$TOWER_FAILOVER_PID" ]; then
     watcher_pid=$(cat "$TOWER_FAILOVER_PID" 2>/dev/null | tr -d ' \n\r')
-    if [ -n "$watcher_pid" ] && kill -0 "$watcher_pid" 2>/dev/null; then
+    if pid_alive "$watcher_pid"; then
         watcher_running="true"
     fi
 fi

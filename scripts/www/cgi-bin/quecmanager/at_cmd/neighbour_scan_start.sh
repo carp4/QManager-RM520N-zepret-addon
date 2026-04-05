@@ -33,7 +33,7 @@ fi
 # --- Check: scan already running? --------------------------------------------
 if [ -f "$PID_FILE" ]; then
     OLD_PID=$(cat "$PID_FILE" 2>/dev/null)
-    if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+    if pid_alive "$OLD_PID"; then
         qlog_warn "Neighbour scan already running (PID: $OLD_PID)"
         cgi_error "already_running" "A neighbour scan is already in progress"
         exit 0

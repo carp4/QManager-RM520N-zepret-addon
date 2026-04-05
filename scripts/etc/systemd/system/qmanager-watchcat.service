@@ -1,9 +1,8 @@
-# /etc/systemd/system/qmanager-watchcat.service
+# /lib/systemd/system/qmanager-watchcat.service
 [Unit]
 Description=QManager Connection Health Watchdog
 After=qmanager-poller.service socat-smd7-from-ttyIN2.service
 Wants=qmanager-poller.service
-PartOf=qmanager.target
 
 [Service]
 Type=simple
@@ -17,4 +16,4 @@ StartLimitIntervalSec=3600
 StartLimitBurst=5
 
 [Install]
-WantedBy=qmanager.target
+WantedBy=multi-user.target

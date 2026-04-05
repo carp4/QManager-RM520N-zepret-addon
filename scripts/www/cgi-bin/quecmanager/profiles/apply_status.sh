@@ -39,7 +39,7 @@ if [ "$STATE_STATUS" = "applying" ]; then
     # Verify the apply process is still alive
     if [ -f "$PID_FILE" ]; then
         APPLY_PID=$(cat "$PID_FILE" 2>/dev/null)
-        if [ -n "$APPLY_PID" ] && ! kill -0 "$APPLY_PID" 2>/dev/null; then
+        if [ -n "$APPLY_PID" ] && ! pid_alive "$APPLY_PID"; then
             # Process died but state says "applying" — correct to "failed"
             tmp=$(jq '.status = "failed"' "$STATE_FILE" 2>/dev/null) && {
                 printf '%s\n' "$tmp" > "${STATE_FILE}.tmp" && mv "${STATE_FILE}.tmp" "$STATE_FILE"

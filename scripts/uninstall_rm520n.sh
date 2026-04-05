@@ -25,7 +25,7 @@ WWW_ROOT="/usrdata/simpleadmin/www"
 CGI_DIR="/usrdata/simpleadmin/www/cgi-bin/quecmanager"
 LIB_DIR="/usr/lib/qmanager"
 BIN_DIR="/usr/bin"
-SYSTEMD_DIR="/etc/systemd/system"
+SYSTEMD_DIR="/lib/systemd/system"
 CONF_DIR="/etc/qmanager"
 CERT_DIR="/usrdata/qmanager/certs"
 SESSION_DIR="/tmp/qmanager_sessions"
@@ -72,9 +72,14 @@ sleep 1
 info "Killed lingering processes"
 
 # --- Remove systemd unit files and boot symlinks ---
+# Remove from /lib/systemd/system/ (current location)
 rm -f "$SYSTEMD_DIR"/qmanager*.service "$SYSTEMD_DIR"/qmanager*.target
-rm -rf "$SYSTEMD_DIR"/qmanager.target.wants
+# Remove direct symlinks from multi-user.target.wants
+rm -f /lib/systemd/system/multi-user.target.wants/qmanager*.service
 rm -f /lib/systemd/system/multi-user.target.wants/qmanager.target
+# Clean up old /etc/systemd/system/ location from previous installs
+rm -f /etc/systemd/system/qmanager*.service /etc/systemd/system/qmanager*.target
+rm -rf /etc/systemd/system/qmanager.target.wants
 systemctl daemon-reload
 info "Removed systemd units and boot symlinks"
 

@@ -8,6 +8,12 @@
 # Install location: /usr/bin/qmanager_setup
 # =============================================================================
 
+# Remount root filesystem read-write if needed (RM520N-GL boots read-only)
+if ! touch /usr/.qm_rw_test 2>/dev/null; then
+    mount -o remount,rw / 2>/dev/null
+fi
+rm -f /usr/.qm_rw_test
+
 # Ensure required directories exist
 mkdir -p /var/lock /etc/qmanager /usr/lib/qmanager /tmp/quecmanager
 

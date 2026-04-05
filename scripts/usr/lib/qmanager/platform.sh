@@ -40,19 +40,27 @@ svc_restart() {
     $_SUDO systemctl restart "$(_svc_unit "$1")" 2>/dev/null
 }
 
-# Enable a service (start on boot)
+# Enable a service (start on boot via symlink — SimpleAdmin pattern)
+# RM520N-GL's minimal systemd ignores `systemctl enable` for boot.
+# Use explicit symlinks into multi-user.target.wants instead.
+_WANTS_DIR="/lib/systemd/system/multi-user.target.wants"
+_UNIT_DIR="/lib/systemd/system"
+
 svc_enable() {
-    $_SUDO systemctl enable "$(_svc_unit "$1")" 2>/dev/null
+    local unit="$(_svc_unit "$1").service"
+    $_SUDO ln -sf "$_UNIT_DIR/$unit" "$_WANTS_DIR/$unit" 2>/dev/null
 }
 
-# Disable a service (don't start on boot)
+# Disable a service (remove boot symlink)
 svc_disable() {
-    $_SUDO systemctl disable "$(_svc_unit "$1")" 2>/dev/null
+    local unit="$(_svc_unit "$1").service"
+    $_SUDO rm -f "$_WANTS_DIR/$unit" 2>/dev/null
 }
 
-# Check if a service is enabled (boot-start)
+# Check if a service is enabled (boot symlink exists)
 svc_is_enabled() {
-    $_SUDO systemctl is-enabled "$(_svc_unit "$1")" >/dev/null 2>&1
+    local unit="$(_svc_unit "$1").service"
+    [ -L "$_WANTS_DIR/$unit" ]
 }
 
 # Check if a service is currently running
@@ -71,4 +79,12 @@ run_ip6tables() {
 
 run_reboot() {
     $_SUDO reboot "$@"
+}
+
+# Check if a process is alive by PID — works cross-user (unlike kill -0).
+# On RM520N-GL, CGI runs as www-data but daemons run as root.
+# kill -0 fails with EPERM across user boundaries; /proc/$pid always works.
+# Usage: pid_alive <pid>
+pid_alive() {
+    [ -n "$1" ] && [ -d "/proc/$1" ]
 }

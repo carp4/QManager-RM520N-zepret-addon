@@ -112,7 +112,7 @@ if [ "$failover_enabled" = "true" ] && [ -x "$FAILOVER_SCRIPT" ]; then
     # Kill any existing watcher (latest lock is the one we monitor)
     if [ -f "$FAILOVER_PID_FILE" ]; then
         old_pid=$(cat "$FAILOVER_PID_FILE" 2>/dev/null | tr -d ' \n\r')
-        if [ -n "$old_pid" ] && kill -0 "$old_pid" 2>/dev/null; then
+        if pid_alive "$old_pid"; then
             kill "$old_pid" 2>/dev/null
             qlog_debug "Killed previous failover watcher (PID=$old_pid)"
         fi

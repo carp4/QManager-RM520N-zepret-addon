@@ -118,7 +118,7 @@ if [ "$FO_ENABLED" = "true" ]; then
         daemon_alive="false"
         if [ -f "$TOWER_FAILOVER_PID" ]; then
             wpid=$(cat "$TOWER_FAILOVER_PID" 2>/dev/null | tr -d ' \n\r')
-            [ -n "$wpid" ] && kill -0 "$wpid" 2>/dev/null && daemon_alive="true"
+            pid_alive "$wpid" && daemon_alive="true"
         fi
         if [ "$daemon_alive" != "true" ]; then
             spawn_result=$(tower_spawn_failover_watcher)

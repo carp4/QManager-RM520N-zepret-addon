@@ -56,7 +56,7 @@ get_result_line() {
 if [ -f "$PID_FILE" ]; then
     SPEEDTEST_PID=$(cat "$PID_FILE" 2>/dev/null)
 
-    if [ -n "$SPEEDTEST_PID" ] && kill -0 "$SPEEDTEST_PID" 2>/dev/null; then
+    if pid_alive "$SPEEDTEST_PID"; then
         # =====================================================================
         # RUNNING — process is alive, grab latest JSON progress line
         # =====================================================================

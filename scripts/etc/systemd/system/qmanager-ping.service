@@ -1,8 +1,7 @@
-# /etc/systemd/system/qmanager-ping.service
+# /lib/systemd/system/qmanager-ping.service
 [Unit]
 Description=QManager Ping Daemon
 After=network.target qmanager-setup.service
-PartOf=qmanager.target
 
 [Service]
 Type=simple
@@ -14,4 +13,4 @@ StartLimitIntervalSec=3600
 StartLimitBurst=5
 
 [Install]
-WantedBy=qmanager.target
+WantedBy=multi-user.target

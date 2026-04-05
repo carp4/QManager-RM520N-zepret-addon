@@ -1,9 +1,8 @@
-# /etc/systemd/system/qmanager-poller.service
+# /lib/systemd/system/qmanager-poller.service
 [Unit]
 Description=QManager Modem Data Poller
 After=socat-smd7-from-ttyIN2.service qmanager-setup.service qmanager-ping.service
 Wants=qmanager-ping.service
-PartOf=qmanager.target
 
 [Service]
 Type=simple
@@ -15,4 +14,4 @@ StartLimitIntervalSec=3600
 StartLimitBurst=5
 
 [Install]
-WantedBy=qmanager.target
+WantedBy=multi-user.target

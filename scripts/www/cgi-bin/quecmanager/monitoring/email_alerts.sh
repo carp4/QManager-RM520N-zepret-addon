@@ -98,7 +98,7 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
         MSMTP_INSTALL_PID="/tmp/qmanager_msmtp_install.pid"
 
         # Check if already running
-        if [ -f "$MSMTP_INSTALL_PID" ] && kill -0 "$(cat "$MSMTP_INSTALL_PID" 2>/dev/null)" 2>/dev/null; then
+        if [ -f "$MSMTP_INSTALL_PID" ] && pid_alive "$(cat "$MSMTP_INSTALL_PID" 2>/dev/null)"; then
             cgi_error "already_running" "Installation already in progress"
             exit 0
         fi

@@ -62,7 +62,7 @@ check_lock() {
     if [ -f "$PID_FILE" ]; then
         local pid
         pid=$(cat "$PID_FILE" 2>/dev/null)
-        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+        if pid_alive "$pid"; then
             cgi_error "update_in_progress" "An update is already in progress"
             exit 0
         fi
@@ -249,7 +249,7 @@ if [ "$REQUEST_METHOD" = "GET" ]; then
 
     if [ -f "$PID_FILE" ]; then
         pid=$(cat "$PID_FILE" 2>/dev/null)
-        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && [ -f "$STATUS_FILE" ]; then
+        if pid_alive "$pid" && [ -f "$STATUS_FILE" ]; then
             download_state=$(cat "$STATUS_FILE" 2>/dev/null)
         fi
     elif [ -f "$staged_tarball" ] && [ -f "$staged_version_file" ]; then

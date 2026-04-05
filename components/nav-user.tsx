@@ -163,9 +163,11 @@ export function NavUser({
     setRebooting(true);
 
     // Fire-and-forget: send the reboot POST, don't await the response.
-    fetch("/cgi-bin/quecmanager/system/reboot.sh", { method: "POST" }).catch(
-      () => {}
-    );
+    fetch("/cgi-bin/quecmanager/system/reboot.sh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "reboot" }),
+    }).catch(() => {});
 
     // Clear session and redirect to countdown page.
     setTimeout(() => {

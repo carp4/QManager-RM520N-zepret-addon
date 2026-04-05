@@ -28,7 +28,7 @@ cgi_handle_options
 # --- Check: scanner process running? -----------------------------------------
 if [ -f "$PID_FILE" ]; then
     SCAN_PID=$(cat "$PID_FILE" 2>/dev/null)
-    if [ -n "$SCAN_PID" ] && kill -0 "$SCAN_PID" 2>/dev/null; then
+    if pid_alive "$SCAN_PID"; then
         jq -n '{"status":"running"}'
         exit 0
     fi

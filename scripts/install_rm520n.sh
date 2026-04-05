@@ -49,7 +49,8 @@ WWW_ROOT="/usrdata/simpleadmin/www"
 CGI_DIR="/usrdata/simpleadmin/www/cgi-bin/quecmanager"
 LIB_DIR="/usr/lib/qmanager"
 BIN_DIR="/usr/bin"
-SYSTEMD_DIR="/etc/systemd/system"
+SYSTEMD_DIR="/lib/systemd/system"
+WANTS_DIR="/lib/systemd/system/multi-user.target.wants"
 # Detect Entware vs system sudo
 if [ -f /opt/etc/sudoers ]; then
     SUDOERS_DIR="/opt/etc/sudoers.d"
@@ -344,11 +345,24 @@ install_backend() {
         info "$cgi_count CGI scripts installed to $CGI_DIR"
     fi
 
-    # --- Systemd unit files ---
+    # --- Systemd unit files (SimpleAdmin pattern: /lib/systemd/system/) ---
     if [ -d "$SRC_SCRIPTS/etc/systemd/system" ]; then
-        cp "$SRC_SCRIPTS/etc/systemd/system"/qmanager* "$SYSTEMD_DIR/"
+        # Ensure rootfs is writable (may have reverted since preflight)
+        mount -o remount,rw / 2>/dev/null || true
+
+        # Remove old /etc/systemd/system/ units from previous installs
+        rm -f /etc/systemd/system/qmanager*.service /etc/systemd/system/qmanager*.target
+        rm -rf /etc/systemd/system/qmanager.target.wants
+
+        # Copy service files to /lib/systemd/system/ (persistent on RM520N-GL)
+        for f in "$SRC_SCRIPTS/etc/systemd/system"/qmanager*.service; do
+            [ -f "$f" ] || continue
+            cp "$f" "$SYSTEMD_DIR/"
+        done
+        sync
+
         systemctl daemon-reload
-        info "Systemd units installed and daemon-reloaded"
+        info "Systemd units installed to $SYSTEMD_DIR"
     fi
 
     # --- Sudoers ---
@@ -484,25 +498,23 @@ fix_permissions() {
 enable_services() {
     step "Enabling systemd services"
 
-    # RM520N-GL's minimal systemd ignores `systemctl enable` for boot startup.
-    # SimpleAdmin's proven pattern: explicit symlinks into multi-user.target.wants.
-    # The wants dir lives under /lib/systemd/system/ on this platform.
-    WANTS_DIR="/lib/systemd/system/multi-user.target.wants"
+    # Ensure rootfs is writable for symlink creation
+    mount -o remount,rw / 2>/dev/null || true
+
+    # SimpleAdmin's proven pattern: symlink each service directly into
+    # multi-user.target.wants. No intermediate target — RM520N-GL's minimal
+    # systemd handles direct wants reliably.
     mkdir -p "$WANTS_DIR"
 
-    # Enable the target — this is what multi-user.target pulls in at boot
-    if [ -f "$SYSTEMD_DIR/qmanager.target" ]; then
-        ln -sf "$SYSTEMD_DIR/qmanager.target" "$WANTS_DIR/qmanager.target"
-        info "Linked qmanager.target → multi-user.target.wants"
-    fi
+    # Remove old target-based setup from previous installs
+    rm -f "$WANTS_DIR/qmanager.target"
+    rm -rf /etc/systemd/system/qmanager.target.wants
 
-    # Always-on services — symlink into target.wants so target pulls them in
+    # Always-on services — symlink directly into multi-user.target.wants
     for svc in qmanager-setup qmanager-ping qmanager-poller qmanager-ttl \
                qmanager-mtu qmanager-imei-check; do
         if [ -f "$SYSTEMD_DIR/${svc}.service" ]; then
-            # Symlink into qmanager.target.wants (for target dependency)
-            mkdir -p "$SYSTEMD_DIR/qmanager.target.wants"
-            ln -sf "$SYSTEMD_DIR/${svc}.service" "$SYSTEMD_DIR/qmanager.target.wants/${svc}.service"
+            ln -sf "$SYSTEMD_DIR/${svc}.service" "$WANTS_DIR/${svc}.service"
             info "Enabled $svc"
         fi
     done
@@ -510,7 +522,7 @@ enable_services() {
     # Config-gated services — enable only if previously active
     for svc in qmanager-watchcat qmanager-tower-failover; do
         if [ -f "$SYSTEMD_DIR/${svc}.service" ]; then
-            if [ -L "$SYSTEMD_DIR/qmanager.target.wants/${svc}.service" ]; then
+            if [ -L "$WANTS_DIR/${svc}.service" ]; then
                 info "$svc already enabled"
             else
                 info "Skipped $svc (enable manually if needed)"
@@ -518,6 +530,7 @@ enable_services() {
         fi
     done
 
+    sync
     systemctl daemon-reload
 }
 
@@ -544,9 +557,10 @@ start_services() {
     # Run setup oneshot first (creates lock files, session dirs, iptables rules)
     systemctl start qmanager-setup 2>/dev/null || true
 
-    # Start the target — systemd resolves dependencies and starts all enabled services
-    systemctl daemon-reload
-    systemctl start qmanager.target 2>/dev/null || true
+    # Start always-on services directly (no target — SimpleAdmin pattern)
+    for svc in qmanager-ping qmanager-poller qmanager-ttl qmanager-mtu qmanager-imei-check; do
+        systemctl start "$svc" 2>/dev/null || true
+    done
     sleep 2
 
     # Verify
@@ -561,6 +575,77 @@ start_services() {
     else
         warn "Ping daemon does not appear to be running"
     fi
+}
+
+# --- SSH Setup (Optional) ----------------------------------------------------
+
+setup_ssh() {
+    # Skip prompt if SSH is already configured and running
+    if pgrep -x dropbear >/dev/null 2>&1 && [ -f /opt/etc/init.d/S51dropbear ]; then
+        info "SSH (dropbear) already configured and running"
+        return 0
+    fi
+
+    printf "\n"
+    printf "  ${BOLD}Enable SSH access (dropbear)?${NC}\n"
+    printf "  ${DIM}This sets up persistent SSH on port 22 via Entware init.${NC}\n"
+    printf "  ${DIM}Root filesystem doesn't survive reboots — Entware's /opt does.${NC}\n\n"
+    printf "  Enable SSH? [y/N] "
+    read -r answer
+    case "$answer" in
+        [yY]|[yY][eE][sS]) ;;
+        *) info "Skipped SSH setup"; return 0 ;;
+    esac
+
+    # Verify dropbear is installed
+    if ! command -v dropbear >/dev/null 2>&1; then
+        warn "dropbear not installed — cannot set up SSH"
+        return 0
+    fi
+
+    # Verify Entware init.d exists
+    if [ ! -d /opt/etc/init.d ]; then
+        warn "/opt/etc/init.d not found — Entware init system missing"
+        return 0
+    fi
+
+    local initscript="/opt/etc/init.d/S51dropbear"
+
+    # Create Entware init script if missing
+    if [ ! -f "$initscript" ]; then
+        cat > "$initscript" << 'INITEOF'
+#!/bin/sh
+ENABLED=yes
+PROCS=dropbear
+ARGS="-p 22"
+PREARGS=""
+. /opt/etc/init.d/rc.func
+INITEOF
+        chmod +x "$initscript"
+        info "Created $initscript"
+    else
+        info "Entware dropbear init script already exists"
+    fi
+
+    # Start dropbear now
+    if pgrep -x dropbear >/dev/null 2>&1; then
+        info "dropbear is already running"
+    else
+        "$initscript" start 2>/dev/null || true
+        if pgrep -x dropbear >/dev/null 2>&1; then
+            info "dropbear started on port 22"
+        else
+            warn "dropbear failed to start — check: $initscript start"
+        fi
+    fi
+
+    # Set root password if not already set
+    if grep -q '^root:[*!]:' /etc/shadow 2>/dev/null || grep -q '^root::' /etc/shadow 2>/dev/null; then
+        printf "\n  ${BOLD}Set a root password for SSH login:${NC}\n"
+        passwd root
+    fi
+
+    info "SSH setup complete — connect via: ssh root@192.168.225.1"
 }
 
 # --- Summary -----------------------------------------------------------------
@@ -660,11 +745,14 @@ main() {
 
     [ "$DO_START" = "1" ] && start_services
 
+    setup_ssh
+
     print_summary
     mkdir -p "$CONF_DIR" && echo "$VERSION" > "$CONF_DIR/VERSION"
 
     if [ "$DO_REBOOT" = "1" ]; then
         printf "  Rebooting in 5 seconds — press Ctrl+C to cancel...\n\n"
+        sync
         sleep 5
         reboot
     fi

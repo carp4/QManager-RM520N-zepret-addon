@@ -91,7 +91,7 @@ sleep 0.5
 # --- Verify it started -------------------------------------------------------
 if [ -f "$PROFILE_APPLY_PID_FILE" ]; then
     NEW_PID=$(cat "$PROFILE_APPLY_PID_FILE" 2>/dev/null)
-    if [ -n "$NEW_PID" ] && kill -0 "$NEW_PID" 2>/dev/null; then
+    if pid_alive "$NEW_PID"; then
         qlog_info "Profile apply started (PID: $NEW_PID)"
         jq -n --argjson pid "$NEW_PID" '{"success":true,"status":"applying","pid":$pid}'
     else

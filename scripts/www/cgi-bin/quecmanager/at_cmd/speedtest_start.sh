@@ -57,7 +57,7 @@ fi
 # --- Check: already running? -------------------------------------------------
 if [ -f "$PID_FILE" ]; then
     OLD_PID=$(cat "$PID_FILE" 2>/dev/null)
-    if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+    if pid_alive "$OLD_PID"; then
         qlog_warn "Speedtest already running (PID: $OLD_PID)"
         cgi_error "already_running" "A speedtest is already in progress"
         exit 0
@@ -140,7 +140,7 @@ sleep 0.8
 
 if [ -f "$PID_FILE" ]; then
     NEW_PID=$(cat "$PID_FILE" 2>/dev/null)
-    if [ -n "$NEW_PID" ] && kill -0 "$NEW_PID" 2>/dev/null; then
+    if pid_alive "$NEW_PID"; then
         qlog_info "Speedtest started (PID: $NEW_PID, bin: $SPEEDTEST_BIN)"
         jq -n --argjson pid "$NEW_PID" '{success: true, pid: $pid}'
     else
