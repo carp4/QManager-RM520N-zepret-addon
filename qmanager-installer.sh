@@ -1,36 +1,34 @@
-#!/bin/sh
+#!/bin/bash
 # ==============================================================================
-# QManager — Installer for OpenWRT
+# QManager — Installer Bootstrap for RM520N-GL
 # Quectel Modem Manager
-# https://github.com/dr-dolomite/QManager
+# https://github.com/dr-dolomite/QManager-RM520N
 #
 # Usage:
 #   wget -O /tmp/qmanager-installer.sh \
-#     https://github.com/dr-dolomite/QManager/raw/refs/heads/development-home/qmanager-installer.sh
-#   sh /tmp/qmanager-installer.sh
+#     https://github.com/dr-dolomite/QManager-RM520N/raw/refs/heads/main/qmanager-installer.sh && \
+#     bash /tmp/qmanager-installer.sh
 #
 # Environment variables:
-#   QMANAGER_VERSION  Pin a specific release version (default: latest)
+#   QMANAGER_VERSION  Pin a specific release version (default: latest including pre-releases)
 #
 # ==============================================================================
 
 # --- Configuration -----------------------------------------------------------
 
-GITHUB_REPO="dr-dolomite/QManager"
+GITHUB_REPO="dr-dolomite/QManager-RM520N"
 GITHUB_API="https://api.github.com/repos/${GITHUB_REPO}/releases"
 ARCHIVE_PATH="/tmp/qmanager.tar.gz"
 CHECKSUM_PATH="/tmp/qmanager_sha256sum.txt"
 EXTRACT_DIR="/tmp/qmanager_install"
 
-# Device paths (must match install.sh / uninstall.sh)
-WWW_ROOT="/www"
-CGI_DIR="/www/cgi-bin/quecmanager"
+# Device paths (must match install_rm520n.sh / uninstall_rm520n.sh)
+WWW_ROOT="/usrdata/simpleadmin/www"
+CGI_DIR="/usrdata/simpleadmin/www/cgi-bin/quecmanager"
 LIB_DIR="/usr/lib/qmanager"
 BIN_DIR="/usr/bin"
-INITD_DIR="/etc/init.d"
+SYSTEMD_DIR="/lib/systemd/system"
 CONF_DIR="/etc/qmanager"
-BACKUP_DIR="/etc/qmanager/backups"
-SESSION_DIR="/tmp/qmanager_sessions"
 
 # --- Colors & Formatting -----------------------------------------------------
 
@@ -64,34 +62,29 @@ check_root() {
     [ "$(id -u)" -eq 0 ] || die "This script must be run as root"
 }
 
-check_openwrt() {
-    [ -f /etc/openwrt_release ] || die "OpenWRT not detected (/etc/openwrt_release missing)"
+check_platform() {
+    # RM520N-GL runs SDXLEMUR kernel on ARMv7l
+    if [ ! -d /usrdata ]; then
+        die "RM520N-GL platform not detected (/usrdata missing)"
+    fi
 }
 
 is_installed() {
-    [ -d "$LIB_DIR" ] || [ -f "$INITD_DIR/qmanager" ] || [ -d "$CGI_DIR" ]
+    [ -d "$LIB_DIR" ] || [ -d "$CGI_DIR" ] || [ -f "$SYSTEMD_DIR/qmanager-poller.service" ]
 }
 
 # --- Download Helper ---------------------------------------------------------
 
-download_archive() {
+download_file() {
     local url="$1" dest="$2"
 
-    # uclient-fetch — native OpenWRT HTTPS downloader
-    if command -v uclient-fetch >/dev/null 2>&1; then
-        info "Using uclient-fetch..."
-        uclient-fetch -q -O "$dest" "$url" 2>/dev/null && return 0
-    fi
-
-    # wget (BusyBox or full)
+    # wget (full or BusyBox)
     if command -v wget >/dev/null 2>&1; then
-        info "Using wget..."
         wget -q -O "$dest" "$url" 2>/dev/null && return 0
     fi
 
-    # curl (if installed)
+    # curl (if available)
     if command -v curl >/dev/null 2>&1; then
-        info "Using curl..."
         curl -fsSL -o "$dest" "$url" 2>/dev/null && return 0
     fi
 
@@ -108,25 +101,19 @@ fetch_release_info() {
     # Detect if we're querying the list endpoint (array) vs a single release (object)
     case "$api_url" in */releases|*/releases\?*) is_list=true ;; esac
 
-    if ! download_archive "$api_url" "$tmp_file"; then
+    if ! download_file "$api_url" "$tmp_file"; then
         return 1
     fi
 
-    # Parse with jsonfilter (stock OpenWRT) or jq (if available)
-    if command -v jsonfilter >/dev/null 2>&1; then
-        if $is_list; then
-            RELEASE_TAG=$(jsonfilter -i "$tmp_file" -e '@[0].tag_name' 2>/dev/null)
-        else
-            RELEASE_TAG=$(jsonfilter -i "$tmp_file" -e '@.tag_name' 2>/dev/null)
-        fi
-    elif command -v jq >/dev/null 2>&1; then
+    # Parse with jq if available, otherwise fallback to grep
+    if command -v jq >/dev/null 2>&1; then
         if $is_list; then
             RELEASE_TAG=$(jq -r '.[0].tag_name // empty' "$tmp_file" 2>/dev/null)
         else
             RELEASE_TAG=$(jq -r '.tag_name // empty' "$tmp_file" 2>/dev/null)
         fi
     else
-        # Fallback: grep for tag_name in JSON (first match works for both list and single)
+        # Fallback: grep for tag_name in JSON (first match)
         RELEASE_TAG=$(grep -o '"tag_name"[[:space:]]*:[[:space:]]*"[^"]*"' "$tmp_file" | head -1 | cut -d'"' -f4)
     fi
 
@@ -140,7 +127,7 @@ fetch_release_info() {
 
 do_install() {
     check_root
-    check_openwrt
+    check_platform
 
     printf "\n"
     if is_installed; then
@@ -148,12 +135,6 @@ do_install() {
         printf "\n  Continue? [y/N] "
         read -r ans
         case "$ans" in y|Y|yes|YES) ;; *) printf "\n  Aborted.\n\n"; return ;; esac
-    fi
-
-    # Deprecation warning for QMANAGER_BRANCH
-    if [ -n "${QMANAGER_BRANCH:-}" ]; then
-        warn "QMANAGER_BRANCH is deprecated and will be ignored."
-        warn "Use QMANAGER_VERSION to pin a specific release instead."
     fi
 
     # Resolve release version
@@ -166,6 +147,7 @@ do_install() {
             die "Release $QMANAGER_VERSION not found on GitHub"
         fi
     else
+        # Fetch all releases (includes pre-releases) — latest first
         if ! fetch_release_info "${GITHUB_API}?per_page=1"; then
             die "Could not fetch latest release from GitHub. Check your internet connection."
         fi
@@ -173,7 +155,7 @@ do_install() {
 
     info "Release: $RELEASE_TAG"
 
-    # Construct download URLs from stable release pattern
+    # Construct download URLs
     local base_url="https://github.com/${GITHUB_REPO}/releases/download/${RELEASE_TAG}"
     local tarball_url="${base_url}/qmanager.tar.gz"
     local checksum_url="${base_url}/sha256sum.txt"
@@ -183,9 +165,9 @@ do_install() {
     printf "     %s\n" "$tarball_url"
 
     rm -f "$ARCHIVE_PATH"
-    if ! download_archive "$tarball_url" "$ARCHIVE_PATH"; then
+    if ! download_file "$tarball_url" "$ARCHIVE_PATH"; then
         printf "\n"
-        die "Download failed. Ensure HTTPS is available (opkg install wget-ssl)"
+        die "Download failed. Check your internet connection."
     fi
     [ -f "$ARCHIVE_PATH" ] || die "Download failed — archive not found"
 
@@ -195,7 +177,7 @@ do_install() {
 
     # Download and verify checksum
     rm -f "$CHECKSUM_PATH"
-    if download_archive "$checksum_url" "$CHECKSUM_PATH" && [ -s "$CHECKSUM_PATH" ]; then
+    if download_file "$checksum_url" "$CHECKSUM_PATH" && [ -s "$CHECKSUM_PATH" ]; then
         local expected_sha256 actual_sha256
         expected_sha256=$(awk '{print $1}' "$CHECKSUM_PATH")
         actual_sha256=$(sha256sum "$ARCHIVE_PATH" 2>/dev/null | awk '{print $1}')
@@ -223,20 +205,19 @@ do_install() {
     [ -d "$EXTRACT_DIR" ] || die "Extraction failed — $EXTRACT_DIR not found"
     info "Extracted to $EXTRACT_DIR"
 
-    # Run install.sh from the archive
+    # Run install_rm520n.sh from the archive
     step "Running QManager installer..."
     printf "\n"
-    if [ -f "$EXTRACT_DIR/install.sh" ]; then
-        chmod +x "$EXTRACT_DIR/install.sh"
-        sh "$EXTRACT_DIR/install.sh"
+    if [ -f "$EXTRACT_DIR/install_rm520n.sh" ]; then
+        chmod +x "$EXTRACT_DIR/install_rm520n.sh"
+        bash "$EXTRACT_DIR/install_rm520n.sh"
     else
-        die "install.sh not found inside archive"
+        die "install_rm520n.sh not found inside archive"
     fi
 
     # Cleanup
     step "Cleaning up..."
     rm -f "$ARCHIVE_PATH"
-    rm -rf "$EXTRACT_DIR"
     info "Temporary files removed"
 }
 
@@ -246,7 +227,7 @@ do_install() {
 
 do_uninstall() {
     check_root
-    check_openwrt
+    check_platform
 
     printf "\n"
     if ! is_installed; then
@@ -256,173 +237,15 @@ do_uninstall() {
         case "$ans" in y|Y|yes|YES) ;; *) printf "\n  Aborted.\n\n"; return ;; esac
     fi
 
-    # Confirmation
-    printf "\n"
-    printf "  ${YELLOW}${BOLD}This will permanently remove QManager from your device.${NC}\n\n"
-    printf "  The following will be removed:\n\n"
-    printf "     - Frontend files in %s/\n" "$WWW_ROOT"
-    printf "     - CGI endpoints in %s/\n" "$CGI_DIR"
-    printf "     - Libraries in %s/\n" "$LIB_DIR"
-    printf "     - Daemons: %s/qcmd, %s/qmanager_*\n" "$BIN_DIR" "$BIN_DIR"
-    printf "     - Init.d services in %s/\n" "$INITD_DIR"
-    printf "     - Runtime state in /tmp/\n"
-    printf "     - UCI config (quecmanager.*)\n"
-    printf "     - Firewall rules (/etc/firewall.user.ttl, .mtu)\n"
-    printf "\n"
-    printf "  Type ${BOLD}yes${NC} to confirm: "
-    read -r confirm
-    case "$confirm" in
-        yes|YES) ;;
-        *) printf "\n  Aborted — nothing was removed.\n\n"; return ;;
-    esac
-
-    # Ask about config directory
-    KEEP_CONFIG=1
-    if [ -d "$CONF_DIR" ]; then
-        printf "\n  Keep configuration files (%s/)? [Y/n] " "$CONF_DIR"
-        read -r ans
-        case "$ans" in n|N|no|NO) KEEP_CONFIG=0 ;; esac
-    fi
-
-    printf "\n"
-
-    # --- 1. Stop services ---
-    step "Stopping services..."
-    if [ -x "$INITD_DIR/qmanager" ]; then
-        "$INITD_DIR/qmanager" stop 2>/dev/null || true
-    fi
-    for svc in qmanager_eth_link qmanager_mtu qmanager_imei_check \
-               qmanager_wan_guard qmanager_watchcat qmanager_tower_failover \
-               qmanager_ttl qmanager_low_power_check qmanager_bandwidth; do
-        [ -x "$INITD_DIR/$svc" ] && "$INITD_DIR/$svc" stop 2>/dev/null || true
-    done
-
-    for proc in qmanager_poller qmanager_ping qmanager_watchcat \
-                qmanager_band_failover qmanager_tower_failover \
-                qmanager_tower_schedule qmanager_cell_scanner \
-                qmanager_neighbour_scanner qmanager_mtu_apply \
-                qmanager_profile_apply qmanager_imei_check \
-                qmanager_wan_guard qmanager_low_power \
-                qmanager_low_power_check qmanager_scheduled_reboot \
-                qmanager_update qmanager_auto_update \
-                bridge_traffic_monitor_rm551 websocat; do
-        killall "$proc" 2>/dev/null || true
-    done
-    sleep 1
-    info "All services stopped"
-
-    # --- 2. Disable & remove init.d scripts ---
-    step "Removing init.d services..."
-    for svc in qmanager qmanager_eth_link qmanager_ttl qmanager_mtu \
-               qmanager_wan_guard qmanager_imei_check \
-               qmanager_tower_failover qmanager_low_power_check \
-               qmanager_watchcat qmanager_bandwidth; do
-        if [ -f "$INITD_DIR/$svc" ]; then
-            "$INITD_DIR/$svc" disable 2>/dev/null || true
-            rm -f "$INITD_DIR/$svc"
-        fi
-    done
-    # Clean up rc.d symlinks
-    for _link in /etc/rc.d/*qmanager*; do
-        [ -e "$_link" ] && rm -f "$_link" 2>/dev/null || true
-    done
-    info "Init.d services removed"
-
-    # --- 3. Remove backend ---
-    step "Removing backend files..."
-    rm -f "$BIN_DIR/qcmd"
-    rm -f "$BIN_DIR/bridge_traffic_monitor_rm551"
-    for f in "$BIN_DIR"/qmanager_*; do
-        [ -f "$f" ] && rm -f "$f"
-    done
-    rm -rf "$LIB_DIR"
-    rm -rf "$CGI_DIR"
-    info "Binaries, libraries, and CGI endpoints removed"
-
-    # --- 4. Remove frontend ---
-    step "Removing frontend files..."
-    for dir in _next dashboard cellular monitoring local-network \
-               login about-device support system-settings setup reboot; do
-        [ -d "$WWW_ROOT/$dir" ] && rm -rf "$WWW_ROOT/$dir"
-    done
-    rm -f "$WWW_ROOT/index.html" "$WWW_ROOT/404.html" "$WWW_ROOT/favicon.ico"
-    rm -f "$WWW_ROOT/qmanager-logo.svg" "$WWW_ROOT/device-icon.svg" \
-          "$WWW_ROOT/device-icon-1.svg" "$WWW_ROOT/discord-qr.svg" \
-          "$WWW_ROOT/file.svg" "$WWW_ROOT/globe.svg" "$WWW_ROOT/window.svg"
-
-    # Restore original index.html from backup
-    if [ -f "$BACKUP_DIR/index.html.orig" ]; then
-        cp "$BACKUP_DIR/index.html.orig" "$WWW_ROOT/index.html"
-        info "Original index.html restored from backup"
+    if [ -f "$EXTRACT_DIR/uninstall_rm520n.sh" ]; then
+        step "Running QManager uninstaller..."
+        printf "\n"
+        bash "$EXTRACT_DIR/uninstall_rm520n.sh"
     else
-        warn "No backup found — original index.html not restored"
-        warn "Reinstall LuCI if needed: opkg install luci"
+        warn "Uninstall script not found at $EXTRACT_DIR/uninstall_rm520n.sh"
+        warn "If you installed from a previous release, SSH in and run:"
+        printf "\n     bash /tmp/qmanager_install/uninstall_rm520n.sh\n\n"
     fi
-
-    # --- 5. Remove runtime state ---
-    step "Cleaning up runtime state..."
-    rm -f /tmp/qmanager_status.json \
-          /tmp/qmanager_ping.json \
-          /tmp/qmanager_ping_history.json \
-          /tmp/qmanager_signal_history.json \
-          /tmp/qmanager_events.json \
-          /tmp/qmanager_email_log.json \
-          /tmp/qmanager_profile_state.json \
-          /tmp/qmanager_watchcat.json \
-          /tmp/qmanager_band_failover_state.json \
-          /tmp/qmanager_tower_failover_state.json \
-          /tmp/qmanager_update.json
-    rm -f /tmp/qmanager.log /tmp/qmanager.log.1 /tmp/qmanager_update.log
-    rm -f /tmp/qmanager_*.lock \
-          /tmp/qmanager_email_reload \
-          /tmp/qmanager_imei_check_done \
-          /tmp/qmanager_update.pid \
-          /tmp/qmanager_long_running \
-          /tmp/qmanager_low_power_active \
-          /tmp/qmanager_recovery_active \
-          /tmp/qmanager_watchcat.pid \
-          /tmp/qm_spin_out 2>/dev/null || true
-    rm -rf /tmp/quecmanager 2>/dev/null || true
-    rm -rf "$SESSION_DIR"
-    info "Runtime state cleaned"
-
-    # --- 6. Remove firewall rules ---
-    rm -f /etc/firewall.user.ttl /etc/firewall.user.mtu
-
-    # --- 7. Remove UCI config ---
-    if uci -q get quecmanager >/dev/null 2>&1; then
-        uci -q delete quecmanager 2>/dev/null || true
-        uci commit 2>/dev/null || true
-    fi
-    rm -f /etc/config/quecmanager
-    info "UCI config removed"
-
-    # --- 8. Remove cron jobs ---
-    if crontab -l 2>/dev/null | grep -q qmanager; then
-        crontab -l 2>/dev/null | grep -v qmanager | crontab - 2>/dev/null || true
-        info "Cron jobs removed"
-    fi
-
-    # --- 9. Bandwidth SSL certs ---
-    rm -rf /etc/qmanager/bandwidth_certs 2>/dev/null || true
-
-    # --- 10. Config directory ---
-    if [ "$KEEP_CONFIG" -eq 0 ]; then
-        rm -rf "$CONF_DIR"
-        info "Configuration directory removed"
-    else
-        if [ -d "$CONF_DIR" ]; then
-            info "Configuration preserved at $CONF_DIR/"
-        fi
-    fi
-
-    # Summary
-    printf "\n"
-    printf "  ${CYAN}==========================================${NC}\n"
-    printf "  ${GREEN}${BOLD}    QManager — Uninstall Complete${NC}\n"
-    printf "  ${CYAN}==========================================${NC}\n"
-    printf "\n"
-    printf "  ${DIM}Tip: Reboot recommended to clear live iptables rules.${NC}\n\n"
 }
 
 # ==============================================================================
@@ -453,9 +276,9 @@ do_download_only() {
     printf "     %s\n" "$tarball_url"
 
     rm -f "$ARCHIVE_PATH"
-    if ! download_archive "$tarball_url" "$ARCHIVE_PATH"; then
+    if ! download_file "$tarball_url" "$ARCHIVE_PATH"; then
         printf "\n"
-        die "Download failed. Ensure HTTPS is available (opkg install wget-ssl)"
+        die "Download failed. Check your internet connection."
     fi
 
     if [ -f "$ARCHIVE_PATH" ]; then
@@ -464,8 +287,8 @@ do_download_only() {
         info "Downloaded to $ARCHIVE_PATH ($size)"
         printf "\n"
         printf "  To install later:\n\n"
-        printf "     tar xzf %s -C /tmp/\n" "$ARCHIVE_PATH"
-        printf "     sh %s/install.sh\n\n" "$EXTRACT_DIR"
+        printf "     cd /tmp && tar xzf qmanager.tar.gz\n"
+        printf "     cd qmanager_install && bash install_rm520n.sh\n\n"
     else
         die "Download failed"
     fi
@@ -480,7 +303,7 @@ show_menu() {
     printf "\n"
     printf "  ${CYAN}==========================================${NC}\n"
     printf "  ${BOLD}       QManager — Setup Wizard${NC}\n"
-    printf "  ${DIM}     Quectel Modem Manager for OpenWRT${NC}\n"
+    printf "  ${DIM}   Quectel RM520N-GL Modem Manager${NC}\n"
     printf "  ${CYAN}==========================================${NC}\n"
     printf "\n"
 

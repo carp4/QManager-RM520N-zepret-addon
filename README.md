@@ -82,21 +82,15 @@ Follow the prompts to install SimpleAdmin and Entware. Once that's done, you're 
 
 ## Quick Install
 
-1. Download `qmanager.tar.gz` from the [latest release](https://github.com/dr-dolomite/QManager/releases) and transfer it to the modem:
+1. ADB or SSH into the modem and run:
 
 ```sh
-# From your computer (adjust IP if needed)
-scp qmanager.tar.gz root@192.168.225.1:/tmp/
+wget -O /tmp/qmanager-installer.sh \
+  https://github.com/dr-dolomite/QManager-RM520N/raw/refs/heads/main/qmanager-installer.sh && \
+  bash /tmp/qmanager-installer.sh
 ```
 
-2. SSH into the modem and run:
-
-```sh
-cd /tmp && tar xzf qmanager.tar.gz && cd qmanager_install
-bash install_rm520n.sh
-```
-
-The installer backs up SimpleAdmin, replaces it with the QManager frontend, installs the backend services, and configures lighttpd. Bundled dependencies (`sms_tool`, `jq`, `dropbear`) are installed automatically. A reboot is triggered after installation.
+The interactive installer fetches the latest release (including pre-releases), verifies the checksum, backs up SimpleAdmin, installs the QManager frontend and backend services, and configures lighttpd. Bundled dependencies (`sms_tool`, `jq`, `dropbear`) are installed automatically. A reboot is triggered after installation.
 
 > **Note:** Uninstalling QManager restores SimpleAdmin from the backup automatically.
 
