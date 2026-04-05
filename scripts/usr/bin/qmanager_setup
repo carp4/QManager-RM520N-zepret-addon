@@ -22,9 +22,12 @@ mkdir -p /var/lock /etc/qmanager /usr/lib/qmanager /tmp/quecmanager
 # CRITICAL: fs.protected_regular=1 on RM520N-GL means O_CREAT in sticky /tmp
 # is blocked unless file_owner==caller OR dir_owner==caller.
 # Must match paths in /usr/bin/qcmd: LOCK_FILE and PID_FILE
-touch /tmp/qmanager_at.lock /tmp/qmanager_at.pid /tmp/qmanager.log
-chown www-data:www-data /tmp/qmanager_at.lock /tmp/qmanager_at.pid /tmp/qmanager.log
-chmod 666 /tmp/qmanager_at.lock /tmp/qmanager_at.pid /tmp/qmanager.log
+touch /tmp/qmanager_at.lock /tmp/qmanager_at.pid /tmp/qmanager.log \
+      /tmp/qmanager_profile_apply.pid /tmp/qmanager_profile_state.json
+chown www-data:www-data /tmp/qmanager_at.lock /tmp/qmanager_at.pid /tmp/qmanager.log \
+      /tmp/qmanager_profile_apply.pid /tmp/qmanager_profile_state.json
+chmod 666 /tmp/qmanager_at.lock /tmp/qmanager_at.pid /tmp/qmanager.log \
+      /tmp/qmanager_profile_apply.pid /tmp/qmanager_profile_state.json
 
 # Session directory — www-data needs write access (cleared on reboot since /tmp is tmpfs)
 mkdir -p /tmp/qmanager_sessions

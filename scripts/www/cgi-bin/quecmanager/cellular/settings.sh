@@ -322,6 +322,14 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
                 *)
                     qlog_info "SIM procedure: CFUN=1 restored"
                     sim_cfun_restored="1"
+
+                    # Auto-apply matching profile for the new SIM
+                    sleep 1  # let SIM initialize after CFUN=1
+                    _new_iccid=$(qcmd 'AT+QCCID' 2>/dev/null | grep '+QCCID:' | sed 's/+QCCID: //g' | tr -d '\r ')
+                    if [ -n "$_new_iccid" ]; then
+                        . /usr/lib/qmanager/profile_mgr.sh 2>/dev/null
+                        auto_apply_profile "$_new_iccid" "sim_switch"
+                    fi
                     ;;
             esac
         fi

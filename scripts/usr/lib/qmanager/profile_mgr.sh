@@ -382,6 +382,59 @@ clear_active_profile() {
 # be reimplemented in the Connection Scenarios library when that feature is built.
 
 # =============================================================================
+# Profile Auto-Apply (ICCID-based)
+# =============================================================================
+
+# find_profile_by_iccid <iccid>
+# Search profiles for one matching the given ICCID.
+# Outputs the matching profile ID on stdout.
+# Returns 0 if found, 1 otherwise.
+find_profile_by_iccid() {
+    local iccid="$1"
+    [ -z "$iccid" ] && return 1
+    local pf pf_iccid
+    for pf in "$PROFILE_DIR"/p_*.json; do
+        [ -f "$pf" ] || continue
+        pf_iccid=$(jq -r '(.sim_iccid) | if . == null then empty else . end' "$pf" 2>/dev/null)
+        if [ "$pf_iccid" = "$iccid" ]; then
+            jq -r '(.id) | if . == null then empty else . end' "$pf" 2>/dev/null
+            return 0
+        fi
+    done
+    return 1
+}
+
+# auto_apply_profile <iccid> [caller]
+# Find profile matching ICCID, set as active, spawn qmanager_profile_apply.
+# Skips unchanged settings (apply script compares current vs desired).
+# If no matching profile found, deactivates any current active profile.
+# Optional caller arg for logging context (e.g., "boot", "sim_switch", "watchdog").
+# Returns 0 if apply spawned, 1 if no matching profile.
+auto_apply_profile() {
+    local iccid="$1"
+    local caller="${2:-auto}"
+    [ -z "$iccid" ] && return 1
+
+    local match_id
+    match_id=$(find_profile_by_iccid "$iccid")
+    if [ -z "$match_id" ]; then
+        # No profile for this SIM — clear any stale active marker
+        if [ -f "$ACTIVE_PROFILE_FILE" ]; then
+            clear_active_profile
+            qlog_info "[$caller] No profile matches ICCID ...$(printf '%s' "$iccid" | tail -c 4) — deactivated" 2>/dev/null
+        fi
+        return 1
+    fi
+
+    set_active_profile "$match_id"
+    qlog_info "[$caller] Auto-applying profile $match_id for ICCID ...$(printf '%s' "$iccid" | tail -c 4)" 2>/dev/null
+
+    # Spawn apply in background (double-fork safe for CGI callers)
+    ( /usr/bin/qmanager_profile_apply "$match_id" </dev/null >/dev/null 2>&1 & )
+    return 0
+}
+
+# =============================================================================
 # PID File Lock (Profile Apply Singleton)
 # =============================================================================
 

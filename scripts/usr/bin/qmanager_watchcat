@@ -44,6 +44,7 @@ MAX_EVENTS=50
 # --- Config helper (RM520N-GL: replaces UCI) ---------------------------------
 [ -f /usr/lib/qmanager/config.sh ] && . /usr/lib/qmanager/config.sh
 [ -f /usr/lib/qmanager/platform.sh ] && . /usr/lib/qmanager/platform.sh
+[ -f /usr/lib/qmanager/profile_mgr.sh ] && . /usr/lib/qmanager/profile_mgr.sh
 
 # --- File Paths --------------------------------------------------------------
 PING_CACHE="/tmp/qmanager_ping.json"
@@ -183,7 +184,7 @@ check_locked() {
     if [ -f "$PROFILE_APPLY_PID" ]; then
         local pid
         pid=$(cat "$PROFILE_APPLY_PID" 2>/dev/null)
-        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+        if [ -n "$pid" ] && [ -d "/proc/$pid" ]; then
             return 0
         fi
     fi
@@ -559,6 +560,11 @@ finish_cooldown() {
                 > "$SIM_FAILOVER_FILE"
 
             qlog_info "SIM failover state saved: slot $original_sim_slot → $current_sim_slot"
+
+            # Auto-apply matching profile for the new SIM
+            if [ -n "$curr_iccid" ]; then
+                auto_apply_profile "$curr_iccid" "watchdog"
+            fi
         fi
 
         # Reset — connectivity recovered
