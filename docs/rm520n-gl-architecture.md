@@ -125,10 +125,10 @@ chown www-data:www-data /tmp/qmanager_at.lock /tmp/qmanager_at.pid /tmp/qmanager
 chmod 666 /tmp/qmanager_at.lock /tmp/qmanager_at.pid /tmp/qmanager.log
 ```
 
-**2. Use read-only FD redirects for flock.** Even with `www-data`-owned files, `9>"$LOCK_FILE"` still fails because shell `>` always passes `O_CREAT` to the `open()` syscall, regardless of whether the file exists. The fix in `qcmd_rm520n` is to use `9<` (read-only open) instead of `9>`:
+**2. Use read-only FD redirects for flock.** Even with `www-data`-owned files, `9>"$LOCK_FILE"` still fails because shell `>` always passes `O_CREAT` to the `open()` syscall, regardless of whether the file exists. The fix in `qcmd` is to use `9<` (read-only open) instead of `9>`:
 
 ```bash
-# RM520N-GL (qcmd_rm520n) — read-only FD, no O_CREAT
+# RM520N-GL (qcmd) — read-only FD, no O_CREAT
 ( flock_wait 9 "$LOCK_WAIT_LONG"; ...; ) 9<"$LOCK_FILE"
 
 # OpenWRT (qcmd) — write FD works fine (no protected_regular)
@@ -147,26 +147,27 @@ On the RM520N-GL's minimal systemd, `systemctl enable` appears to succeed (servi
 
 **Root cause:** The systemd implementation on this platform does not process `[Install]` stanzas during `systemctl enable`. It marks the service as enabled in its database but does not create the symlinks that `multi-user.target` needs to pull services in at boot.
 
-**Fix (confirmed working in deployment):** Create explicit symlinks, following the pattern proven by SimpleAdmin on this same platform. The QManager target itself must be symlinked into `multi-user.target.wants/`, and individual services are symlinked into `qmanager.target.wants/`:
+**Fix (confirmed working in deployment):** Create explicit symlinks directly into `multi-user.target.wants/`, following the pattern proven by SimpleAdmin on this same platform. The intermediate `qmanager.target` was dropped -- each service is symlinked directly into `multi-user.target.wants/`:
 
 ```bash
-# Link the QManager target into multi-user.target.wants so it starts at boot
+# Service files live in /lib/systemd/system/ (persistent on RM520N-GL rootfs)
+UNIT_DIR="/lib/systemd/system"
 WANTS_DIR="/lib/systemd/system/multi-user.target.wants"
 mkdir -p "$WANTS_DIR"
-ln -sf /etc/systemd/system/qmanager.target "$WANTS_DIR/qmanager.target"
 
-# Link individual services into qmanager.target.wants (for target dependency)
-mkdir -p /etc/systemd/system/qmanager.target.wants
-ln -sf /etc/systemd/system/qmanager_poller.service \
-    /etc/systemd/system/qmanager.target.wants/qmanager_poller.service
+# Symlink each service directly into multi-user.target.wants
+ln -sf "$UNIT_DIR/qmanager-poller.service" "$WANTS_DIR/qmanager-poller.service"
+ln -sf "$UNIT_DIR/qmanager-ping.service" "$WANTS_DIR/qmanager-ping.service"
 # ... repeat for each service
 ```
 
-**Boot chain:** `multi-user.target` --> `qmanager.target` (via explicit symlink) --> individual services (via `qmanager.target.wants/` symlinks).
+**Boot chain:** `multi-user.target` --> individual services (via direct symlinks in `multi-user.target.wants/`).
 
-> **WARNING:** Do not rely on `systemctl enable` for boot persistence on the RM520N-GL. Always create explicit symlinks in the install script. `systemctl enable` can still be used for runtime start/stop, but the symlinks are what makes boot startup work.
+**Runtime enable/disable:** `platform.sh` provides `svc_enable`/`svc_disable` functions that create/remove these symlinks (with sudo for www-data context). `systemctl enable/disable` is NOT used.
 
-> **NOTE:** The symlink target directory is `/lib/systemd/system/multi-user.target.wants/` (not `/etc/systemd/system/`). This is where the platform's boot loader looks for wanted units.
+> **WARNING:** Do not rely on `systemctl enable` for boot persistence on the RM520N-GL. Always use `svc_enable`/`svc_disable` from `platform.sh` (or direct symlink creation in install scripts). `systemctl start/stop/restart` works fine for runtime control; only enable/disable is broken.
+
+> **NOTE:** Service files are installed to `/lib/systemd/system/` (persistent rootfs), NOT `/etc/systemd/system/` (which is tmpfs and does not survive reboots on this platform). The wants directory is `/lib/systemd/system/multi-user.target.wants/`.
 
 ---
 
