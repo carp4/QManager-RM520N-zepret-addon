@@ -76,7 +76,9 @@ SRC_FRONTEND="$INSTALL_DIR/out"
 SRC_SCRIPTS="$INSTALL_DIR/scripts"
 SRC_DEPS="$INSTALL_DIR/dependencies"
 
-# Entware opkg path
+# Entware paths — ensure Entware binaries (e.g. dropbear in /opt/sbin) are
+# discoverable by command -v throughout the installer.
+export PATH="/opt/bin:/opt/sbin:$PATH"
 OPKG="/opt/bin/opkg"
 
 # Optional packages (not bundled — installed from Entware if available)
