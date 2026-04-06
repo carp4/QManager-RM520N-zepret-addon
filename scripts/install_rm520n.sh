@@ -359,6 +359,14 @@ install_backend() {
             [ -f "$f" ] || continue
             cp "$f" "$SYSTEMD_DIR/"
         done
+
+        # Install lighttpd service file — ensures correct config path is used.
+        # Entware's default service may point to /opt/etc/lighttpd/lighttpd.conf
+        # instead of /usrdata/simpleadmin/lighttpd.conf where QManager's config lives.
+        if [ -f "$SRC_SCRIPTS/etc/systemd/system/lighttpd.service" ]; then
+            cp "$SRC_SCRIPTS/etc/systemd/system/lighttpd.service" "$SYSTEMD_DIR/lighttpd.service"
+            info "lighttpd.service installed (config: /usrdata/simpleadmin/lighttpd.conf)"
+        fi
         sync
 
         systemctl daemon-reload
@@ -506,6 +514,12 @@ enable_services() {
     # Remove old target-based setup from previous installs
     rm -f "$WANTS_DIR/qmanager.target"
     rm -rf /etc/systemd/system/qmanager.target.wants
+
+    # Ensure lighttpd is enabled for boot
+    if [ -f "$SYSTEMD_DIR/lighttpd.service" ]; then
+        ln -sf "$SYSTEMD_DIR/lighttpd.service" "$WANTS_DIR/lighttpd.service"
+        info "Enabled lighttpd"
+    fi
 
     # Always-on services — symlink directly into multi-user.target.wants
     for svc in qmanager-setup qmanager-ping qmanager-poller qmanager-ttl \
