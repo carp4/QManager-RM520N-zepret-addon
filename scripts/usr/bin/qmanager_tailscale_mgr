@@ -52,6 +52,8 @@ do_install() {
 
     write_progress '{"success":true,"status":"running","message":"Creating directories..."}'
     mkdir -p "$TAILSCALE_DIR" "$TAILSCALE_SYSD_DIR"
+    # www-data (CGI) needs read+execute to check binaries and traverse directories
+    chmod 755 "$TAILSCALE_DIR" "$TAILSCALE_SYSD_DIR"
 
     # Download ARM binary
     write_progress '{"success":true,"status":"running","message":"Downloading Tailscale v'"$TAILSCALE_VERSION"'..."}'
