@@ -1,4 +1,4 @@
-# QManager RM520N BETA v0.1.2
+# 🚀 QManager RM520N BETA v0.1.2
 
 **Stability and installer improvements** — fixes SMS multi-part messages, adds SSH password management, bundles Speedtest CLI, and hardens the installer for reliable upgrades.
 
@@ -6,9 +6,9 @@
 
 ---
 
-## What's New
+## ✨ What's New
 
-### SMS Multi-Part Message Support
+### 📱 SMS Multi-Part Message Support
 
 SMS messages that span multiple segments (common for carrier notifications) are now properly reassembled and displayed as a single message. Previously, each segment appeared as a separate entry in the inbox.
 
@@ -16,7 +16,7 @@ SMS messages that span multiple segments (common for carrier notifications) are 
 - Merged messages show all storage indexes for proper deletion
 - Sending and deleting SMS messages works reliably
 
-### SSH Password Management
+### 🔑 SSH Password Management
 
 SSH access no longer requires manual `passwd root` setup via ADB.
 
@@ -24,7 +24,7 @@ SSH access no longer requires manual `passwd root` setup via ADB.
 - **System Settings > SSH Password** — new card to change the SSH password independently from the web UI password at any time
 - Connect via `ssh root@192.168.225.1` using the password set during onboarding or from the settings card
 
-### Speedtest CLI Auto-Install
+### 🚄 Speedtest CLI Auto-Install
 
 The Ookla Speedtest CLI is now automatically downloaded and installed during QManager setup. No need to install it separately from the RGMII toolkit.
 
@@ -32,7 +32,7 @@ The Ookla Speedtest CLI is now automatically downloaded and installed during QMa
 - Installed to `/usrdata/root/bin/speedtest` (persistent across reboots)
 - Non-fatal if download fails (feature shows as unavailable in the UI)
 
-### Cell Scanner Fix
+### 📡 Cell Scanner Fix
 
 Cell scanning now works correctly with operator name resolution.
 
@@ -42,7 +42,7 @@ Cell scanning now works correctly with operator name resolution.
 
 ---
 
-## Installer Improvements
+## 🔧 Installer Improvements
 
 ### Windows Line Ending Safety
 
@@ -58,7 +58,7 @@ If `opkg update` fails due to no internet connection, the installer now prints c
 
 ---
 
-## Installation
+## 📥 Installation
 
 **No prerequisites required** — QManager is fully independent. The installer bootstraps Entware, installs lighttpd, and sets up everything from scratch. You only need ADB or SSH access and internet connectivity on the modem.
 
@@ -89,7 +89,7 @@ bash /tmp/qmanager_install/uninstall_rm520n.sh --purge
 
 ---
 
-## Platform Notes
+## 📄 Platform Notes
 
 This is a **native port** to the RM520N-GL's internal Linux (SDXLEMUR, ARMv7l, kernel 5.4.180). Uses systemd for service management, lighttpd for web serving, iptables for firewall rules, and `/usrdata/` for persistent storage.
 
@@ -107,7 +107,7 @@ The following RM551E features are deferred due to platform differences:
 
 ---
 
-## Known Issues
+## ⚠️ Known Issues
 
 - This is a **pre-release** — please report bugs at [GitHub Issues](https://github.com/dr-dolomite/QManager-RM520N/issues).
 - Email alerts require `msmtp` which can be installed from within the app (System Settings).
@@ -115,7 +115,7 @@ The following RM551E features are deferred due to platform differences:
 
 ---
 
-## Thank You
+## 💙 Thank You
 
 Thanks for using QManager! If you find it useful, consider [supporting the project on Ko-fi](https://ko-fi.com/drdolomite) or [PayPal](https://paypal.me/iamrusss). Bug reports and feature requests are always welcome.
 

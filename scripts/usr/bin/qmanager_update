@@ -91,8 +91,8 @@ if [ "$MODE" = "install" ]; then
 
     # Validate URL origin (prevent SSRF)
     case "$URL" in
-        https://github.com/dr-dolomite/QManager/releases/download/*/qmanager.tar.gz) ;;
-        https://github.com/dr-dolomite/QManager/raw/*/qmanager-build/qmanager.tar.gz) ;;
+        https://github.com/dr-dolomite/QManager-RM520N/releases/download/*/qmanager.tar.gz) ;;
+        https://github.com/dr-dolomite/QManager-RM520N/raw/*/qmanager-build/qmanager.tar.gz) ;;
         *) die "Invalid download URL" ;;
     esac
 
@@ -162,7 +162,7 @@ if [ "$MODE" = "download" ]; then
 
     # Validate URL origin (prevent SSRF)
     case "$URL" in
-        https://github.com/dr-dolomite/QManager/releases/download/*/qmanager.tar.gz) ;;
+        https://github.com/dr-dolomite/QManager-RM520N/releases/download/*/qmanager.tar.gz) ;;
         *) die "Invalid download URL" ;;
     esac
 
@@ -282,7 +282,7 @@ if [ "$MODE" = "rollback" ]; then
 
     # Validate URL origin (prevent SSRF)
     case "$URL" in
-        https://github.com/dr-dolomite/QManager/releases/download/*/qmanager.tar.gz) ;;
+        https://github.com/dr-dolomite/QManager-RM520N/releases/download/*/qmanager.tar.gz) ;;
         *) die "Invalid rollback URL" ;;
     esac
 
