@@ -195,7 +195,7 @@ export function TailscaleConnectionCard({
   // --- Not Installed ---------------------------------------------------------
   if (status && !status.installed) {
     const installCmd =
-      status.install_hint || "opkg update && opkg install tailscale tailscaled";
+      status.install_hint || "sudo qmanager_tailscale_mgr install";
 
     return (
       <Card className="@container/card">
