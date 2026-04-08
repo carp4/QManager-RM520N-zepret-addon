@@ -35,6 +35,19 @@ A browser-based terminal is now built into QManager — no need for SimpleAdmin'
 
 Navigate to **System > Web Console** in the sidebar.
 
+### Email Alerts
+
+Get notified by email when your modem loses and recovers internet connectivity. Previously deferred from the RM520N-GL port, now fully enabled.
+
+- **Automatic recovery alerts** — sends an HTML email when internet returns after a downtime exceeding your configured threshold
+- **Configurable threshold** — set minimum downtime (1-60 minutes) before an alert is triggered
+- **Gmail app password support** — configure sender email, recipient, and Google app password
+- **Install msmtp from UI** — one-click install of the `msmtp` mail client from Entware
+- **Test email** — verify your configuration works before waiting for an actual outage
+- **Alert log** — view history of sent alerts with timestamps, trigger type, and delivery status
+
+Navigate to **Monitoring > Network Events > Email Alerts** in the sidebar.
+
 ### Port Firewall
 
 A new built-in firewall service replaces SimpleAdmin's `simplefirewall`, protecting the web UI from unauthorized access on the cellular interface.
@@ -103,7 +116,6 @@ The following RM551E features are deferred due to platform differences:
 - Ethernet status & link speed
 - Custom DNS
 - WAN interface guard
-- Email Alerts
 
 ---
 
