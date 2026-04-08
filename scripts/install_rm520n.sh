@@ -746,7 +746,7 @@ enable_services() {
     fi
 
     # Always-on services — symlink directly into multi-user.target.wants
-    for svc in qmanager-setup qmanager-ping qmanager-poller qmanager-ttl \
+    for svc in qmanager-firewall qmanager-setup qmanager-ping qmanager-poller qmanager-ttl \
                qmanager-mtu qmanager-imei-check; do
         if [ -f "$SYSTEMD_DIR/${svc}.service" ]; then
             ln -sf "$SYSTEMD_DIR/${svc}.service" "$WANTS_DIR/${svc}.service"
@@ -807,7 +807,10 @@ start_services() {
     systemctl restart lighttpd 2>/dev/null || warn "Could not restart lighttpd"
     info "lighttpd restarted with QManager config"
 
-    # Run setup oneshot first (creates lock files, session dirs, iptables rules)
+    # Start firewall first (protects web UI before lighttpd accepts connections)
+    systemctl start qmanager-firewall 2>/dev/null || true
+
+    # Run setup oneshot (creates lock files, session dirs, permissions)
     systemctl start qmanager-setup 2>/dev/null || true
 
     # Start always-on services with verification
@@ -818,7 +821,7 @@ start_services() {
 
     # Verify critical services
     local svc_errors=0
-    for svc in lighttpd qmanager-setup qmanager-ping qmanager-poller; do
+    for svc in qmanager-firewall lighttpd qmanager-setup qmanager-ping qmanager-poller; do
         if systemctl is-active "$svc" >/dev/null 2>&1; then
             info "$svc is running"
         else
