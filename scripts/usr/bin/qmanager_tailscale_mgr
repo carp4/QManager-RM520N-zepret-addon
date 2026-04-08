@@ -12,14 +12,28 @@
 
 set -e
 
-TAILSCALE_VERSION="1.92.5"
+TAILSCALE_FALLBACK_VERSION="1.92.5"
 TAILSCALE_DIR="/usrdata/tailscale"
 TAILSCALE_SYSD_DIR="/usrdata/tailscale/systemd"
 SYSTEMD_DIR="/lib/systemd/system"
 WANTS_DIR="/lib/systemd/system/multi-user.target.wants"
 INSTALL_RESULT="/tmp/qmanager_tailscale_install.json"
 INSTALL_PID="/tmp/qmanager_tailscale_install.pid"
-DOWNLOAD_URL="https://pkgs.tailscale.com/stable/tailscale_${TAILSCALE_VERSION}_arm.tgz"
+
+# Detect latest stable ARM version from Tailscale CDN, fallback to known-good
+detect_latest_version() {
+    local latest
+    latest=$(curl -fsSL https://pkgs.tailscale.com/stable/ 2>/dev/null \
+        | grep -o 'tailscale_[0-9.]*_arm\.tgz' \
+        | sort -t_ -k2 -V \
+        | tail -1 \
+        | sed 's/tailscale_\(.*\)_arm\.tgz/\1/')
+    if [ -n "$latest" ]; then
+        printf '%s' "$latest"
+    else
+        printf '%s' "$TAILSCALE_FALLBACK_VERSION"
+    fi
+}
 
 write_progress() {
     printf '%s' "$1" > "$INSTALL_RESULT"
@@ -32,6 +46,10 @@ do_install() {
     # Remount root filesystem read-write (RM520N-GL default is read-only)
     mount -o remount,rw / 2>/dev/null || true
 
+    write_progress '{"success":true,"status":"running","message":"Detecting latest Tailscale version..."}'
+    TAILSCALE_VERSION=$(detect_latest_version)
+    DOWNLOAD_URL="https://pkgs.tailscale.com/stable/tailscale_${TAILSCALE_VERSION}_arm.tgz"
+
     write_progress '{"success":true,"status":"running","message":"Creating directories..."}'
     mkdir -p "$TAILSCALE_DIR" "$TAILSCALE_SYSD_DIR"
 
@@ -43,7 +61,7 @@ do_install() {
     if ! curl -fSL -o "tailscale_${TAILSCALE_VERSION}_arm.tgz" "$DOWNLOAD_URL" 2>/dev/null; then
         # Fallback to wget if curl fails
         if ! wget -q -O "tailscale_${TAILSCALE_VERSION}_arm.tgz" "$DOWNLOAD_URL" 2>/dev/null; then
-            write_progress '{"success":false,"status":"error","message":"Failed to download Tailscale","detail":"Check internet connection. URL: '"$DOWNLOAD_URL"'"}'
+            write_progress '{"success":false,"status":"error","message":"Failed to download Tailscale v'"$TAILSCALE_VERSION"'","detail":"Check internet connection. URL: '"$DOWNLOAD_URL"'"}'
             mount -o remount,ro / 2>/dev/null || true
             return 1
         fi
