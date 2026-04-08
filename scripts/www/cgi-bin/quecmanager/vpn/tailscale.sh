@@ -304,27 +304,29 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
 
         # CRITICAL: NEVER use --accept-routes — it disconnects the device from
         # the network entirely and requires a physical reboot to recover.
-        # Run tailscale up in background, capturing output for auth URL
-        ( ts_cmd up --accept-dns=false --json > "$TS_UP_OUTPUT" 2>&1 ) &
+        # NOTE: Do NOT use --json flag — its output is fully buffered on
+        # RM520N-GL (no stdbuf available) and never flushes to the file.
+        # Interactive mode flushes the auth URL immediately.
+        ( ts_cmd up --accept-dns=false > "$TS_UP_OUTPUT" 2>&1 ) &
         ts_up_pid=$!
         echo "$ts_up_pid" > "$TS_UP_PID_FILE"
 
-        # Poll for auth URL or Running state (up to 10 seconds)
+        # Poll for auth URL or "Success" in interactive output (up to 15 seconds)
         attempts=0
         auth_url=""
-        while [ "$attempts" -lt 10 ]; do
+        while [ "$attempts" -lt 15 ]; do
             sleep 1
             if [ -f "$TS_UP_OUTPUT" ] && [ -s "$TS_UP_OUTPUT" ]; then
-                # Check if already authenticated (BackendState = Running)
-                state=$(jq -r 'select(.BackendState == "Running") | .BackendState' "$TS_UP_OUTPUT" 2>/dev/null | head -1)
-                if [ "$state" = "Running" ]; then
+                # Check if already authenticated (interactive mode prints "Success.")
+                if grep -q "Success" "$TS_UP_OUTPUT" 2>/dev/null; then
                     rm -f "$AUTH_URL_FILE" "$TS_UP_PID_FILE"
                     qlog_info "Tailscale already authenticated"
                     jq -n '{"success": true, "already_authenticated": true}'
                     exit 0
                 fi
-                # Look for auth URL in JSON stream
-                auth_url=$(jq -r 'select(.AuthURL != null and .AuthURL != "") | .AuthURL' "$TS_UP_OUTPUT" 2>/dev/null | head -1)
+                # Parse auth URL from interactive output:
+                # "To authenticate, visit:\n\n\thttps://login.tailscale.com/a/..."
+                auth_url=$(grep -o 'https://login\.tailscale\.com/[^ ]*' "$TS_UP_OUTPUT" 2>/dev/null | head -1)
                 if [ -n "$auth_url" ]; then
                     printf '%s' "$auth_url" > "$AUTH_URL_FILE"
                     break
