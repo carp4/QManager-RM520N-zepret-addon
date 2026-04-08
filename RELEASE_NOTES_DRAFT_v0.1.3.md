@@ -1,6 +1,6 @@
 # QManager RM520N BETA v0.1.3
 
-**Tailscale VPN and port firewall** — adds on-demand Tailscale mesh VPN installation and management, plus a built-in port firewall that protects the web UI from cellular-side access.
+**Tailscale VPN, port firewall, and web console** — adds on-demand Tailscale mesh VPN, a built-in port firewall protecting the web UI from cellular-side access, and a browser-based terminal console.
 
 > Upgrading from v0.1.2? Go to **System Settings -> Software Update** or re-run the installer via ADB/SSH. All existing settings and profiles are preserved.
 
@@ -22,6 +22,19 @@ Install, connect, and manage Tailscale directly from the QManager web UI. Access
 
 Navigate to **Monitoring > Tailscale VPN** in the sidebar.
 
+### Web Console
+
+A browser-based terminal is now built into QManager — no need for SimpleAdmin's ttyd setup or separate SSH clients for quick commands.
+
+- **ttyd v1.7.7** — lightweight web terminal downloaded automatically during install
+- **Dark theme** — colors match QManager's UI (zinc-950 background, zinc-200 text)
+- **Full Entware PATH** — `/opt/bin`, `/opt/sbin` included so Entware packages work out of the box
+- **Proxied through lighttpd** — runs on localhost:8080, accessed at `/console` via reverse proxy with WebSocket support
+- **Protected by QManager auth** — same session cookie as the rest of the UI
+- **Non-fatal install** — if the ttyd download fails (no internet), everything else works normally
+
+Navigate to **System > Web Console** in the sidebar.
+
 ### Port Firewall
 
 A new built-in firewall service replaces SimpleAdmin's `simplefirewall`, protecting the web UI from unauthorized access on the cellular interface.
@@ -40,6 +53,7 @@ A new built-in firewall service replaces SimpleAdmin's `simplefirewall`, protect
 - **Firewall service** is now part of the always-on service list, started and verified during install
 - **Tailscale systemd units** are staged in `/usr/lib/qmanager/` for on-demand installation via the helper script
 - **Removed ad-hoc iptables rules** from `qmanager_setup` and the installer's `start_services()` — all port firewall management is centralized in `qmanager-firewall.service`
+- **Web console (ttyd)** is downloaded during install and enabled as an always-on service; non-fatal if download fails
 
 ---
 
@@ -48,6 +62,7 @@ A new built-in firewall service replaces SimpleAdmin's `simplefirewall`, protect
 - **Fixed reboot fetch missing `keepalive`** — the reboot request from the Tailscale uninstall dialog now uses `keepalive: true` and sends the proper request body, matching the nav-user reboot pattern. Previously the request could be cancelled by the browser during page navigation.
 - **Fixed `/usrdata/tailscale/` directory permissions** — directories created by the Tailscale helper now have `755` permissions so www-data (CGI) can check binary existence. Previously `mkdir -p` defaulted to `700` (root-only), causing the frontend to always show "not installed."
 - **Fixed `tailscale up --json` output buffering** — the `--json` flag's output is fully buffered on RM520N-GL (no `stdbuf` available) and never flushes to file. Switched to interactive mode with grep-based URL parsing.
+- **Fixed cellular sidebar nav highlighting** — "Cellular Information" no longer stays highlighted when navigating to other cellular sections like Settings. Active state now checks declared sub-item URLs instead of prefix matching.
 
 ---
 
