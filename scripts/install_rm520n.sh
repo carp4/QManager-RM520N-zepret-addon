@@ -534,7 +534,7 @@ install_backend() {
     # --- Tailscale systemd units (staged for on-demand install) ---
     # These are NOT installed as active units — qmanager_tailscale_mgr copies
     # them to /lib/systemd/system/ when the user clicks "Install Tailscale".
-    for f in tailscaled.service tailscaled.defaults; do
+    for f in tailscaled.service tailscaled.defaults qmanager-console.service; do
         src="$SRC_SCRIPTS/etc/systemd/system/$f"
         if [ -f "$src" ]; then
             cp "$src" "$LIB_DIR/$f"
@@ -568,6 +568,15 @@ install_backend() {
         local cgi_count
         cgi_count=$(find "$CGI_DIR" -name "*.sh" -type f | wc -l | tr -d ' ')
         info "$cgi_count CGI scripts installed to $CGI_DIR"
+    fi
+
+    # --- Console startup script ---
+    if [ -d "$SRC_SCRIPTS/usrdata/qmanager/console" ]; then
+        mkdir -p "$QMANAGER_ROOT/console"
+        cp "$SRC_SCRIPTS/usrdata/qmanager/console"/* "$QMANAGER_ROOT/console/" 2>/dev/null || true
+        find "$QMANAGER_ROOT/console" -name "*.sh" -exec sed -i 's/\r$//' {} \;
+        find "$QMANAGER_ROOT/console" -name "*.sh" -exec chmod 755 {} \;
+        info "Console startup script installed"
     fi
 
     # --- Systemd unit files (SimpleAdmin pattern: /lib/systemd/system/) ---
@@ -747,7 +756,7 @@ enable_services() {
 
     # Always-on services — symlink directly into multi-user.target.wants
     for svc in qmanager-firewall qmanager-setup qmanager-ping qmanager-poller qmanager-ttl \
-               qmanager-mtu qmanager-imei-check; do
+               qmanager-mtu qmanager-imei-check qmanager-console; do
         if [ -f "$SYSTEMD_DIR/${svc}.service" ]; then
             ln -sf "$SYSTEMD_DIR/${svc}.service" "$WANTS_DIR/${svc}.service"
             info "Enabled $svc"
@@ -796,6 +805,12 @@ start_services() {
         systemctl start "$svc" 2>/dev/null || true
     done
     sleep 2
+
+    # Download ttyd for web console (non-fatal — console is optional)
+    if [ ! -x /usrdata/qmanager/console/ttyd ]; then
+        info "Downloading ttyd for web console..."
+        /usr/bin/qmanager_console_mgr install 2>/dev/null || warn "ttyd download failed — web console unavailable"
+    fi
 
     # Verify critical services
     local svc_errors=0
