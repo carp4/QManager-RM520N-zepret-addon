@@ -329,9 +329,19 @@ RCEOF
     fi
 
     # --- Entware packages (requires opkg to be available) ---------------------
+    _opkg_ready=0
     if [ -x "$OPKG" ]; then
+        if "$OPKG" update >/dev/null 2>&1; then
+            _opkg_ready=1
+        else
+            warn "opkg update failed — no internet connection?"
+            warn "Skipping Entware package installs (lighttpd, sudo, jq, etc.)"
+            warn "Re-run the installer with internet to complete package setup"
+        fi
+    fi
+
+    if [ "$_opkg_ready" = "1" ]; then
         # lighttpd (web server + required modules)
-        "$OPKG" update >/dev/null 2>&1
         if [ -x /opt/sbin/lighttpd ]; then
             info "lighttpd is already installed"
             # Upgrade lighttpd + all modules together to prevent version mismatch
@@ -394,6 +404,25 @@ RCEOF
                 || warn "dropbear install failed (optional — SSH server)"
         else
             info "dropbear not bundled and not installed (optional)"
+        fi
+    fi
+
+    # --- Ookla Speedtest CLI (speed test from web UI) ---
+    if command -v speedtest >/dev/null 2>&1; then
+        info "speedtest CLI is already installed"
+    else
+        SPEEDTEST_URL="https://install.speedtest.net/app/cli/ookla-speedtest-1.2.0-linux-armhf.tgz"
+        SPEEDTEST_DIR="/usrdata/root/bin"
+        mkdir -p "$SPEEDTEST_DIR"
+        if wget -q "$SPEEDTEST_URL" -O /tmp/speedtest.tgz 2>/dev/null || \
+           curl -fsSL "$SPEEDTEST_URL" -o /tmp/speedtest.tgz 2>/dev/null; then
+            tar -xzf /tmp/speedtest.tgz -C "$SPEEDTEST_DIR" speedtest 2>/dev/null
+            rm -f /tmp/speedtest.tgz "$SPEEDTEST_DIR/speedtest.md"
+            chmod +x "$SPEEDTEST_DIR/speedtest"
+            ln -sf "$SPEEDTEST_DIR/speedtest" /bin/speedtest
+            info "speedtest CLI installed to $SPEEDTEST_DIR/speedtest"
+        else
+            warn "speedtest CLI download failed (optional — requires internet)"
         fi
     fi
 

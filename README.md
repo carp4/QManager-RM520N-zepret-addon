@@ -105,6 +105,7 @@ bash /tmp/qmanager_install/uninstall_rm520n.sh --purge
 ## Additional Dependencies
 
 - **Bundled with installer:** `atcli_smd11` (ARM binary, AT command transport via `/dev/smd11`), `sms_tool` (ARM binary, SMS send/recv/delete with multi-part reassembly), `jq` (Entware package), `dropbear` (SSH server)
+- **Downloaded during install:** `speedtest` (Ookla Speedtest CLI, ARMv7 armhf — downloaded from `install.speedtest.net`)
 - **Installed from Entware:** `lighttpd` + `lighttpd-mod-openssl`, `sudo`, `coreutils-timeout`
 - **Optional:** `msmtp` (email alerts) -- can be installed from within the app
 
