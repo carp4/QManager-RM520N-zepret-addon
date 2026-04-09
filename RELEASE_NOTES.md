@@ -57,7 +57,7 @@ Navigate to **Monitoring > Network Events > Email Alerts** in the sidebar.
 A new IMEI Generator and Validator is now available under IMEI Settings — no backend needed, runs entirely in the browser.
 
 - **Generate valid IMEIs** — select a device TAC preset or enter a custom 8–12 digit prefix; the tool fills the remaining digits and computes the Luhn check digit
-- **Device presets** — ships with common TACs (Samsung, Apple, Google, Xiaomi, OnePlus, Quectel RM520N-GL) and a "Custom Prefix" option
+- **Device presets** — ships with verified TACs (Apple iPhone 16/17 Pro, iPad Pro, Samsung Galaxy S25 Ultra/Tab S10+, Google Pixel 10 Pro) and a "Custom Prefix" option
 - **Real-time Luhn validation** — paste or type any 15-digit IMEI and see a Valid/Invalid badge instantly
 - **IMEI breakdown** — shows TAC (1–8), Serial Number (9–14), and Check Digit (15) in a structured display
 - **Check on imei.info** — one-click external lookup for any generated or entered IMEI

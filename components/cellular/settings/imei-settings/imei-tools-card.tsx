@@ -56,7 +56,9 @@ import {
 } from "@/lib/imei-utils";
 
 const IMEIToolsCard = () => {
-  const [selectedPresetId, setSelectedPresetId] = useState<string>("rm520n");
+  const [selectedPresetId, setSelectedPresetId] = useState<string>(
+    IMEI_TAC_PRESETS[0].id
+  );
   const [customPrefix, setCustomPrefix] = useState("");
   const [imei, setImei] = useState("");
 

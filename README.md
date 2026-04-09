@@ -5,7 +5,7 @@
   <h3>A modern, custom GUI for Quectel modem management</h3>
   <p>Visualize, configure, and optimize your cellular modem's performance with an intuitive web interface</p>
 
-  ![Version](https://img.shields.io/badge/version-v0.1.2-blue?style=flat-square)
+  ![Version](https://img.shields.io/badge/version-v0.1.3-blue?style=flat-square)
   ![License](https://img.shields.io/badge/license-MIT%20%2B%20Commons%20Clause-green?style=flat-square)
   ![Platform](https://img.shields.io/badge/platform-RM520N--GL-orange?style=flat-square)
   ![Next.js](https://img.shields.io/badge/Next.js-16-black?style=flat-square)
@@ -39,7 +39,7 @@
 - **Cell Scanner** — Active and neighbor cell scanning with signal comparison
 - **Frequency Calculator** — EARFCN/ARFCN to frequency conversion tool
 - **SMS Center** — Send and receive SMS messages directly from the interface
-- **IMEI Settings** — Read, backup, and modify device IMEI
+- **IMEI Settings** — Read, backup, and modify device IMEI, plus IMEI Generator & Validator (Luhn algorithm, TAC presets, imei.info lookup)
 - **FPLMN Management** — View and manage the Forbidden PLMN list
 - **MBN Configuration** — Select and activate modem broadband configuration files
 
@@ -47,6 +47,10 @@
 - **TTL/HL Settings** — IPv4 TTL and IPv6 Hop Limit configuration (iptables-based)
 - **MTU Configuration** — Dynamic MTU application for rmnet interfaces
 - **IP Passthrough** — Direct IP assignment to downstream devices
+
+### VPN & Remote Access
+- **Tailscale VPN** — One-click install, connect, and manage Tailscale mesh VPN directly from the UI; peer table, health warnings, boot persistence
+- **Port Firewall** — Built-in firewall restricting web UI (80/443) to trusted interfaces; Tailscale-aware, enabled by default
 
 ### Reliability & Monitoring
 - **Connection Watchdog** — 4-tier auto-recovery: AT+COPS deregister/reregister -> CFUN toggle -> SIM failover -> full reboot (with token bucket rate limiting)
@@ -59,6 +63,7 @@
 - **Dark/Light Mode** — Full theme support with OKLCH perceptual color system
 - **Responsive Design** — Works on desktop monitors and tablets in the field
 - **Cookie-Based Auth** — Secure session management with rate limiting
+- **Web Console** — Browser-based terminal (ttyd) integrated into the UI with connection status, fullscreen mode, and dark theme
 - **AT Terminal** — Direct AT command interface for advanced users
 - **Initial Setup Wizard** — Guided onboarding for first-time configuration
 
@@ -243,13 +248,15 @@ QManager/
 
 ## Backend Services
 
-QManager runs 8 systemd services on the modem:
+QManager runs 10 systemd services on the modem:
 
 | Service | Purpose |
 |---------|---------|
-| `qmanager-setup` | One-shot boot setup — directories, permissions, iptables, config init |
+| `qmanager-firewall` | Port firewall — restricts 80/443 to trusted interfaces before lighttpd starts |
+| `qmanager-setup` | One-shot boot setup — directories, permissions, config init |
 | `qmanager-poller` | Main poller daemon — tiered AT polling, JSON cache, event detection |
 | `qmanager-ping` | Latency monitor — 5s ping cycle, NDJSON history (24h) |
+| `qmanager-console` | Web console — ttyd on localhost:8080, reverse-proxied by lighttpd |
 | `qmanager-watchcat` | Connection watchdog — 4-tier auto-recovery state machine |
 | `qmanager-ttl` | TTL/HL — applies iptables rules at boot |
 | `qmanager-mtu` | MTU — applies interface MTU settings at boot |
