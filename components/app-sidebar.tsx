@@ -80,7 +80,7 @@ const data = {
     },
     {
       title: "Web Console",
-      url: "/console",
+      url: "/system-settings/web-console",
       icon: TerminalSquareIcon,
     },
   ],
