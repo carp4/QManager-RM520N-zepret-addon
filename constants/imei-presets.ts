@@ -26,6 +26,7 @@ export const IMEI_TAC_PRESETS: ImeiTacPreset[] = [
   { id: "ipad_pro_12_9", label: "Apple iPad Pro 12.9-inch", tac: "35286992" },
   { id: "ipad_pro_11", label: "Apple iPad Pro 11-inch", tac: "35164046" },
   { id: "s25_ultra", label: "Samsung Galaxy S25 Ultra", tac: "35069390" },
+  { id: "s10_plus", label: "Samsung Galaxy Tab S10 Plus", tac: "35015886" },
   { id: "pixel_10_pro", label: "Google Pixel 10 Pro", tac: "35744080" },
 ];
 

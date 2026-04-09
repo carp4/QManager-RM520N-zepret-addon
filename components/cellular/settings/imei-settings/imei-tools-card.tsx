@@ -65,8 +65,7 @@ const IMEIToolsCard = () => {
     ? customPrefix
     : (getImeiTacPreset(selectedPresetId)?.tac ?? "");
   const isValidPrefix = /^\d{8,12}$/.test(activePrefix);
-  const showPrefixError =
-    isCustom && customPrefix.length > 0 && !isValidPrefix;
+  const showPrefixError = isCustom && customPrefix.length > 0 && !isValidPrefix;
 
   // Validation — derived, no state
   const is15Digits = /^\d{15}$/.test(imei);
@@ -104,7 +103,7 @@ const IMEIToolsCard = () => {
         document.execCommand("copy");
         document.body.removeChild(ta);
         toast.success("Copied to clipboard");
-      }
+      },
     );
   };
 
@@ -118,15 +117,14 @@ const IMEIToolsCard = () => {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-1 @xl/card:grid-cols-2 gap-6">
-          {/* Left column — Generate */}
-          <form
-            className="grid gap-4 content-start"
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleGenerate();
-            }}
-          >
+        <form
+          className="grid gap-4 content-start"
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleGenerate();
+          }}
+        >
+          <div className="grid grid-cols-1 @xl/card:grid-cols-2 gap-6">
             <FieldSet>
               <FieldGroup>
                 <Field>
@@ -184,19 +182,11 @@ const IMEIToolsCard = () => {
               </FieldGroup>
             </FieldSet>
 
-            <div className="flex items-center gap-x-2">
-              <Button type="submit" disabled={!isValidPrefix}>
-                Generate IMEI
-              </Button>
-            </div>
-          </form>
-
-          {/* Right column — Result / Validate */}
-          <div className="grid gap-4 content-start">
             <FieldSet>
               <FieldGroup>
                 <Field>
                   <FieldLabel>IMEI</FieldLabel>
+
                   <div className="flex items-center gap-2">
                     <InputGroup className="flex-1">
                       <InputGroupInput
@@ -225,77 +215,73 @@ const IMEIToolsCard = () => {
                         </InputGroupAddon>
                       )}
                     </InputGroup>
-                    {isValid === true && (
-                      <Badge
-                        variant="outline"
-                        className="bg-success/15 text-success hover:bg-success/20 border-success/30 shrink-0"
-                      >
-                        <CheckCircle2Icon className="size-3" />
-                        Valid
-                      </Badge>
-                    )}
-                    {isValid === false && (
-                      <Badge
-                        variant="outline"
-                        className="bg-destructive/15 text-destructive hover:bg-destructive/20 border-destructive/30 shrink-0"
-                      >
-                        <XCircleIcon className="size-3" />
-                        Invalid
-                      </Badge>
-                    )}
                   </div>
                   <FieldDescription>
-                    Luhn validation runs automatically at 15 digits. You can also
-                    type or paste any IMEI to validate it.
+                    Luhn validation runs automatically at 15 digits. You can
+                    also type or paste any IMEI to validate it.
                   </FieldDescription>
                 </Field>
-
-                {breakdown && (
-                  <Field>
-                    <FieldLabel>Breakdown</FieldLabel>
-                    <div className="grid grid-cols-3 gap-2 rounded-md border bg-muted/30 px-3 py-2 font-mono text-sm">
-                      <div>
-                        <p className="text-xs text-muted-foreground">
-                          TAC (1–8)
-                        </p>
-                        <p className="font-medium">{breakdown.tac}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground">
-                          SNR (9–14)
-                        </p>
-                        <p className="font-medium">{breakdown.snr}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground">
-                          Check (15)
-                        </p>
-                        <p className="font-medium">{breakdown.checkDigit}</p>
-                      </div>
-                    </div>
-                  </Field>
-                )}
               </FieldGroup>
             </FieldSet>
-
-            <div className="flex items-center gap-x-2">
-              <Button
-                type="button"
-                disabled={!is15Digits}
-                onClick={() =>
-                  window.open(
-                    `https://www.imei.info/?imei=${imei}`,
-                    "_blank",
-                    "noopener,noreferrer"
-                  )
-                }
-              >
-                <ExternalLinkIcon className="size-4" />
-                Check on imei.info
-              </Button>
-            </div>
           </div>
-        </div>
+
+          {breakdown && (
+            <Field>
+              <FieldLabel>Breakdown</FieldLabel>
+              <div className="grid grid-cols-4 gap-2 rounded-md border bg-muted/30 px-3 py-2 font-mono text-sm">
+                <div>
+                  <p className="text-xs text-muted-foreground">Validity</p>
+                  <p className="font-medium flex items-center gap-1">
+                    {isValid ? (
+                      <>
+                        <CheckCircle2Icon className="size-4 text-green-500" />
+                        Valid IMEI
+                      </>
+                    ) : (
+                      <>
+                        <XCircleIcon className="size-4 text-red-500" />
+                        Invalid IMEI
+                      </>
+                    )}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">TAC (1–8)</p>
+                  <p className="font-medium">{breakdown.tac}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">SNR (9–14)</p>
+                  <p className="font-medium">{breakdown.snr}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Check (15)</p>
+                  <p className="font-medium">{breakdown.checkDigit}</p>
+                </div>
+              </div>
+            </Field>
+          )}
+
+          <div className="flex items-center gap-x-4">
+            <Button type="submit" disabled={!isValidPrefix}>
+              Generate IMEI
+            </Button>
+
+            <Button
+              type="button"
+              disabled={!is15Digits}
+              onClick={() =>
+                window.open(
+                  `https://www.imei.info/?imei=${imei}`,
+                  "_blank",
+                  "noopener,noreferrer",
+                )
+              }
+            >
+              <ExternalLinkIcon className="size-4" />
+              Check IMEI Info
+            </Button>
+          </div>
+        </form>
       </CardContent>
     </Card>
   );
