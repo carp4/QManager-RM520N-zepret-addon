@@ -96,7 +96,7 @@ export default function WebConsoleCard() {
   // DOM container ref for xterm to mount into
   const containerRef = useRef<HTMLDivElement | null>(null);
 
-  const { connectionState, reconnect, disconnect } = useWebConsole({
+  const { connectionState, reconnect } = useWebConsole({
     terminalRef,
     fitAddonRef,
   });
@@ -152,7 +152,7 @@ export default function WebConsoleCard() {
       terminalRef.current = null;
       fitAddonRef.current = null;
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Fullscreen toggle ────────────────────────────────────────────────────
 

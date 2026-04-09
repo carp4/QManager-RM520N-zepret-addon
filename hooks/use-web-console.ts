@@ -303,9 +303,11 @@ export function useWebConsole({
 
   useEffect(() => {
     mountedRef.current = true;
-    connect();
+    // Defer connect to avoid synchronous setState inside effect body
+    const id = setTimeout(connect, 0);
 
     return () => {
+      clearTimeout(id);
       mountedRef.current = false;
       clearRetryTimer();
       disposeTerminalListeners();
@@ -314,7 +316,7 @@ export function useWebConsole({
         wsRef.current = null;
       }
     };
-  }, [connect, clearRetryTimer]);
+  }, [connect, clearRetryTimer, closeSocket, disposeTerminalListeners]);
 
   return { connectionState, reconnect, disconnect };
 }
