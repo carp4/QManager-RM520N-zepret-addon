@@ -53,6 +53,7 @@ LIB_DIR="/usr/lib/qmanager"
 BIN_DIR="/usr/bin"
 SYSTEMD_DIR="/lib/systemd/system"
 WANTS_DIR="/lib/systemd/system/multi-user.target.wants"
+TAILSCALE_DIR="/usrdata/tailscale"
 # Detect Entware vs system sudo (called as function — must re-evaluate
 # after install_dependencies installs sudo on a fresh modem)
 detect_sudo() {
@@ -542,6 +543,17 @@ install_backend() {
             chmod 644 "$LIB_DIR/$f"
         fi
     done
+
+    # --- Upgrade existing Tailscale deployment ---
+    # If Tailscale is already installed, update the live systemd unit and staged
+    # copy so service fixes (e.g. ExecStartPost chmod) take effect on next boot.
+    if [ -x "$TAILSCALE_DIR/tailscaled" ] && [ -f "$LIB_DIR/tailscaled.service" ]; then
+        cp -f "$LIB_DIR/tailscaled.service" "$SYSTEMD_DIR/tailscaled.service"
+        sed -i 's/\r$//' "$SYSTEMD_DIR/tailscaled.service"
+        mkdir -p "$TAILSCALE_DIR/systemd"
+        cp -f "$LIB_DIR/tailscaled.service" "$TAILSCALE_DIR/systemd/tailscaled.service"
+        info "Updated deployed tailscaled.service"
+    fi
 
     # --- Daemons and utilities ---
     local bin_count=0

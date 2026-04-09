@@ -35,7 +35,9 @@ UNIT_DIR="/lib/systemd/system"
 
 # --- Helper: check if tailscale binaries exist --------------------------------
 is_installed() {
-    [ -x "$TAILSCALE_BIN" ] && [ -x "$TAILSCALED_BIN" ]
+    # Check systemd unit (world-readable) + data dir existence (works on 700 dirs)
+    # Avoids traversing /usrdata/tailscale/ which tailscaled resets to 700
+    [ -f /lib/systemd/system/tailscaled.service ] && [ -d "$TAILSCALE_DIR" ]
 }
 
 # --- Helper: check if tailscaled daemon is running ----------------------------
