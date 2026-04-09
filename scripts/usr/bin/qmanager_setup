@@ -42,9 +42,9 @@ chmod 666 /tmp/qmanager_at.lock /tmp/qmanager_at.pid \
 
 # Shared root-owned files — both root (poller/daemons) and www-data (CGI) write.
 # If www-data owned these, root would be blocked by fs.protected_regular=1.
-touch /tmp/qmanager.log /tmp/msmtp.log
-chown root:root /tmp/qmanager.log /tmp/msmtp.log
-chmod 666 /tmp/qmanager.log /tmp/msmtp.log
+touch /tmp/qmanager.log
+chown root:root /tmp/qmanager.log
+chmod 666 /tmp/qmanager.log
 
 # Session directory — www-data needs write access (cleared on reboot since /tmp is tmpfs)
 mkdir -p /tmp/qmanager_sessions
