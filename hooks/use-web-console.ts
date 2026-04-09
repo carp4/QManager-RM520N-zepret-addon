@@ -37,9 +37,9 @@ const BACKOFF_MAX_MS = 10_000;
 const BACKOFF_MULTIPLIER = 2;
 
 /** Number of rapid consecutive failures before giving up auto-retry */
-const RAPID_FAIL_THRESHOLD = 3;
+const MAX_RAPID_FAILURES = 3;
 /** A close within this many ms of opening is considered "rapid" */
-const RAPID_CLOSE_MS = 2_000;
+const RAPID_CLOSE_WINDOW_MS = 2_000;
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -132,7 +132,7 @@ export function useWebConsole({
     const msg = new Uint8Array(1 + encoded.byteLength);
     msg[0] = SEND_INPUT;
     msg.set(encoded, 1);
-    ws.send(msg.buffer);
+    ws.send(msg);
   }, []);
 
   const sendResize = useCallback((cols: number, rows: number) => {
@@ -145,7 +145,7 @@ export function useWebConsole({
     const msg = new Uint8Array(1 + payload.byteLength);
     msg[0] = SEND_RESIZE;
     msg.set(payload, 1);
-    ws.send(msg.buffer);
+    ws.send(msg);
   }, []);
 
   // ── Connect ──────────────────────────────────────────────────────────────
@@ -223,19 +223,15 @@ export function useWebConsole({
     ws.onmessage = (event: MessageEvent) => {
       if (!mountedRef.current) return;
 
-      const data = event.data as ArrayBuffer;
-      if (!(data instanceof ArrayBuffer) || data.byteLength < 1) return;
-
-      const view = new DataView(data);
-      const msgType = view.getUint8(0);
-
-      if (msgType === RECV_OUTPUT) {
-        const terminal = terminalRef.current;
-        if (terminal) {
-          terminal.write(new Uint8Array(data, 1));
-        }
+      const data = new Uint8Array(event.data as ArrayBuffer);
+      if (data.length < 1) return;
+      const msgType = data[0];
+      switch (msgType) {
+        case RECV_OUTPUT:
+          terminalRef.current?.write(data.subarray(1));
+          break;
+        // types 1, 2 intentionally ignored
       }
-      // SET_WINDOW_TITLE (1) and SET_PREFERENCES (2) are intentionally ignored
     };
 
     ws.onclose = () => {
@@ -247,7 +243,7 @@ export function useWebConsole({
       // Check if this was a rapid failure
       const openedAt = openedAtRef.current;
       const wasRapid =
-        openedAt === null || Date.now() - openedAt < RAPID_CLOSE_MS;
+        openedAt === null || Date.now() - openedAt < RAPID_CLOSE_WINDOW_MS;
 
       if (wasRapid) {
         rapidFailCountRef.current += 1;
@@ -255,7 +251,7 @@ export function useWebConsole({
         rapidFailCountRef.current = 0;
       }
 
-      if (rapidFailCountRef.current >= RAPID_FAIL_THRESHOLD) {
+      if (rapidFailCountRef.current >= MAX_RAPID_FAILURES) {
         setConnectionState("unavailable");
         return;
       }
@@ -318,10 +314,7 @@ export function useWebConsole({
         wsRef.current = null;
       }
     };
-    // connect is stable (useCallback with stable deps) — intentionally omitted
-    // from deps to avoid re-running on every render after refs settle
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [connect, clearRetryTimer]);
 
   return { connectionState, reconnect, disconnect };
 }
