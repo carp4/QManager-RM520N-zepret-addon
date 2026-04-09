@@ -65,6 +65,12 @@ for f in "$CGI_DIR"/*.sh "$CGI_DIR"/*/*.sh; do
     [ -f "$f" ] && chmod +x "$f"
 done
 
+# Tailscale directory — tailscaled resets its state dir to 700 on start;
+# www-data CGI needs traverse+read to check if binaries exist
+if [ -d /usrdata/tailscale ]; then
+    chmod 755 /usrdata/tailscale
+fi
+
 # Secure auth config
 [ -f /etc/qmanager/auth.json ] && chmod 600 /etc/qmanager/auth.json
 
