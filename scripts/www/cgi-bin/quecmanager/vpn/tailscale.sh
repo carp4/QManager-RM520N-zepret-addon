@@ -30,6 +30,7 @@ TS_UP_OUTPUT="/tmp/qmanager_tailscale_up_output"
 TS_UP_PID_FILE="/tmp/qmanager_tailscale_up_pid"
 INSTALL_RESULT="/tmp/qmanager_tailscale_install.json"
 INSTALL_PID="/tmp/qmanager_tailscale_install.pid"
+INSTALL_LOG="/tmp/qmanager_tailscale_install.log"
 WANTS_DIR="/lib/systemd/system/multi-user.target.wants"
 UNIT_DIR="/lib/systemd/system"
 
@@ -260,12 +261,16 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
     # action: install_status — poll install progress + live log tail
     # -------------------------------------------------------------------------
     if [ "$ACTION" = "install_status" ]; then
-        INSTALL_LOG="/tmp/qmanager_tailscale_install.log"
-
         if [ -f "$INSTALL_RESULT" ]; then
             status_json=$(cat "$INSTALL_RESULT")
         else
             status_json='{"success":true,"status":"idle"}'
+        fi
+
+        # Guard against transient parse failures from a half-written status file.
+        # Without this, jq would emit an empty body and the frontend poller breaks.
+        if ! printf '%s' "$status_json" | jq -e . >/dev/null 2>&1; then
+            status_json='{"success":true,"status":"running","message":"Installing..."}'
         fi
 
         if [ -f "$INSTALL_LOG" ]; then
