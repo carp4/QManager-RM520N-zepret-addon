@@ -257,14 +257,24 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
     fi
 
     # -------------------------------------------------------------------------
-    # action: install_status — poll install progress
+    # action: install_status — poll install progress + live log tail
     # -------------------------------------------------------------------------
     if [ "$ACTION" = "install_status" ]; then
+        INSTALL_LOG="/tmp/qmanager_tailscale_install.log"
+
         if [ -f "$INSTALL_RESULT" ]; then
-            cat "$INSTALL_RESULT"
+            status_json=$(cat "$INSTALL_RESULT")
         else
-            printf '{"success":true,"status":"idle"}'
+            status_json='{"success":true,"status":"idle"}'
         fi
+
+        if [ -f "$INSTALL_LOG" ]; then
+            log_tail=$(tail -n 50 "$INSTALL_LOG" 2>/dev/null | tr -d '\000\r')
+        else
+            log_tail=""
+        fi
+
+        printf '%s' "$status_json" | jq --arg log "$log_tail" '. + {log: $log}'
         exit 0
     fi
 
