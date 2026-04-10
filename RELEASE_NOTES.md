@@ -1,12 +1,23 @@
 # 🚀 QManager RM520N BETA v0.1.4 (Draft)
 
-**Onboarding accuracy and install reliability** — the onboarding band picker now shows only the bands your modem actually supports, cell distance readings no longer lie when there's no signal, and the installer survives a read-only rootfs when enabling SSH.
+**New Rust-based AT transport, onboarding accuracy, and install reliability** — `atcli_smd11` is now a modern Rust reimplementation with cross-modem support, the onboarding band picker shows only the bands your modem actually supports, cell distance readings no longer lie when there's no signal, and the installer survives a read-only rootfs when enabling SSH.
 
 > Upgrading from v0.1.3? Go to **System Settings -> Software Update** or re-run the installer via ADB/SSH. All existing settings and profiles are preserved.
 
 ---
 
 ## ✨ What's New
+
+### ⚡ Rust-Based `atcli_smd11` — Safer, Smaller, Cross-Modem
+
+QManager's AT command transport has been replaced with a modern Rust reimplementation from [1alessandro1/atcli_rust](https://github.com/1alessandro1/atcli_rust). The previous binary was derived from Compal's original C `atcli` utility, which had a known 4096-byte buffer overflow bug on large responses. The Rust version is a clean-room reimplementation with memory safety and streaming I/O.
+
+- **Memory-safe** — `BufReader::read_line` streams responses with O(1) memory usage, eliminating the 4096-byte buffer overflow from the OEM C binary
+- **Cross-modem support** — works across Quectel **RM502, RM520, RM521, and RM551** — not locked to a single hardware variant
+- **Static ARMv7 build** — no external glibc dependencies, self-contained ~647KB binary
+- **OEM-compatible terminators** — matches the exact response terminator array from the Compal firmware (`OK\r\n`, `ERROR\r\n`, `+CME ERROR:`, `+CMS ERROR:`, `BUSY\r\n`, `NO CARRIER\r\n`, etc.)
+- **Same CLI contract** — drop-in replacement: same command-line args, same stdout output, always exits 0, handles long commands natively (AT+QSCAN tested at 1m+ without timeout). No code changes needed in `qcmd` or CGI scripts.
+- **Tested end-to-end** — verified against `AT`, `ATI`, `AT+CSQ`, `AT+QSCAN`, and error responses on a live RM520N-GL
 
 ### 📡 Onboarding Band Preferences — Now Modem-Aware
 
@@ -22,6 +33,8 @@ The band preferences step in the onboarding wizard previously offered a hardcode
 
 ## 🐛 Bug Fixes
 
+- **Fixed Tailscale install hanging on download** — both UI and CLI installs would get stuck at the "Downloading Tailscale..." stage and never complete. Two root causes: (1) `detect_latest_version()` ran `curl -fsSL` against the Tailscale CDN directory listing with **no timeout**, blocking indefinitely when the CDN was slow; (2) the install ran as a child process of the CGI request, so any transient network glitch or connection reset would kill the install mid-way. The `qmanager_tailscale_mgr` helper has been **completely rewritten** to mirror the proven iamromulan/quectel-rgmii-toolkit install flow: hardcoded version `1.92.5` and arch `arm` (no CDN scraping), two-layer execution that runs the install under a temporary systemd oneshot unit (detached from the caller), bare `curl -O` to download into `/usrdata/` (persistent partition), `sleep 2` after `daemon-reload` before starting the daemon, and bundled systemd units from `/usr/lib/qmanager/`. Validated end-to-end with reboot persistence, auth URL smoke test, and UI install/uninstall cycles.
+- **Fixed `tailscale` CLI not found on PATH after install** — the old script only symlinked `tailscale` into `/usrdata/root/bin/`, matching rgmii-toolkit's convention. But QManager's default root shell uses `HOME=/home/root` and doesn't extend PATH to include `/usrdata/root/bin`, so `which tailscale` returned empty even though the daemon was running fine. The helper now creates **two** symlinks: `/usr/bin/tailscale` (always on default PATH) and `/usrdata/root/bin/tailscale` (rgmii-toolkit convention). Uninstall removes both.
 - **Fixed installer failing to enable SSH on read-only rootfs** — when the user opted in to SSH at the end of the install, the script tried to write `/lib/systemd/system/dropbear.service` but the rootfs had already been remounted read-only by `qmanager_console_mgr` earlier in `start_services`. The SSH setup function now explicitly remounts `rw` before writing the service file, matching the defensive pattern used elsewhere in the installer.
 - **Fixed LTE/NR cell distance showing "< 10 m" with no signal** — `calculateLteDistance()` and `calculateNrDistance()` previously treated `TA=0` as a valid "zero distance" result, displaying "< 10 m" even when there was no 5G connection at all (the modem reports stale `nr_ta=0` in that state). Both functions now treat `TA <= 0` as "no data" and return `null`, so the UI correctly shows `-`. The associated tooltip also switches to "Timing Advance value is not available" when TA is 0.
 

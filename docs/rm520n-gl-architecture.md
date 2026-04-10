@@ -69,7 +69,7 @@ The RM520N-GL is a fundamentally different platform: it runs its own Linux OS in
 | **AT port (QManager)** | `/dev/smd11` (direct access via `atcli_smd11`, no socat needed) |
 | **AT device perms** | Defaults `crw------- root:root`; `qmanager_setup` sets `660 root:dialout` at boot |
 | **AT port (legacy)** | `/dev/smd7` (claimed by `port_bridge` at boot — used by socat-at-bridge if installed) |
-| **AT tools** | `atcli_smd11` via `qcmd` (production), `microcom` (interactive), `atcmd`/`atcmd11` (legacy socat) |
+| **AT tools** | `atcli_smd11` (Rust, via `qcmd`, production — from [1alessandro1/atcli_rust](https://github.com/1alessandro1/atcli_rust), works across RM502/RM520/RM521/RM551), `microcom` (interactive), `atcmd`/`atcmd11` (legacy socat) |
 | **Web server** | lighttpd (Entware: base + mod-cgi + mod-openssl + mod-redirect + mod-proxy) |
 | **Web root** | `/usrdata/qmanager/www` (independent, not SimpleAdmin) |
 | **CGI PATH caveat** | lighttpd CGI excludes `/opt/bin`; `cgi_base.sh` exports full PATH |
