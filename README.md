@@ -55,6 +55,7 @@
 ### Reliability & Monitoring
 - **Connection Watchdog** — 4-tier auto-recovery: AT+COPS deregister/reregister -> CFUN toggle -> SIM failover -> full reboot (with token bucket rate limiting)
 - **Email Alerts** — Downtime notifications via Gmail SMTP (msmtp), sent on recovery with duration details
+- **SMS Alerts** — Downtime and recovery notifications delivered over the cellular control channel via `sms_tool`; reaches you even while the data link is offline. Registration-guarded retry with dedup collapse, threshold-based suppression of transient blips, bounded failure logging
 - **Low Power Mode** — Scheduled CFUN power-down windows via cron
 - **Software Updates** — In-app OTA update checking, download, verification, installation, and rollback
 - **System Logs** — Centralized log viewer with search
@@ -148,7 +149,7 @@ The frontend is a statically-exported Next.js app served by lighttpd from `/usrd
 **Key Data Flow:**
 
 - **Poller daemon** queries the modem via AT commands every 2-30s (3 tiers) and writes a JSON cache file
-- **CGI endpoints** (59 scripts) read the cache for GET requests, execute AT commands for POST requests
+- **CGI endpoints** (63 scripts) read the cache for GET requests, execute AT commands for POST requests
 - **React hooks** (31 custom hooks) poll the CGI layer and provide loading/error/staleness states
 - **AT transport** uses `atcli_smd11` on `/dev/smd11` directly (no socat PTY bridge needed)
 
@@ -232,7 +233,7 @@ QManager/
 │   ├── etc/qmanager/           # Default config files
 │   ├── usr/bin/                # Daemons & utilities (19)
 │   ├── usr/lib/qmanager/       # Shared shell libraries (12)
-│   ├── www/cgi-bin/            # CGI endpoints (59 scripts)
+│   ├── www/cgi-bin/            # CGI endpoints (63 scripts)
 │   ├── install_rm520n.sh       # Device installation script
 │   └── uninstall_rm520n.sh     # Clean removal script
 ├── dependencies/               # Bundled ARM binaries and packages

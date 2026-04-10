@@ -1,12 +1,29 @@
 # 🚀 QManager RM520N BETA v0.1.4 (Draft)
 
-**New Rust-based AT transport, onboarding accuracy, and install reliability** — `atcli_smd11` is now a modern Rust reimplementation with cross-modem support, the onboarding band picker shows only the bands your modem actually supports, cell distance readings no longer lie when there's no signal, and the installer survives a read-only rootfs when enabling SSH.
+**SMS alerts, new Rust-based AT transport, onboarding accuracy, and install reliability** — QManager can now SMS you when your connection goes down, so you get notified even while your data link is offline. `atcli_smd11` is a modern Rust reimplementation with cross-modem support, the onboarding band picker shows only the bands your modem actually supports, cell distance readings no longer lie when there's no signal, and the installer survives a read-only rootfs when enabling SSH.
 
 > Upgrading from v0.1.3? Go to **System Settings -> Software Update** or re-run the installer via ADB/SSH. All existing settings and profiles are preserved.
 
 ---
 
 ## ✨ What's New
+
+### 📱 SMS Alerts — Get Notified While Your Data Link Is Down
+
+Email Alerts can only reach you *after* your internet comes back — the whole point of the alert is moot if you're notified 10 minutes late. SMS Alerts solves that by delivering notifications over the **cellular control channel** using the bundled `sms_tool` binary, so your phone rings the moment threshold is crossed even though the data PDP is offline.
+
+- **Downtime-start + recovery** — two notifications per outage: one when your connection has been down longer than the configured threshold, one when it returns. A separate recovery SMS fires if downtime-start succeeded, otherwise a single combined "was down for Xm, now restored" dedup message is sent so the recipient never gets confused about state
+- **Registration-guarded sending** — SMS is only attempted when the modem is actually registered on LTE or NR (`modem_reachable=true AND (lte_state=connected OR nr_state=connected)`). If the radio is down, the state machine waits — unbounded at the cycle level — until registration returns, rather than burning retry attempts on a dead radio
+- **Bounded retry budget** — each send event gets up to 3 real `sms_tool` attempts with 5s backoff. Unregistered cycles do NOT count against the budget (tracked separately via `_SA_MAX_SKIPS`), so a SIM with no credits produces a clean "Failed" log row, not an infinite loop
+- **Threshold-based suppression** — sub-threshold blips (e.g. a 20-second outage when threshold is 5 minutes) are silently ignored. No notifications, no log entries, no noise. Only outages that genuinely cross the threshold trigger the state machine
+- **Dedup collapse** — if the downtime-start SMS never actually went out (radio was down, 3 attempts failed, etc.), the recovery path collapses into a single combined "was down for X, now restored" message instead of firing a misleading "recovery" SMS for an event the user never heard about
+- **Alert Log card** — every send (successful or failed) is recorded in an NDJSON log at `/tmp/qmanager_sms_log.json` and displayed in the UI with timestamp, trigger description, status badge (Sent/Failed), and recipient number. Retained up to 100 entries
+- **Hot config reload** — changing the recipient or threshold during an active tracked outage takes effect on the next poll cycle via `/tmp/qmanager_sms_reload` flag — no poller restart needed
+- **Low-power mode aware** — alerts are suppressed when `/tmp/qmanager_low_power_active` is set, matching Email Alerts behavior
+- **E.164 recipient format** — phone entered as `+<countrycode><number>` for clarity in the UI; backend strips the `+` before handing off to `sms_tool send`
+- **No new dependencies** — `sms_tool` is already bundled with QManager for the SMS Center feature; SMS Alerts reuses it with the same `/tmp/qmanager_at.lock` flock serialization used by `qcmd` and the SMS Center CGI
+
+Navigate to **Monitoring > SMS Alerts** in the sidebar.
 
 ### ⚡ Rust-Based `atcli_smd11` — Safer, Smaller, Cross-Modem
 
@@ -36,6 +53,7 @@ The band preferences step in the onboarding wizard previously offered a hardcode
 - **Fixed Tailscale install hanging on download** — both UI and CLI installs would get stuck at the "Downloading Tailscale..." stage and never complete. Two root causes: (1) `detect_latest_version()` ran `curl -fsSL` against the Tailscale CDN directory listing with **no timeout**, blocking indefinitely when the CDN was slow; (2) the install ran as a child process of the CGI request, so any transient network glitch or connection reset would kill the install mid-way. The `qmanager_tailscale_mgr` helper has been **completely rewritten** to mirror the proven iamromulan/quectel-rgmii-toolkit install flow: hardcoded version `1.92.5` and arch `arm` (no CDN scraping), two-layer execution that runs the install under a temporary systemd oneshot unit (detached from the caller), bare `curl -O` to download into `/usrdata/` (persistent partition), `sleep 2` after `daemon-reload` before starting the daemon, and bundled systemd units from `/usr/lib/qmanager/`. Validated end-to-end with reboot persistence, auth URL smoke test, and UI install/uninstall cycles.
 - **Fixed `tailscale` CLI not found on PATH after install** — the old script only symlinked `tailscale` into `/usrdata/root/bin/`, matching rgmii-toolkit's convention. But QManager's default root shell uses `HOME=/home/root` and doesn't extend PATH to include `/usrdata/root/bin`, so `which tailscale` returned empty even though the daemon was running fine. The helper now creates **two** symlinks: `/usr/bin/tailscale` (always on default PATH) and `/usrdata/root/bin/tailscale` (rgmii-toolkit convention). Uninstall removes both.
 - **Fixed installer failing to enable SSH on read-only rootfs** — when the user opted in to SSH at the end of the install, the script tried to write `/lib/systemd/system/dropbear.service` but the rootfs had already been remounted read-only by `qmanager_console_mgr` earlier in `start_services`. The SSH setup function now explicitly remounts `rw` before writing the service file, matching the defensive pattern used elsewhere in the installer.
+- **Fixed Modem Temperature reading too low on dashboard** — the `AT+QTEMP` parser averaged all sensor readings but excluded only the `-273` "unavailable" sentinel from the unused mmWave sensor. Idle SDR power amplifiers (`modem-sdr0-pa0..2`, `modem-sdr1-pa0..2`) report `0` as their "not transmitting" sentinel, and those zeros were dragging the average down — e.g. a device with real sensor readings in the 39–43°C range was showing **26°C** on the dashboard because `418 / 16 sensors = 26` instead of the correct `418 / 10 active sensors = 42`. The parser now filters out both `-273` and `0` readings, so only active sensors contribute to the average.
 - **Fixed LTE/NR cell distance showing "< 10 m" with no signal** — `calculateLteDistance()` and `calculateNrDistance()` previously treated `TA=0` as a valid "zero distance" result, displaying "< 10 m" even when there was no 5G connection at all (the modem reports stale `nr_ta=0` in that state). Both functions now treat `TA <= 0` as "no data" and return `null`, so the UI correctly shows `-`. The associated tooltip also switches to "Timing Advance value is not available" when TA is 0.
 
 ---
