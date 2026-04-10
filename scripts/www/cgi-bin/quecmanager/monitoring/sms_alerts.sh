@@ -73,6 +73,15 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
         new_recipient=$(printf '%s' "$POST_DATA" | jq -r '.recipient_phone // ""')
         new_threshold=$(printf '%s' "$POST_DATA" | jq -r '.threshold_minutes // 5')
 
+        # Validate enabled — must be literal "true" or "false" for --argjson
+        case "$new_enabled" in
+            true|false) ;;
+            *)
+                cgi_error "invalid_enabled" "enabled must be a boolean"
+                exit 0
+                ;;
+        esac
+
         # Validate threshold — guard against non-numeric input first
         case "$new_threshold" in
             ''|*[!0-9]*)
@@ -117,7 +126,8 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
 
         mkdir -p /etc/qmanager
 
-        jq -n \
+        # Atomic write via temp file + mv (avoids zero-byte config on jq failure)
+        if ! jq -n \
             --argjson enabled "$new_enabled" \
             --arg recipient_phone "$new_recipient" \
             --argjson threshold_minutes "$new_threshold" \
@@ -125,7 +135,12 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
                 enabled: $enabled,
                 recipient_phone: $recipient_phone,
                 threshold_minutes: $threshold_minutes
-            }' > "$CONFIG"
+            }' > "${CONFIG}.tmp"; then
+            rm -f "${CONFIG}.tmp"
+            cgi_error "write_failed" "Failed to generate config JSON"
+            exit 0
+        fi
+        mv "${CONFIG}.tmp" "$CONFIG"
 
         qlog_info "SMS alerts config written: enabled=$new_enabled recipient=$new_recipient threshold=${new_threshold}m"
 
