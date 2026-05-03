@@ -26,7 +26,7 @@ chmod 777 /var/spool/cron/crontabs
 # but the udev rule didn't apply (e.g. udev not loaded yet, rule file missing,
 # or upgrade in progress). It is idempotent — safe to run when permissions
 # are already correct.
-if [ -e /dev/smd11 ]; then
+if [ -c /dev/smd11 ]; then
     chown root:dialout /dev/smd11
     chmod 660 /dev/smd11
 fi

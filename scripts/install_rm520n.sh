@@ -229,7 +229,7 @@ install_dependencies() {
             info "Stopped conflicting service: $svc"
         fi
     done
-    if [ -e /dev/smd11 ]; then
+    if [ -c /dev/smd11 ]; then
         info "AT device /dev/smd11 is available"
     else
         warn "/dev/smd11 not found — AT commands will not work until modem is ready"
@@ -749,7 +749,7 @@ install_udev_rules() {
 
     local rule_src="$SRC_SCRIPTS/etc/udev/rules.d/99-qmanager-smd11.rules"
     local rule_dst="/etc/udev/rules.d/99-qmanager-smd11.rules"
-    local helper_src="$SRC_SCRIPTS/usr/lib/qmanager/qmanager_smd11_udev.sh"
+    local helper_src="$SRC_SCRIPTS/etc/udev/scripts/qmanager_smd11_udev.sh"
     local helper_dst="/usr/lib/qmanager/qmanager_smd11_udev.sh"
 
     if [ ! -f "$rule_src" ] || [ ! -f "$helper_src" ]; then
@@ -780,7 +780,7 @@ install_udev_rules() {
     # (rather than waiting for the next reboot or modem reset).
     if command -v udevadm >/dev/null 2>&1; then
         if udevadm control --reload-rules 2>/dev/null; then
-            if [ -e /dev/smd11 ]; then
+            if [ -c /dev/smd11 ]; then
                 udevadm trigger --action=add /dev/smd11 2>/dev/null || true
                 udevadm settle --timeout=5 2>/dev/null || true
                 # Verify the rule actually applied
