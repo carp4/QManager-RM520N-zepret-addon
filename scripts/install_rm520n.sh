@@ -738,6 +738,64 @@ install_backend() {
     info "Backend installed"
 }
 
+# --- Install udev Rules ------------------------------------------------------
+
+install_udev_rules() {
+    step "Installing udev rules for /dev/smd11"
+
+    local rule_src="$SRC_SCRIPTS/etc/udev/rules.d/99-qmanager-smd11.rules"
+    local rule_dst="/etc/udev/rules.d/99-qmanager-smd11.rules"
+    local helper_src="$SRC_SCRIPTS/usr/lib/qmanager/qmanager_smd11_udev.sh"
+    local helper_dst="/usr/lib/qmanager/qmanager_smd11_udev.sh"
+
+    if [ ! -f "$rule_src" ] || [ ! -f "$helper_src" ]; then
+        warn "udev rule sources missing — skipping (smd11 perms rely on qmanager-setup oneshot)"
+        return 0
+    fi
+
+    # Remount rootfs rw — /etc and /usr/lib live on the read-only root.
+    mount -o remount,rw / 2>/dev/null || true
+
+    mkdir -p /etc/udev/rules.d /usr/lib/qmanager
+
+    cp "$helper_src" "$helper_dst"
+    sed -i 's/\r$//' "$helper_dst"
+    chmod 755 "$helper_dst"
+    chown root:root "$helper_dst"
+    info "Helper installed: $helper_dst"
+
+    cp "$rule_src" "$rule_dst"
+    sed -i 's/\r$//' "$rule_dst"
+    chmod 644 "$rule_dst"
+    chown root:root "$rule_dst"
+    info "Rule installed: $rule_dst"
+
+    sync
+
+    # Reload rules and trigger an add event on smd11 so the rule fires now
+    # (rather than waiting for the next reboot or modem reset).
+    if command -v udevadm >/dev/null 2>&1; then
+        udevadm control --reload-rules 2>/dev/null || warn "udevadm reload failed"
+        if [ -e /dev/smd11 ]; then
+            udevadm trigger --action=add /dev/smd11 2>/dev/null || true
+            udevadm settle --timeout=5 2>/dev/null || true
+            # Verify the rule actually applied
+            local mode owner
+            mode=$(stat -c '%a' /dev/smd11 2>/dev/null)
+            owner=$(stat -c '%U:%G' /dev/smd11 2>/dev/null)
+            if [ "$mode" = "660" ] && [ "$owner" = "root:dialout" ]; then
+                info "Rule applied: /dev/smd11 = $owner $mode"
+            else
+                warn "Rule did not apply cleanly: /dev/smd11 = $owner $mode (expected root:dialout 660)"
+            fi
+        else
+            info "/dev/smd11 not present yet — rule will fire when modem creates it"
+        fi
+    else
+        warn "udevadm not found — rule will activate at next reboot"
+    fi
+}
+
 # --- Fix Line Endings --------------------------------------------------------
 
 fix_line_endings() {
@@ -1060,7 +1118,7 @@ main() {
     [ "$DO_PACKAGES" = "1" ] && TOTAL_STEPS=$(( TOTAL_STEPS + 1 ))
     TOTAL_STEPS=$(( TOTAL_STEPS + 1 ))  # stop_services
     [ "$DO_FRONTEND" = "1" ] && TOTAL_STEPS=$(( TOTAL_STEPS + 2 ))
-    [ "$DO_BACKEND" = "1" ] && TOTAL_STEPS=$(( TOTAL_STEPS + 3 ))
+    [ "$DO_BACKEND" = "1" ] && TOTAL_STEPS=$(( TOTAL_STEPS + 4 ))
     [ "$DO_BACKEND" = "1" ] && [ "$DO_ENABLE" = "1" ] && TOTAL_STEPS=$(( TOTAL_STEPS + 1 ))
     [ "$DO_START" = "1" ] && TOTAL_STEPS=$(( TOTAL_STEPS + 1 ))
 
@@ -1076,6 +1134,7 @@ main() {
 
     if [ "$DO_BACKEND" = "1" ]; then
         install_backend
+        install_udev_rules
         fix_line_endings
         fix_permissions
         [ "$DO_ENABLE" = "1" ] && enable_services
