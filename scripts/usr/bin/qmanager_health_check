@@ -39,14 +39,10 @@ _atomic_write() {
 
 # Single shared lock for the live JSON read-modify-write.
 _with_lock() {
-    local fd
-    exec 9>"$LOCK_FILE"
-    flock -x 9
-    "$@"
-    local rc=$?
-    flock -u 9
-    exec 9>&-
-    return $rc
+    (
+        flock -x 9
+        "$@"
+    ) 9>"$LOCK_FILE"
 }
 
 # Emit a per-test result. Args: id category label status duration_ms detail
@@ -64,13 +60,13 @@ _emit_result_locked() {
             else . end))
         | .summary = (
             (.tests // []) | reduce .[] as $t (
-                {pass:0,fail:0,warn:0,skip:0,total:(length)};
+                {pass:0,fail:0,warn:0,skip:0};
                 if   $t.status == "pass" then .pass += 1
                 elif $t.status == "fail" then .fail += 1
                 elif $t.status == "warn" then .warn += 1
                 elif $t.status == "skip" then .skip += 1
                 else . end
-            ) | .total = ((.pass) + (.fail) + (.warn) + (.skip) + 0)
+            ) | .total = ((.tests // []) | length)
         )
     ' "$STATUS_FILE" | _atomic_write
 }
