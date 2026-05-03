@@ -1,0 +1,187 @@
+#!/bin/bash
+# =============================================================================
+# qmanager_health_check — Privileged System Health Check runner
+# =============================================================================
+# Called by www-data CGI via sudo. Whitelisted in /etc/sudoers.d/qmanager.
+#
+# Usage:
+#   qmanager_health_check <job_id>
+#
+# Writes incremental status to /tmp/qmanager_health_check.json. Per-test raw
+# output goes to /tmp/qmanager_health_check_<job_id>/tests/<test_id>.txt.
+# When done, builds /tmp/qmanager_health_check_<job_id>.tar.gz.
+# =============================================================================
+
+set -u
+
+JOB_ID="${1:-}"
+if [ -z "$JOB_ID" ] || ! printf '%s' "$JOB_ID" | grep -qE '^[0-9]{8}-[0-9]{6}-[a-f0-9]{4}$'; then
+    echo "ERROR: invalid or missing job_id" >&2
+    exit 2
+fi
+
+STATUS_FILE="/tmp/qmanager_health_check.json"
+LOCK_FILE="/tmp/qmanager_health_check.lock"
+JOB_DIR="/tmp/qmanager_health_check_${JOB_ID}"
+TESTS_DIR="${JOB_DIR}/tests"
+TARBALL="/tmp/qmanager_health_check_${JOB_ID}.tar.gz"
+
+mkdir -p "$TESTS_DIR"
+
+# --- Helpers ---------------------------------------------------------------
+
+# Re-write status JSON atomically. Caller passes the new JSON on stdin.
+_atomic_write() {
+    local tmp="${STATUS_FILE}.tmp"
+    cat > "$tmp"
+    mv "$tmp" "$STATUS_FILE"
+}
+
+# Single shared lock for the live JSON read-modify-write.
+_with_lock() {
+    local fd
+    exec 9>"$LOCK_FILE"
+    flock -x 9
+    "$@"
+    local rc=$?
+    flock -u 9
+    exec 9>&-
+    return $rc
+}
+
+# Emit a per-test result. Args: id category label status duration_ms detail
+_emit_result() {
+    local id="$1" category="$2" label="$3" status="$4" duration_ms="$5" detail="$6"
+    _with_lock _emit_result_locked "$id" "$category" "$label" "$status" "$duration_ms" "$detail"
+}
+
+_emit_result_locked() {
+    local id="$1" category="$2" label="$3" status="$4" duration_ms="$5" detail="$6"
+    jq --arg id "$id" --arg category "$category" --arg label "$label" \
+       --arg status "$status" --argjson dur "$duration_ms" --arg detail "$detail" '
+        .tests = ((.tests // []) | map(if .id == $id
+            then . + {category:$category,label:$label,status:$status,duration_ms:$dur,detail:$detail}
+            else . end))
+        | .summary = (
+            (.tests // []) | reduce .[] as $t (
+                {pass:0,fail:0,warn:0,skip:0,total:(length)};
+                if   $t.status == "pass" then .pass += 1
+                elif $t.status == "fail" then .fail += 1
+                elif $t.status == "warn" then .warn += 1
+                elif $t.status == "skip" then .skip += 1
+                else . end
+            ) | .total = ((.pass) + (.fail) + (.warn) + (.skip) + 0)
+        )
+    ' "$STATUS_FILE" | _atomic_write
+}
+
+# Run a test function with timing. Args: id category label fn
+# The test function writes raw output to $OUTPUT_FILE and prints
+# "<status>|<detail>" on stdout (status in pass|fail|warn|skip).
+_run_test() {
+    local id="$1" category="$2" label="$3" fn="$4"
+    OUTPUT_FILE="${TESTS_DIR}/${id}.txt"
+    : > "$OUTPUT_FILE"
+    local start; start=$(date +%s%3N)
+    local result; result=$("$fn" 2>>"$OUTPUT_FILE") || result="fail|test runner error (rc=$?)"
+    local end; end=$(date +%s%3N)
+    local dur=$(( end - start ))
+    local status="${result%%|*}"
+    local detail="${result#*|}"
+    case "$status" in pass|fail|warn|skip) ;; *) status="fail"; detail="invalid status from test fn" ;; esac
+    _emit_result "$id" "$category" "$label" "$status" "$dur" "$detail"
+}
+
+# --- Status JSON initialization --------------------------------------------
+
+_init_status() {
+    local pid=$$
+    local started; started=$(date +%s)
+    # All tests start as pending. Catalog is the source of truth.
+    local catalog
+    catalog=$(_test_catalog_pending)
+    jq -n --arg job_id "$JOB_ID" --argjson started "$started" --argjson pid "$pid" \
+          --argjson tests "$catalog" '
+        {
+            job_id: $job_id,
+            status: "running",
+            started_at: $started,
+            finished_at: null,
+            pid: $pid,
+            summary: { pass: 0, fail: 0, warn: 0, skip: 0,
+                       total: ($tests | length) },
+            tests: $tests,
+            tarball_path: null,
+            tarball_size: null,
+            error: null
+        }
+    ' | _atomic_write
+}
+
+# Catalog of all tests in pending state. Defined adjacent to test functions
+# so adding a test only touches one place.
+_test_catalog_pending() {
+    jq -n '[
+        {id:"bin.placeholder_pass",  category:"binaries",   label:"placeholder pass",  status:"pending", duration_ms:0, detail:""},
+        {id:"bin.placeholder_fail",  category:"binaries",   label:"placeholder fail",  status:"pending", duration_ms:0, detail:""}
+    ]'
+}
+
+# --- Skeleton tests (replaced in Task 3) -----------------------------------
+
+t_placeholder_pass() {
+    echo "this output is bundled into the tarball" >> "$OUTPUT_FILE"
+    echo "pass|placeholder ok"
+}
+
+t_placeholder_fail() {
+    echo "simulated failure" >> "$OUTPUT_FILE"
+    echo "fail|simulated"
+}
+
+# --- Finalization -----------------------------------------------------------
+
+_finalize_status() {
+    local final_status="$1" err_msg="${2:-}"
+    local finished; finished=$(date +%s)
+    local size=0
+    if [ -f "$TARBALL" ]; then
+        size=$(stat -c%s "$TARBALL" 2>/dev/null || echo 0)
+    fi
+    _with_lock _finalize_status_locked "$final_status" "$err_msg" "$finished" "$size"
+}
+
+_finalize_status_locked() {
+    local final_status="$1" err_msg="$2" finished="$3" size="$4"
+    jq --arg s "$final_status" --arg e "$err_msg" \
+       --argjson fin "$finished" --argjson sz "$size" \
+       --arg path "$TARBALL" '
+        .status = $s
+        | .finished_at = $fin
+        | .tarball_path = (if $sz > 0 then $path else null end)
+        | .tarball_size = (if $sz > 0 then $sz else null end)
+        | .error = (if $e == "" then null else $e end)
+    ' "$STATUS_FILE" | _atomic_write
+}
+
+# --- Cleanup of stale prior runs -------------------------------------------
+
+_cleanup_stale() {
+    # Remove old job directories and tarballs older than 1 hour.
+    find /tmp -maxdepth 1 -name 'qmanager_health_check_*' -mmin +60 -exec rm -rf {} + 2>/dev/null || true
+}
+
+# --- Main ------------------------------------------------------------------
+
+_cleanup_stale
+_init_status
+
+_run_test bin.placeholder_pass binaries "placeholder pass" t_placeholder_pass
+_run_test bin.placeholder_fail binaries "placeholder fail" t_placeholder_fail
+
+# Tarball stub — Task 4 fills in real bundling and redaction.
+tar -czf "$TARBALL" -C /tmp "qmanager_health_check_${JOB_ID}" 2>/dev/null \
+    && _finalize_status "complete" \
+    || _finalize_status "complete_no_bundle" "tarball build failed"
+
+exit 0
