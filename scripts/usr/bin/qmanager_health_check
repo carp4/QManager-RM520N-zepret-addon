@@ -493,6 +493,138 @@ t_cfg_cgi_path_opt() {
     fi
 }
 
+# --- Bundling --------------------------------------------------------------
+
+# Apply redaction in-place to all files under a given directory.
+# Patterns:
+#   - msmtprc password lines
+#   - tskey-* tokens (Tailscale auth keys)
+#   - Cookie / Authorization HTTP headers
+_redact_tree() {
+    local dir="$1"
+    # Use find + sed -i; some files are binary-ish so guard with -I file probes
+    find "$dir" -type f \( -name '*.txt' -o -name '*.json' -o -name '*.conf' -o -name '*.log' -o -name 'msmtprc' -o -name '*alerts*' \) \
+        -print 2>/dev/null | while read -r f; do
+        sed -i \
+            -e 's/^\([[:space:]]*password[[:space:]]\).*/\1REDACTED/' \
+            -e 's/tskey-[A-Za-z0-9_-]\{20,\}/tskey-REDACTED/g' \
+            -e 's/\(Cookie:[[:space:]]\).*/\1REDACTED/I' \
+            -e 's/\(Authorization:[[:space:]]\).*/\1REDACTED/I' \
+            "$f" 2>/dev/null || true
+    done
+}
+
+# Build report.txt — human-readable summary derived from the live status JSON.
+_build_report_txt() {
+    local out="$1"
+    {
+        echo "QManager System Health Check"
+        echo "============================"
+        echo "Job ID:      $JOB_ID"
+        echo "Started:     $(date -d "@$(jq -r .started_at "$STATUS_FILE")" -u +'%Y-%m-%dT%H:%M:%SZ')"
+        echo "Host:        $(uname -n)"
+        echo "Kernel:      $(uname -srm)"
+        echo "OS Release:  $(. /etc/os-release 2>/dev/null; echo "${PRETTY_NAME:-unknown}")"
+        if [ -f /etc/qmanager/version ]; then
+            echo "QManager:    $(cat /etc/qmanager/version)"
+        fi
+        echo
+        echo "Summary"
+        echo "-------"
+        jq -r '.summary | "Pass: \(.pass)\nFail: \(.fail)\nWarn: \(.warn)\nSkip: \(.skip)\nTotal: \(.total)"' "$STATUS_FILE"
+        echo
+        echo "Tests"
+        echo "-----"
+        jq -r '
+            .tests | group_by(.category)[] |
+            "\n[\(.[0].category)]\n" +
+            (map("  [\(.status | ascii_upcase)] \(.label) — \(.detail) (\(.duration_ms)ms)") | join("\n"))
+        ' "$STATUS_FILE"
+    } > "$out"
+    # Mask any 15-digit IMEI runs in report.txt (last 6 digits → xxxxxx).
+    sed -i -E 's/\b([0-9]{9})[0-9]{6}\b/\1xxxxxx/g' "$out"
+}
+
+_collect_system_info() {
+    local out="$1"
+    {
+        echo "# uname"; uname -a
+        echo; echo "# /etc/os-release"; cat /etc/os-release 2>/dev/null
+        echo; echo "# uptime"; uptime
+        echo; echo "# free -m"; free -m 2>/dev/null
+        echo; echo "# df -h"; df -h
+        echo; echo "# mount"; mount
+        echo; echo "# ip a"; ip a
+    } > "$out" 2>&1
+}
+
+_collect_services() {
+    local dir="$1"
+    mkdir -p "$dir"
+    local units="qmanager-firewall.service qmanager-poller.service qmanager-console.service qmanager-setup.service lighttpd.service tailscaled.service qmanager-tailscale-watchdog.service"
+    for u in $units; do
+        {
+            echo "# systemctl status $u"
+            systemctl status "$u" --no-pager 2>&1 | head -40
+            echo
+            echo "# journalctl -u $u -n 50 --no-pager"
+            journalctl -u "$u" -n 50 --no-pager 2>&1
+        } > "$dir/${u%.service}.txt"
+    done
+}
+
+_collect_configs() {
+    local dir="$1"
+    mkdir -p "$dir"
+    [ -f /usrdata/qmanager/lighttpd.conf ] && cp /usrdata/qmanager/lighttpd.conf "$dir/lighttpd.conf" 2>/dev/null
+    [ -f /etc/sudoers.d/qmanager ]        && cp /etc/sudoers.d/qmanager        "$dir/sudoers-qmanager" 2>/dev/null
+    [ -f /opt/etc/sudoers.d/qmanager ]    && cp /opt/etc/sudoers.d/qmanager    "$dir/sudoers-qmanager" 2>/dev/null
+    [ -f /etc/qmanager/sms_alerts.json ]  && cp /etc/qmanager/sms_alerts.json  "$dir/sms_alerts.json"  2>/dev/null
+    [ -f /etc/qmanager/email_alerts.json ]&& cp /etc/qmanager/email_alerts.json "$dir/email_alerts.json" 2>/dev/null
+    [ -f /etc/qmanager/msmtprc ]          && cp /etc/qmanager/msmtprc          "$dir/msmtprc"          2>/dev/null
+}
+
+_collect_logs() {
+    local dir="$1"
+    mkdir -p "$dir"
+    [ -f /tmp/qmanager_poller.log ] && tail -n 200 /tmp/qmanager_poller.log > "$dir/qmanager-poller.log" 2>/dev/null
+    [ -f /var/log/lighttpd/error.log ] && tail -n 200 /var/log/lighttpd/error.log > "$dir/lighttpd-error.log" 2>/dev/null
+    [ -f /opt/var/log/lighttpd/error.log ] && tail -n 200 /opt/var/log/lighttpd/error.log > "$dir/lighttpd-error.log" 2>/dev/null
+}
+
+_build_report_json() {
+    local out="$1"
+    # Embed each per-test raw output (truncated to 4 KB) into the JSON.
+    jq --slurpfile noop /dev/null '.' "$STATUS_FILE" > "$out.tmp"
+    local arr='[]'
+    for f in "$TESTS_DIR"/*.txt; do
+        [ -f "$f" ] || continue
+        local id; id=$(basename "$f" .txt)
+        local body; body=$(head -c 4096 "$f")
+        arr=$(printf '%s' "$arr" | jq --arg id "$id" --arg body "$body" '. + [{id:$id, output:$body}]')
+    done
+    jq --argjson outputs "$arr" '. + {test_outputs: $outputs}' "$out.tmp" > "$out"
+    rm -f "$out.tmp"
+}
+
+_build_bundle() {
+    local stage="$JOB_DIR/bundle"
+    mkdir -p "$stage" "$stage/services" "$stage/config" "$stage/logs" "$stage/tests"
+
+    _build_report_txt   "$stage/report.txt"
+    _collect_system_info "$stage/system-info.txt"
+    _collect_services   "$stage/services"
+    _collect_configs    "$stage/config"
+    _collect_logs       "$stage/logs"
+    cp -r "$TESTS_DIR/." "$stage/tests/" 2>/dev/null || true
+    [ -f /tmp/qmanager_poller_cache.json ] && cp /tmp/qmanager_poller_cache.json "$stage/poller-cache.json" 2>/dev/null
+
+    _redact_tree "$stage"
+    _build_report_json "$stage/report.json"
+
+    tar -czf "$TARBALL" -C "$JOB_DIR" bundle
+}
+
 # --- Finalization -----------------------------------------------------------
 
 _finalize_status() {
@@ -580,9 +712,10 @@ _run_test cfg.email_alerts_json    configuration "email_alerts.json valid"      
 _run_test cfg.poller_cache_fresh   configuration "poller cache mtime < 60s"           t_cfg_poller_cache_fresh
 _run_test cfg.cgi_path_opt         configuration "lighttpd CGI PATH includes /opt/bin" t_cfg_cgi_path_opt
 
-# Tarball stub — Task 4 fills in real bundling and redaction.
-tar -czf "$TARBALL" -C /tmp "qmanager_health_check_${JOB_ID}" 2>/dev/null \
-    && _finalize_status "complete" \
-    || _finalize_status "complete_no_bundle" "tarball build failed"
+if _build_bundle 2>>"$JOB_DIR/build.log"; then
+    _finalize_status "complete"
+else
+    _finalize_status "complete_no_bundle" "tarball build failed (see build.log)"
+fi
 
 exit 0
