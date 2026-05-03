@@ -779,21 +779,24 @@ install_udev_rules() {
     # Reload rules and trigger an add event on smd11 so the rule fires now
     # (rather than waiting for the next reboot or modem reset).
     if command -v udevadm >/dev/null 2>&1; then
-        udevadm control --reload-rules 2>/dev/null || warn "udevadm reload failed"
-        if [ -e /dev/smd11 ]; then
-            udevadm trigger --action=add /dev/smd11 2>/dev/null || true
-            udevadm settle --timeout=5 2>/dev/null || true
-            # Verify the rule actually applied
-            local mode owner
-            mode=$(stat -c '%a' /dev/smd11 2>/dev/null)
-            owner=$(stat -c '%U:%G' /dev/smd11 2>/dev/null)
-            if [ "$mode" = "660" ] && [ "$owner" = "root:dialout" ]; then
-                info "Rule applied: /dev/smd11 = $owner $mode"
+        if udevadm control --reload-rules 2>/dev/null; then
+            if [ -e /dev/smd11 ]; then
+                udevadm trigger --action=add /dev/smd11 2>/dev/null || true
+                udevadm settle --timeout=5 2>/dev/null || true
+                # Verify the rule actually applied
+                local mode owner
+                mode=$(stat -c '%a' /dev/smd11 2>/dev/null)
+                owner=$(stat -c '%U:%G' /dev/smd11 2>/dev/null)
+                if [ "$mode" = "660" ] && [ "$owner" = "root:dialout" ]; then
+                    info "Rule applied: /dev/smd11 = $owner $mode"
+                else
+                    warn "Rule did not apply cleanly: /dev/smd11 = $owner $mode (expected root:dialout 660)"
+                fi
             else
-                warn "Rule did not apply cleanly: /dev/smd11 = $owner $mode (expected root:dialout 660)"
+                info "/dev/smd11 not present yet — rule will fire when modem creates it"
             fi
         else
-            info "/dev/smd11 not present yet — rule will fire when modem creates it"
+            warn "udevadm reload failed — rule will activate at next reboot"
         fi
     else
         warn "udevadm not found — rule will activate at next reboot"
