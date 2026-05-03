@@ -8,18 +8,22 @@
 # commands via atcli_smd11.
 #
 # This runs in udev's minimal environment (no PATH, no controlling tty).
-# Use absolute paths and avoid anything that needs stdout/stderr.
+# We set PATH explicitly to cover both /bin and /usr/bin layouts (RM520N-GL
+# uses /bin; PRAIRE-derived platforms may use /usr/bin via usrmerge).
 #
 # Exit 0 unconditionally — udev logs RUN+= failures noisily and we do not
 # want a missing /dev node (race between event and our handler) to spam the
 # kernel log. The qmanager_setup oneshot covers any miss at boot.
 # =============================================================================
 
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+
 DEVICE="/dev/smd11"
 
-if [ -e "$DEVICE" ]; then
-    /bin/chown root:dialout "$DEVICE" 2>/dev/null
-    /bin/chmod 660 "$DEVICE" 2>/dev/null
+if [ -c "$DEVICE" ]; then
+    chown root:dialout "$DEVICE" 2>/dev/null
+    chmod 660 "$DEVICE" 2>/dev/null
 fi
 
 exit 0
