@@ -125,13 +125,39 @@ preflight() {
         die "This script must be run as root"
     fi
 
-    # Check we're on RM520N-GL
+    # Detect device model from firmware version file
     if [ -f /etc/quectel-project-version ]; then
-        local ver
+        local ver project_name
         ver=$(cat /etc/quectel-project-version 2>/dev/null)
-        info "Detected: RM520N-GL ($ver)"
+        project_name=$(grep -m1 "^Project Name:" /etc/quectel-project-version 2>/dev/null \
+            | sed 's/^Project Name:[[:space:]]*//' | tr -d '[:space:]')
+
+        case "$project_name" in
+            RM551E*)
+                die "Incompatible device: $project_name detected. Use the QManager RM551E installer."
+                ;;
+            RM520N*)
+                info "Detected: RM520N-GL ($ver)"
+                ;;
+            "")
+                warn "Cannot parse device model from firmware version — proceeding anyway"
+                ;;
+            *)
+                warn "Unrecognized device: $project_name"
+                printf "\n"
+                printf "%s\n" "$ver" | sed 's/^/    /'
+                printf "\n  This installer targets RM520N-GL devices. Your device may not be compatible.\n"
+                printf "  Do you want to proceed anyway? [y/N] "
+                local answer
+                read -r answer
+                case "$answer" in
+                    [Yy]|[Yy][Ee][Ss]) info "Proceeding on user request" ;;
+                    *) die "Installation aborted by user" ;;
+                esac
+                ;;
+        esac
     else
-        warn "Cannot detect RM520N-GL firmware version — proceeding anyway"
+        warn "Cannot detect firmware version (/etc/quectel-project-version not found) — proceeding anyway"
     fi
 
     # Remount root filesystem read-write if needed
