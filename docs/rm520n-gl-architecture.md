@@ -665,6 +665,31 @@ ln -sf "$UNIT_DIR/qmanager-ping.service" "$WANTS_DIR/qmanager-ping.service"
 
 > **NOTE:** Service files are installed to `/lib/systemd/system/` (persistent rootfs), NOT `/etc/systemd/system/` (which is tmpfs and does not survive reboots on this platform). The wants directory is `/lib/systemd/system/multi-user.target.wants/`.
 
+### `/dev/smd11` Permissions — udev Rule
+
+QManager owns `/etc/udev/rules.d/99-qmanager-smd11.rules`, which fires on
+every kernel `add` event for `smd11` and runs
+`/usr/lib/qmanager/qmanager_smd11_udev.sh`. The helper sets the device to
+`root:dialout` mode `660` so `www-data` (member of `dialout`) can open it
+via `atcli_smd11`.
+
+Why udev instead of a one-shot at boot:
+
+- On PRAIRE-derived platforms (e.g. RG502Q / RM502Q), the modem subsystem
+  re-creates `/dev/smd11` *after* `qmanager-setup.service` runs, so the
+  one-shot's `if [ -e /dev/smd11 ]` guard returns false and permissions are
+  never set. udev fires the moment the device node exists.
+- The rule also fires on in-session modem resets (firmware update,
+  watchcat-triggered modem-only restart), restoring permissions without
+  requiring a full system reboot.
+
+The `qmanager_setup` one-shot retains the same `chown`/`chmod` as a
+fallback in case udev hasn't loaded the rule yet. The two paths are
+idempotent and never conflict.
+
+The rule is removed by the uninstaller, which also reloads udev so the
+removal takes effect immediately.
+
 ---
 
 ## AT Command Transport Layer
