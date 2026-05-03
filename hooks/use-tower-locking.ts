@@ -285,8 +285,8 @@ export function useTowerLocking(): UseTowerLockingReturn {
           failoverPollRef.current = null;
         }
 
-        // If failover is armed (watcher spawned), update state + start polling.
-        // lock.sh auto-enables failover in config, so sync frontend state.
+        // If failover is armed (user enabled it before locking and the
+        // watcher was spawned), sync frontend state + start polling.
         if (data.failover_armed) {
           setConfig((prev) =>
             prev
