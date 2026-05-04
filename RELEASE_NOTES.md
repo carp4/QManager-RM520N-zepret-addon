@@ -1,6 +1,6 @@
 # 🚀 QManager RM520N BETA v0.1.5
 
-A Tower Locking quality-of-life upgrade, plus a major install/update/uninstall reliability overhaul that unlocks one-click OTA updates from this version forward.
+A new end-to-end System Health Check page and Tower Locking quality-of-life upgrades, paired with a major install/update/uninstall reliability overhaul (live step-by-step progress, crash detection, and self-healing permissions) that unlocks one-click OTA updates from this version forward.
 
 ## ✨ New Features
 
