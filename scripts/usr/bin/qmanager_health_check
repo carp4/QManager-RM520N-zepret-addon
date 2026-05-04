@@ -14,14 +14,34 @@
 
 set -u
 
+STATUS_FILE="/tmp/qmanager_health_check.json"
+LOCK_FILE="/tmp/qmanager_health_check.lock"
+LOG_FILE="/tmp/qmanager_health_check.log"
+
+# --- Clear mode: delete previous run artifacts ----------------------------
+# Invoked as `qmanager_health_check --clear`. Refuses while a job is running.
+if [ "${1:-}" = "--clear" ]; then
+    if [ -f "$STATUS_FILE" ]; then
+        existing_status=$(jq -r '.status // ""' "$STATUS_FILE" 2>/dev/null || echo "")
+        existing_pid=$(jq -r '.pid // 0' "$STATUS_FILE" 2>/dev/null || echo 0)
+        if [ "$existing_status" = "running" ] && [ "$existing_pid" -gt 0 ] && kill -0 "$existing_pid" 2>/dev/null; then
+            echo '{"success":false,"error":"job_running","detail":"a diagnostic job is currently running"}'
+            exit 1
+        fi
+    fi
+    rm -f "$STATUS_FILE" "$STATUS_FILE.tmp" "$LOCK_FILE" "$LOG_FILE"
+    rm -rf /tmp/qmanager_health_check_*/ 2>/dev/null
+    rm -f /tmp/qmanager_health_check_*.tar.gz 2>/dev/null
+    echo '{"success":true,"cleared":true}'
+    exit 0
+fi
+
 JOB_ID="${1:-}"
 if [ -z "$JOB_ID" ] || ! printf '%s' "$JOB_ID" | grep -qE '^[0-9]{8}-[0-9]{6}-[a-f0-9]{4}$'; then
     echo "ERROR: invalid or missing job_id" >&2
     exit 2
 fi
 
-STATUS_FILE="/tmp/qmanager_health_check.json"
-LOCK_FILE="/tmp/qmanager_health_check.lock"
 JOB_DIR="/tmp/qmanager_health_check_${JOB_ID}"
 TESTS_DIR="${JOB_DIR}/tests"
 TARBALL="/tmp/qmanager_health_check_${JOB_ID}.tar.gz"

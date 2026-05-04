@@ -16,8 +16,10 @@ export interface UseSystemHealthCheckReturn {
   job: HealthCheckJob | null;
   isRunning: boolean;
   isStarting: boolean;
+  isClearing: boolean;
   error: string | null;
   start: () => Promise<void>;
+  clear: () => Promise<void>;
   refresh: () => Promise<void>;
   fetchTestOutput: (testId: string) => Promise<string>;
   downloadBundle: () => void;
@@ -26,6 +28,7 @@ export interface UseSystemHealthCheckReturn {
 export function useSystemHealthCheck(): UseSystemHealthCheckReturn {
   const [job, setJob] = useState<HealthCheckJob | null>(null);
   const [isStarting, setIsStarting] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const aborted = useRef(false);
@@ -109,6 +112,25 @@ export function useSystemHealthCheck(): UseSystemHealthCheckReturn {
     }
   }, []);
 
+  const clear = useCallback(async () => {
+    setIsClearing(true);
+    setError(null);
+    try {
+      const res = await authFetch(`${CGI_BASE}/clear.sh`, { method: "POST" });
+      const data = await res.json();
+      if (aborted.current) return;
+      if (!data?.success) {
+        throw new Error(data?.detail || data?.error || "clear failed");
+      }
+      setJob(null);
+    } catch (e) {
+      if (aborted.current) return;
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      if (!aborted.current) setIsClearing(false);
+    }
+  }, []);
+
   const fetchTestOutput = useCallback(async (testId: string): Promise<string> => {
     const res = await authFetch(
       `${CGI_BASE}/status.sh?test_id=${encodeURIComponent(testId)}`,
@@ -132,8 +154,10 @@ export function useSystemHealthCheck(): UseSystemHealthCheckReturn {
     job,
     isRunning: !!isRunning,
     isStarting,
+    isClearing,
     error,
     start,
+    clear,
     refresh,
     fetchTestOutput,
     downloadBundle,

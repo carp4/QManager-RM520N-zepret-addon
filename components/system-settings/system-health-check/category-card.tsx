@@ -1,5 +1,6 @@
 "use client";
 
+import { motion } from "motion/react";
 import {
   Card,
   CardContent,
@@ -29,11 +30,22 @@ export default function CategoryCard({ category, tests, fetchOutput }: CategoryC
         <CardDescription>{CATEGORY_DESCRIPTIONS[category]}</CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="divide-y">
+        <motion.div
+          className="divide-y"
+          initial="hidden"
+          animate="visible"
+          variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.03, delayChildren: 0.05 } } }}
+        >
           {tests.map((t) => (
-            <TestRow key={t.id} test={t} fetchOutput={fetchOutput} />
+            <motion.div
+              key={t.id}
+              variants={{ hidden: { opacity: 0, x: -6 }, visible: { opacity: 1, x: 0 } }}
+              transition={{ duration: 0.18, ease: "easeOut" }}
+            >
+              <TestRow test={t} fetchOutput={fetchOutput} />
+            </motion.div>
           ))}
-        </div>
+        </motion.div>
       </CardContent>
     </Card>
   );

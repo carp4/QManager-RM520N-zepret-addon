@@ -26,8 +26,17 @@ const CATEGORY_ORDER: TestCategory[] = [
 ];
 
 export default function SystemHealthCheck() {
-  const { job, isRunning, isStarting, error, start, fetchTestOutput, downloadBundle } =
-    useSystemHealthCheck();
+  const {
+    job,
+    isRunning,
+    isStarting,
+    isClearing,
+    error,
+    start,
+    clear,
+    fetchTestOutput,
+    downloadBundle,
+  } = useSystemHealthCheck();
 
   // Group tests by category, then sort categories fail-first.
   const groups = useMemo(() => {
@@ -68,7 +77,9 @@ export default function SystemHealthCheck() {
           job={job}
           isRunning={isRunning}
           isStarting={isStarting}
+          isClearing={isClearing}
           onRun={start}
+          onClear={clear}
           onDownload={downloadBundle}
         />
         {error && (

@@ -14,18 +14,32 @@ import {
   Loader2Icon,
   PlayIcon,
   DownloadIcon,
+  Trash2Icon,
   CheckCircle2Icon,
   XCircleIcon,
   TriangleAlertIcon,
   MinusCircleIcon,
 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import type { HealthCheckJob } from "@/types/system-health-check";
 
 interface SummaryCardProps {
   job: HealthCheckJob | null;
   isRunning: boolean;
   isStarting: boolean;
+  isClearing: boolean;
   onRun: () => void;
+  onClear: () => void;
   onDownload: () => void;
 }
 
@@ -42,12 +56,15 @@ export default function SummaryCard({
   job,
   isRunning,
   isStarting,
+  isClearing,
   onRun,
+  onClear,
   onDownload,
 }: SummaryCardProps) {
   const hasRun = !!job;
   const summary = job?.summary;
   const canDownload = !!job && job.status === "complete" && !!job.tarball_path;
+  const canClear = hasRun && !isRunning && !isStarting;
 
   return (
     <Card>
@@ -76,6 +93,34 @@ export default function SummaryCard({
                 <DownloadIcon className="size-4" />
                 Download Bundle
               </Button>
+            )}
+            {canClear && (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="outline" disabled={isClearing}>
+                    {isClearing ? (
+                      <Loader2Icon className="size-4 animate-spin" />
+                    ) : (
+                      <Trash2Icon className="size-4" />
+                    )}
+                    Clear
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Clear diagnostic results?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This deletes the previous run, all per-test output files, and the downloadable bundle from the device. The page will reset to its empty state.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={onClear}>
+                      Clear results
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             )}
           </div>
         </CardAction>

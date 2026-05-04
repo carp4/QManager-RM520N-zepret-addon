@@ -200,14 +200,19 @@ mount -o remount,rw / 2>/dev/null || true
 
 step "Stopping QManager services and daemons"
 
-# Filesystem-driven: stop every installed qmanager-*.service unit
+# Filesystem-driven: collect every installed qmanager-*.service unit and stop
+# them in a single batched call so systemd shuts them down in parallel.
+_units=""
 for unit_file in "$SYSTEMD_DIR"/qmanager-*.service; do
     [ -f "$unit_file" ] || continue
-    svc=$(basename "$unit_file" .service)
-    systemctl stop "$svc" 2>/dev/null || true
+    _units="$_units $(basename "$unit_file" .service)"
 done
 # Also stop lighttpd (QManager owns its service file; restored below)
-systemctl stop lighttpd 2>/dev/null || true
+if [ -n "$_units" ]; then
+    systemctl stop $_units lighttpd 2>/dev/null || true
+else
+    systemctl stop lighttpd 2>/dev/null || true
+fi
 
 info "Systemd services stopped"
 
