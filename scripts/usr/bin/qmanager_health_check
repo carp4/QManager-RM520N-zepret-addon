@@ -186,12 +186,19 @@ _test_catalog_pending() {
 # Status: pass | fail | warn | skip
 
 _check_bin() {
-    # _check_bin <name> <path> <warn-if-missing?>
-    local name="$1" path="$2" soft="${3:-0}"
+    # _check_bin <name> <path> <warn-if-missing?> [version-cmd]
+    # version-cmd defaults to "--version". Pass "" to skip version probing
+    # entirely (for binaries like atcli_smd11/sms_tool/qcmd that interpret
+    # arbitrary argv as AT commands and hang waiting for a modem reply).
+    local name="$1" path="$2" soft="${3:-0}" vflag="${4---version}"
     if [ -x "$path" ]; then
-        local v
-        v=$("$path" --version 2>&1 | head -1 || true)
-        echo "$path: $v" >> "$OUTPUT_FILE"
+        local v=""
+        if [ -n "$vflag" ]; then
+            # timeout-bounded: a binary with no --version handler may try to
+            # use the argument as input and block forever.
+            v=$(timeout 2 "$path" "$vflag" </dev/null 2>&1 | head -1 || true)
+        fi
+        echo "$path: ${v:-(present, no version probe)}" >> "$OUTPUT_FILE"
         echo "pass|${v:-present}"
     elif command -v "$name" >/dev/null 2>&1; then
         local resolved; resolved=$(command -v "$name")
@@ -204,9 +211,11 @@ _check_bin() {
     fi
 }
 
-t_bin_atcli()      { _check_bin atcli_smd11 /usr/bin/atcli_smd11 0; }
-t_bin_sms_tool()   { _check_bin sms_tool    /usr/bin/sms_tool    0; }
-t_bin_qcmd()       { _check_bin qcmd        /usr/bin/qcmd        0; }
+# Modem-side binaries: skip version probe — they pass argv as AT commands
+# and block forever waiting on /dev/smd11. Existence + executable bit only.
+t_bin_atcli()      { _check_bin atcli_smd11 /usr/bin/atcli_smd11 0 ""; }
+t_bin_sms_tool()   { _check_bin sms_tool    /usr/bin/sms_tool    0 ""; }
+t_bin_qcmd()       { _check_bin qcmd        /usr/bin/qcmd        0 ""; }
 t_bin_jq()         { _check_bin jq          /opt/bin/jq          0; }
 t_bin_curl()       { _check_bin curl        /opt/bin/curl        0; }
 t_bin_openssl()    { _check_bin openssl     /opt/bin/openssl     0; }
