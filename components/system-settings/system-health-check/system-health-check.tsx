@@ -1,6 +1,10 @@
 "use client";
 
 import { useMemo } from "react";
+import { motion } from "motion/react";
+import { StethoscopeIcon, ArrowUpIcon } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { useSystemHealthCheck } from "@/hooks/use-system-health-check";
 import SummaryCard from "./summary-card";
 import CategoryCard from "./category-card";
@@ -59,7 +63,7 @@ export default function SystemHealthCheck() {
           Diagnose QManager subsystems and download a redacted bundle for support.
         </p>
       </div>
-      <div className="grid grid-cols-1 grid-flow-row gap-4">
+      <div className="flex flex-col gap-4">
         <SummaryCard
           job={job}
           isRunning={isRunning}
@@ -70,19 +74,54 @@ export default function SystemHealthCheck() {
         {error && (
           <div className="text-sm text-destructive">Error: {error}</div>
         )}
-        {groups.map((g) => (
-          <CategoryCard
-            key={g.category}
-            category={g.category}
-            tests={g.tests}
-            fetchOutput={fetchTestOutput}
-          />
-        ))}
+        {groups.length > 0 && (
+          <motion.div
+            key={job?.job_id ?? "no-job"}
+            className="grid grid-cols-1 @4xl/main:grid-cols-2 gap-4 items-start"
+            initial="hidden"
+            animate="visible"
+            variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.05 } } }}
+          >
+            {groups.map((g) => (
+              <motion.div
+                key={g.category}
+                variants={{ hidden: { opacity: 0, y: 8 }, visible: { opacity: 1, y: 0 } }}
+                transition={{ duration: 0.2, ease: "easeOut" }}
+              >
+                <CategoryCard
+                  category={g.category}
+                  tests={g.tests}
+                  fetchOutput={fetchTestOutput}
+                />
+              </motion.div>
+            ))}
+          </motion.div>
+        )}
         {!job && (
-          <div className="text-sm text-muted-foreground text-center py-8">
-            Click <strong>Run Diagnostics</strong> above to start a health check.
-            All categories ({CATEGORY_ORDER.map((c) => CATEGORY_LABELS[c]).join(", ")}) will be probed.
-          </div>
+          <Card>
+            <CardContent className="flex flex-col items-center text-center gap-4 py-10">
+              <div className="flex size-12 items-center justify-center rounded-full bg-muted">
+                <StethoscopeIcon className="size-6 text-muted-foreground" />
+              </div>
+              <div className="space-y-1.5">
+                <h3 className="text-base font-semibold">Ready to run diagnostics</h3>
+                <p className="text-sm text-muted-foreground max-w-md">
+                  Probes every QManager subsystem and packages the results into a redacted bundle you can share with support.
+                </p>
+              </div>
+              <div className="flex flex-wrap justify-center gap-1.5 max-w-lg">
+                {CATEGORY_ORDER.map((c) => (
+                  <Badge key={c} variant="outline" className="text-muted-foreground">
+                    {CATEGORY_LABELS[c]}
+                  </Badge>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground inline-flex items-center gap-1">
+                <ArrowUpIcon className="size-3" />
+                Use <span className="font-medium">Run Diagnostics</span> above to begin
+              </p>
+            </CardContent>
+          </Card>
         )}
       </div>
     </div>

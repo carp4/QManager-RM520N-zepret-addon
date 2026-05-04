@@ -643,23 +643,24 @@ stop_services() {
     touch "$WATCHCAT_LOCK"  # re-touch after SIGKILL as defense in depth
 
     # Stop socat-at-bridge services if present from previous installations
+    # (idempotent — systemctl stop is a no-op for inactive/missing units)
+    systemctl stop socat-smd11 socat-smd11-to-ttyIN socat-smd11-from-ttyIN 2>/dev/null || true
     for svc in socat-smd11 socat-smd11-to-ttyIN socat-smd11-from-ttyIN; do
-        if systemctl is-active "$svc" >/dev/null 2>&1; then
-            systemctl stop "$svc" 2>/dev/null || true
-            rm -f "$WANTS_DIR/${svc}.service"
-            info "Stopped conflicting service: $svc"
-        fi
+        rm -f "$WANTS_DIR/${svc}.service"
     done
 
-    # Stop all qmanager-*.service units (watchcat already stopped)
+    # Collect all qmanager-* units (excluding watchcat — already stopped above)
+    _units=""
     for unit in "$SYSTEMD_DIR"/qmanager-*.service; do
         [ -f "$unit" ] || continue
         svc=$(basename "$unit" .service)
-        case "$svc" in
-            qmanager-watchcat) continue ;;
-        esac
-        systemctl stop "$svc" 2>/dev/null || true
+        [ "$svc" = "qmanager-watchcat" ] && continue
+        _units="$_units $svc"
     done
+    # Single batched stop — systemd processes these in parallel internally
+    if [ -n "$_units" ]; then
+        systemctl stop $_units 2>/dev/null || true
+    fi
 
     # SIGTERM all qmanager_* processes (update and auto_update excluded —
     # qmanager_update is our own parent; qmanager_auto_update owns the outer loop)

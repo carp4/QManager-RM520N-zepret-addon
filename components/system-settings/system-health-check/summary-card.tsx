@@ -2,6 +2,7 @@
 
 import {
   Card,
+  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
@@ -55,38 +56,7 @@ export default function SummaryCard({
         <CardDescription>
           Run a full diagnostic of binaries, permissions, AT transport, services, and configuration. Download the bundle to share with support.
         </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="flex flex-col @2xl/main:flex-row @2xl/main:items-center @2xl/main:justify-between gap-4">
-          <div className="flex flex-wrap items-center gap-2">
-            {hasRun && summary ? (
-              <>
-                <Badge variant="outline" className="bg-success/15 text-success hover:bg-success/20 border-success/30">
-                  <CheckCircle2Icon className="size-3" />
-                  {summary.pass} pass
-                </Badge>
-                <Badge variant="outline" className="bg-destructive/15 text-destructive hover:bg-destructive/20 border-destructive/30">
-                  <XCircleIcon className="size-3" />
-                  {summary.fail} fail
-                </Badge>
-                <Badge variant="outline" className="bg-warning/15 text-warning hover:bg-warning/20 border-warning/30">
-                  <TriangleAlertIcon className="size-3" />
-                  {summary.warn} warn
-                </Badge>
-                <Badge variant="outline" className="bg-muted/50 text-muted-foreground border-muted-foreground/30">
-                  <MinusCircleIcon className="size-3" />
-                  {summary.skip} skip
-                </Badge>
-                {job?.started_at && (
-                  <span className="text-xs text-muted-foreground ml-2">
-                    {isRunning ? "Started " : "Last run "} {formatRelative(job.started_at)}
-                  </span>
-                )}
-              </>
-            ) : (
-              <span className="text-sm text-muted-foreground">No diagnostics run yet.</span>
-            )}
-          </div>
+        <CardAction>
           <div className="flex items-center gap-2">
             <Button onClick={onRun} disabled={isRunning || isStarting}>
               {isRunning || isStarting ? (
@@ -108,6 +78,37 @@ export default function SummaryCard({
               </Button>
             )}
           </div>
+        </CardAction>
+      </CardHeader>
+      <CardContent>
+        <div className="flex flex-wrap items-center gap-2">
+          {hasRun && summary ? (
+            <>
+              <Badge variant="outline" className="bg-success/15 text-success hover:bg-success/20 border-success/30">
+                <CheckCircle2Icon className="size-3" />
+                {summary.pass} pass
+              </Badge>
+              <Badge variant="outline" className="bg-destructive/15 text-destructive hover:bg-destructive/20 border-destructive/30">
+                <XCircleIcon className="size-3" />
+                {summary.fail} fail
+              </Badge>
+              <Badge variant="outline" className="bg-warning/15 text-warning hover:bg-warning/20 border-warning/30">
+                <TriangleAlertIcon className="size-3" />
+                {summary.warn} warn
+              </Badge>
+              <Badge variant="outline" className="bg-muted/50 text-muted-foreground border-muted-foreground/30">
+                <MinusCircleIcon className="size-3" />
+                {summary.skip} skip
+              </Badge>
+              {job?.started_at && (
+                <span className="text-xs text-muted-foreground ml-2">
+                  {isRunning ? "Started " : "Last run "} {formatRelative(job.started_at)}
+                </span>
+              )}
+            </>
+          ) : (
+            <span className="text-sm text-muted-foreground">No diagnostics run yet.</span>
+          )}
         </div>
       </CardContent>
     </Card>

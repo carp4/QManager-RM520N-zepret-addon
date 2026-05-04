@@ -28,7 +28,7 @@ export default function CategoryCard({ category, tests, fetchOutput }: CategoryC
         <CardTitle>{CATEGORY_LABELS[category]}</CardTitle>
         <CardDescription>{CATEGORY_DESCRIPTIONS[category]}</CardDescription>
       </CardHeader>
-      <CardContent className="pt-0">
+      <CardContent>
         <div className="divide-y">
           {tests.map((t) => (
             <TestRow key={t.id} test={t} fetchOutput={fetchOutput} />
