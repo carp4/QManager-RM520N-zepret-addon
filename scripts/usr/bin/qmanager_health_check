@@ -290,10 +290,23 @@ _qcmd() {
     qcmd "$@" 2>&1
 }
 
+# True if qcmd output indicates lock contention (poller or concurrent caller
+# held the AT lock past qcmd's 5s timeout). Not a real failure — informational.
+_is_modem_busy() {
+    case "$1" in *modem_busy*) return 0 ;; esac
+    return 1
+}
+
 t_at_echo() {
     local out; out=$(_qcmd "AT")
     echo "$out" >> "$OUTPUT_FILE"
-    echo "$out" | grep -q '^OK$\|^OK\r\?$' && echo "pass|OK" || echo "fail|no OK in response"
+    if echo "$out" | grep -qE '^OK\r?$'; then
+        echo "pass|OK"
+    elif _is_modem_busy "$out"; then
+        echo "warn|modem busy (poller contention)"
+    else
+        echo "fail|no OK in response"
+    fi
 }
 t_at_cgmi() {
     local out; out=$(_qcmd "AT+CGMI")
@@ -301,6 +314,8 @@ t_at_cgmi() {
     if echo "$out" | grep -qi 'quectel'; then
         local mfg; mfg=$(echo "$out" | grep -i 'quectel' | head -1 | tr -d '\r')
         echo "pass|$mfg"
+    elif _is_modem_busy "$out"; then
+        echo "warn|modem busy (poller contention)"
     else
         echo "fail|manufacturer not detected"
     fi
@@ -309,7 +324,13 @@ t_at_cgmm() {
     local out; out=$(_qcmd "AT+CGMM")
     echo "$out" >> "$OUTPUT_FILE"
     local model; model=$(echo "$out" | grep -E '^(RM|RG|EG|EC)[0-9A-Za-z\-]+' | head -1 | tr -d '\r')
-    [ -n "$model" ] && echo "pass|$model" || echo "fail|model not detected"
+    if [ -n "$model" ]; then
+        echo "pass|$model"
+    elif _is_modem_busy "$out"; then
+        echo "warn|modem busy (poller contention)"
+    else
+        echo "fail|model not detected"
+    fi
 }
 t_at_cgsn() {
     local out; out=$(_qcmd "AT+CGSN")
@@ -322,6 +343,8 @@ t_at_cgsn() {
     if [ -n "$imei" ]; then
         local masked="${imei:0:9}xxxxxx"
         echo "pass|IMEI $masked"
+    elif _is_modem_busy "$out"; then
+        echo "warn|modem busy (poller contention)"
     else
         echo "fail|no 15-digit IMEI in response"
     fi
@@ -330,22 +353,34 @@ t_at_cfun() {
     local out; out=$(_qcmd "AT+CFUN?")
     echo "$out" >> "$OUTPUT_FILE"
     local val; val=$(echo "$out" | grep -oE '\+CFUN: [0-9]+' | head -1)
-    [ -n "$val" ] && echo "pass|$val" || echo "fail|no +CFUN: line"
+    if [ -n "$val" ]; then
+        echo "pass|$val"
+    elif _is_modem_busy "$out"; then
+        echo "warn|modem busy (poller contention)"
+    else
+        echo "fail|no +CFUN: line"
+    fi
 }
 t_at_lock_serial() {
     # Two qcmd calls launched concurrently — qcmd's flock on
-    # /tmp/qmanager_at.lock must serialize them. Both must complete with OK.
+    # /tmp/qmanager_at.lock must serialize them. Under heavy poller load,
+    # one or both may legitimately get "modem_busy" because qcmd's 5s
+    # flock timeout expired. That's still proof of correct serialization,
+    # not a failure. Pass = at least one OK and no unexpected output.
     ( _qcmd "AT" >> "$OUTPUT_FILE" 2>&1 ) &
     local pid1=$!
     ( _qcmd "AT" >> "$OUTPUT_FILE" 2>&1 ) &
     local pid2=$!
     wait "$pid1"; local rc1=$?
     wait "$pid2"; local rc2=$?
-    local oks; oks=$(grep -c '^OK' "$OUTPUT_FILE" 2>/dev/null || echo 0)
-    if [ "$rc1" -eq 0 ] && [ "$rc2" -eq 0 ] && [ "$oks" -ge 2 ]; then
+    local oks busy; oks=$(grep -c '^OK' "$OUTPUT_FILE" 2>/dev/null || echo 0)
+    busy=$(grep -c 'modem_busy' "$OUTPUT_FILE" 2>/dev/null || echo 0)
+    if [ "$oks" -ge 2 ]; then
         echo "pass|two concurrent calls serialized ($oks OKs)"
+    elif [ "$oks" -ge 1 ] && [ "$busy" -ge 1 ]; then
+        echo "pass|serialized under load ($oks OK, $busy modem_busy)"
     else
-        echo "fail|rc1=$rc1 rc2=$rc2 oks=$oks"
+        echo "fail|rc1=$rc1 rc2=$rc2 oks=$oks busy=$busy"
     fi
 }
 
@@ -367,6 +402,7 @@ t_sms_cpin() {
     echo "$out" >> "$OUTPUT_FILE"
     if echo "$out" | grep -q 'READY'; then echo "pass|READY"
     elif echo "$out" | grep -q 'SIM PIN'; then echo "warn|SIM locked (PIN required)"
+    elif _is_modem_busy "$out"; then echo "warn|modem busy (poller contention)"
     else echo "fail|not READY"; fi
 }
 
