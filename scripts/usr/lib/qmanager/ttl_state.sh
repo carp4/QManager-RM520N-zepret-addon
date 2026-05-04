@@ -78,7 +78,7 @@ ttl_state_read_persisted() {
 ttl_state_read_live() {
     local ttl=0 hl=0 val
 
-    val=$(run_iptables -w 5 -t mangle -vnL POSTROUTING -n 2>/dev/null \
+    val=$(run_iptables -w 5 -t mangle -vnL POSTROUTING 2>/dev/null \
         | grep -io 'TTL set to [0-9]*' \
         | head -n1 \
         | awk '{print $4}')
@@ -86,7 +86,7 @@ ttl_state_read_live() {
         ttl="$val"
     fi
 
-    val=$(run_ip6tables -w 5 -t mangle -vnL POSTROUTING -n 2>/dev/null \
+    val=$(run_ip6tables -w 5 -t mangle -vnL POSTROUTING 2>/dev/null \
         | grep -io 'HL set to [0-9]*' \
         | head -n1 \
         | awk '{print $4}')
@@ -147,21 +147,36 @@ ttl_state_apply() {
         return 1
     fi
 
-    # --- Clear existing rules ---
-    local live
-    live=$(ttl_state_read_live)
-    local live_ttl live_hl
-    live_ttl=$(printf '%s' "$live" | cut -d' ' -f1)
-    live_hl=$(printf '%s' "$live" | cut -d' ' -f2)
-
-    if [ "$live_ttl" -gt 0 ] 2>/dev/null; then
+    # --- Drain ALL existing TTL/HL rules on rmnet+ ---
+    # iptables -D removes one rule per invocation. If duplicates exist (from
+    # past racy applies, manual edits, or boot+CGI double-apply), a single -D
+    # leaves stragglers that lie to the next read_live. Loop until empty.
+    # Bound iterations to avoid infinite loops if delete silently no-ops.
+    local val i=0
+    while [ "$i" -lt 32 ]; do
+        val=$(run_iptables -w 5 -t mangle -vnL POSTROUTING 2>/dev/null \
+            | grep -io 'TTL set to [0-9]*' \
+            | head -n1 \
+            | awk '{print $4}')
+        _ttl_is_int "$val" || break
+        [ "$val" -eq 0 ] && break
         run_iptables -w 5 -t mangle -D POSTROUTING \
-            -o rmnet+ -j TTL --ttl-set "$live_ttl" 2>/dev/null || true
-    fi
-    if [ "$live_hl" -gt 0 ] 2>/dev/null; then
+            -o rmnet+ -j TTL --ttl-set "$val" 2>/dev/null || break
+        i=$((i + 1))
+    done
+
+    i=0
+    while [ "$i" -lt 32 ]; do
+        val=$(run_ip6tables -w 5 -t mangle -vnL POSTROUTING 2>/dev/null \
+            | grep -io 'HL set to [0-9]*' \
+            | head -n1 \
+            | awk '{print $4}')
+        _ttl_is_int "$val" || break
+        [ "$val" -eq 0 ] && break
         run_ip6tables -w 5 -t mangle -D POSTROUTING \
-            -o rmnet+ -j HL --hl-set "$live_hl" 2>/dev/null || true
-    fi
+            -o rmnet+ -j HL --hl-set "$val" 2>/dev/null || break
+        i=$((i + 1))
+    done
 
     # --- Insert new rules (skip if value is 0) ---
     if [ "$ttl" -gt 0 ]; then
