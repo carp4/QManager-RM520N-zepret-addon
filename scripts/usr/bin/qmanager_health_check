@@ -135,7 +135,6 @@ _test_catalog_pending() {
         {id:"bin.jq",             category:"binaries", label:"jq present",                  status:"pending", duration_ms:0, detail:""},
         {id:"bin.curl",           category:"binaries", label:"curl present",                status:"pending", duration_ms:0, detail:""},
         {id:"bin.openssl",        category:"binaries", label:"openssl present",             status:"pending", duration_ms:0, detail:""},
-        {id:"bin.xmlstarlet",     category:"binaries", label:"xmlstarlet present",          status:"pending", duration_ms:0, detail:""},
         {id:"bin.speedtest",      category:"binaries", label:"speedtest CLI",               status:"pending", duration_ms:0, detail:""},
         {id:"bin.tailscale",      category:"binaries", label:"tailscale binary",            status:"pending", duration_ms:0, detail:""},
         {id:"bin.msmtp",          category:"binaries", label:"msmtp binary",                status:"pending", duration_ms:0, detail:""},
@@ -219,7 +218,6 @@ t_bin_qcmd()       { _check_bin qcmd        /usr/bin/qcmd        0 ""; }
 t_bin_jq()         { _check_bin jq          /opt/bin/jq          0; }
 t_bin_curl()       { _check_bin curl        /opt/bin/curl        0; }
 t_bin_openssl()    { _check_bin openssl     /opt/bin/openssl     0; }
-t_bin_xmlstarlet() { _check_bin xmlstarlet  /opt/bin/xmlstarlet  0; }
 t_bin_speedtest()  { _check_bin speedtest   /usrdata/root/bin/speedtest 1; }
 t_bin_tailscale() {
     if [ -x /usrdata/tailscale/tailscale ]; then
@@ -309,7 +307,7 @@ _is_modem_busy() {
 t_at_echo() {
     local out; out=$(_qcmd "AT")
     echo "$out" >> "$OUTPUT_FILE"
-    if echo "$out" | grep -qE '^OK\r?$'; then
+    if echo "$out" | tr -d '\r' | grep -qE '^OK$'; then
         echo "pass|OK"
     elif _is_modem_busy "$out"; then
         echo "warn|modem busy (poller contention)"
@@ -320,8 +318,8 @@ t_at_echo() {
 t_at_cgmi() {
     local out; out=$(_qcmd "AT+CGMI")
     echo "$out" >> "$OUTPUT_FILE"
-    if echo "$out" | grep -qi 'quectel'; then
-        local mfg; mfg=$(echo "$out" | grep -i 'quectel' | head -1 | tr -d '\r')
+    if echo "$out" | tr -d '\r' | grep -qi 'quectel'; then
+        local mfg; mfg=$(echo "$out" | tr -d '\r' | grep -i 'quectel' | head -1)
         echo "pass|$mfg"
     elif _is_modem_busy "$out"; then
         echo "warn|modem busy (poller contention)"
@@ -332,7 +330,7 @@ t_at_cgmi() {
 t_at_cgmm() {
     local out; out=$(_qcmd "AT+CGMM")
     echo "$out" >> "$OUTPUT_FILE"
-    local model; model=$(echo "$out" | grep -E '^(RM|RG|EG|EC)[0-9A-Za-z\-]+' | head -1 | tr -d '\r')
+    local model; model=$(echo "$out" | tr -d '\r' | grep -E '^(RM|RG|EG|EC)[0-9A-Za-z\-]+' | head -1)
     if [ -n "$model" ]; then
         echo "pass|$model"
     elif _is_modem_busy "$out"; then
@@ -343,7 +341,7 @@ t_at_cgmm() {
 }
 t_at_cgsn() {
     local out; out=$(_qcmd "AT+CGSN")
-    local imei; imei=$(echo "$out" | grep -E '^[0-9]{15}$' | head -1)
+    local imei; imei=$(echo "$out" | tr -d '\r' | grep -E '^[0-9]{15}$' | head -1)
     # Mask IMEI in raw output before writing to bundle. Both UI detail and
     # tarball file see only the masked form.
     local masked_out
@@ -361,7 +359,7 @@ t_at_cgsn() {
 t_at_cfun() {
     local out; out=$(_qcmd "AT+CFUN?")
     echo "$out" >> "$OUTPUT_FILE"
-    local val; val=$(echo "$out" | grep -oE '\+CFUN: [0-9]+' | head -1)
+    local val; val=$(echo "$out" | tr -d '\r' | grep -oE '\+CFUN: [0-9]+' | head -1)
     if [ -n "$val" ]; then
         echo "pass|$val"
     elif _is_modem_busy "$out"; then
@@ -412,16 +410,28 @@ t_sms_flock() {
 t_sms_cpin() {
     local out; out=$(_qcmd "AT+CPIN?")
     echo "$out" >> "$OUTPUT_FILE"
-    if echo "$out" | grep -q 'READY'; then echo "pass|READY"
-    elif echo "$out" | grep -q 'SIM PIN'; then echo "warn|SIM locked (PIN required)"
+    local clean; clean=$(echo "$out" | tr -d '\r')
+    if echo "$clean" | grep -q 'READY'; then echo "pass|READY"
+    elif echo "$clean" | grep -q 'SIM PIN'; then echo "warn|SIM locked (PIN required)"
     elif _is_modem_busy "$out"; then echo "warn|modem busy (poller contention)"
     else echo "fail|not READY"; fi
 }
 
 t_sudo_list() {
-    local out; out=$(sudo -n -l 2>&1)
+    # When invoked as root (CGI -> sudo -> us), `sudo -l` shows root's
+    # own entries (`(ALL) ALL`), not www-data's qmanager helpers. Check
+    # what www-data is actually allowed to run instead — that's the
+    # principal QManager CGI scripts use.
+    local out
+    if [ "$(id -u)" = "0" ]; then
+        out=$(sudo -n -l -U www-data 2>&1)
+    else
+        out=$(sudo -n -l 2>&1)
+    fi
     echo "$out" >> "$OUTPUT_FILE"
     if echo "$out" | grep -q 'qmanager'; then echo "pass|qmanager helpers visible"
+    elif [ -f /etc/sudoers.d/qmanager ] && grep -q 'qmanager' /etc/sudoers.d/qmanager 2>/dev/null; then
+        echo "warn|sudoers file present but no helpers in -l output"
     else echo "fail|no qmanager rules visible"; fi
 }
 
@@ -527,10 +537,10 @@ _cfg_validate_json() {
 t_cfg_sms_alerts()   { _cfg_validate_json /etc/qmanager/sms_alerts.json; }
 t_cfg_email_alerts() { _cfg_validate_json /etc/qmanager/email_alerts.json; }
 t_cfg_poller_cache_fresh() {
-    local f=/tmp/qmanager_poller_cache.json
-    if [ ! -f "$f" ]; then echo "fail|missing"; return; fi
+    local f=/tmp/qmanager_status.json
+    if [ ! -f "$f" ]; then echo "fail|missing $f" >> "$OUTPUT_FILE"; echo "fail|missing"; return; fi
     local age; age=$(( $(date +%s) - $(stat -c %Y "$f") ))
-    echo "age=${age}s" >> "$OUTPUT_FILE"
+    echo "path=$f age=${age}s" >> "$OUTPUT_FILE"
     if [ "$age" -lt 60 ]; then echo "pass|age ${age}s"
     elif [ "$age" -lt 300 ]; then echo "warn|age ${age}s (>60s)"
     else echo "fail|age ${age}s (poller may be stalled)"; fi
@@ -676,7 +686,7 @@ _build_bundle() {
     _collect_configs    "$stage/config"
     _collect_logs       "$stage/logs"
     cp -r "$TESTS_DIR/." "$stage/tests/" 2>/dev/null || true
-    [ -f /tmp/qmanager_poller_cache.json ] && cp /tmp/qmanager_poller_cache.json "$stage/poller-cache.json" 2>/dev/null
+    [ -f /tmp/qmanager_status.json ] && cp /tmp/qmanager_status.json "$stage/poller-cache.json" 2>/dev/null
 
     _redact_tree "$stage"
     _build_report_json "$stage/report.json"
@@ -753,7 +763,6 @@ _run_test bin.qcmd            binaries     "qcmd wrapper present"               
 _run_test bin.jq              binaries     "jq present"                            t_bin_jq
 _run_test bin.curl            binaries     "curl present"                          t_bin_curl
 _run_test bin.openssl         binaries     "openssl present"                       t_bin_openssl
-_run_test bin.xmlstarlet      binaries     "xmlstarlet present"                    t_bin_xmlstarlet
 _run_test bin.speedtest       binaries     "speedtest CLI"                         t_bin_speedtest
 _run_test bin.tailscale       binaries     "tailscale binary"                      t_bin_tailscale
 _run_test bin.msmtp           binaries     "msmtp binary"                          t_bin_msmtp
