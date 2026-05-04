@@ -201,9 +201,9 @@ install_tree() {
     rm -rf "$dst"
     mkdir -p "$dst"
     cp -r "$src"/. "$dst/"
-    find "$dst" -name "*.sh" -exec chmod 755 {} \;
-    find "$dst" -not -name "*.sh" -type f -exec chmod 644 {} \;
-    # Strip CRLF from all text files
+    # Strip CRLF first — the .cr-rewrite + mv pattern below replaces files
+    # with new ones whose mode comes from umask (typically 644). Apply final
+    # modes AFTER stripping so the executable bit can't be silently wiped.
     find "$dst" -type f -not -name "*.sh" | while IFS= read -r f; do
         if ! head -c 4 "$f" 2>/dev/null | grep -q $'\x7fELF'; then
             tr -d '\r' < "$f" > "${f}.cr" && mv "${f}.cr" "$f" 2>/dev/null || true
@@ -212,6 +212,9 @@ install_tree() {
     find "$dst" -name "*.sh" | while IFS= read -r f; do
         tr -d '\r' < "$f" > "${f}.cr" && mv "${f}.cr" "$f" 2>/dev/null || true
     done
+    # Final mode pass — must be last to survive the CRLF rewrites above.
+    find "$dst" -name "*.sh" -exec chmod 755 {} \;
+    find "$dst" -not -name "*.sh" -type f -exec chmod 644 {} \;
 }
 
 # --- Two-phase Version Write -------------------------------------------------
@@ -787,6 +790,9 @@ install_backend() {
     # --- CGI endpoints ---
     if [ -d "$SRC_SCRIPTS/www/cgi-bin/quecmanager" ]; then
         install_tree "$SRC_SCRIPTS/www/cgi-bin/quecmanager" "$CGI_DIR"
+        # Defensive chmod — install_tree should already have set 755/644, but
+        # any silent mode regression here means lighttpd 500s on every request.
+        find "$CGI_DIR" -name "*.sh" -type f -exec chmod 755 {} \;
         find "$CGI_DIR" -name "*.json" -exec chmod 644 {} \;
         local cgi_count
         cgi_count=$(find "$CGI_DIR" -name "*.sh" -type f | wc -l | tr -d ' ')
