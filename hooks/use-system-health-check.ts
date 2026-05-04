@@ -41,9 +41,11 @@ export function useSystemHealthCheck(): UseSystemHealthCheckReturn {
   const refresh = useCallback(async () => {
     try {
       const next = await fetchStatus();
+      if (aborted.current) return;
       setJob(next);
       setError(null);
     } catch (e) {
+      if (aborted.current) return;
       setError(e instanceof Error ? e.message : String(e));
     }
   }, [fetchStatus]);
@@ -80,16 +82,32 @@ export function useSystemHealthCheck(): UseSystemHealthCheckReturn {
     try {
       const res = await authFetch(`${CGI_BASE}/run.sh`, { method: "POST" });
       const data = (await res.json()) as RunResponse;
-      if (!data.success) throw new Error(data.detail || data.error || "run failed");
-      // Reset job to a fresh "running" placeholder so UI flips immediately.
-      setJob((prev) => (prev ? { ...prev, status: "running" } : prev));
-      await refresh();
+      if (aborted.current) return;
+      if (!data.success || !data.job_id) {
+        throw new Error(data.detail || data.error || "run failed");
+      }
+      // Seed a synthetic "running" job so UI flips immediately and the
+      // polling effect starts. The backend's real status overwrites this
+      // on the next 500ms tick — no race with status.sh writing late.
+      setJob({
+        job_id: data.job_id,
+        status: "running",
+        started_at: data.started_at ?? Math.floor(Date.now() / 1000),
+        finished_at: null,
+        pid: 0,
+        summary: { pass: 0, fail: 0, warn: 0, skip: 0, total: 0 },
+        tests: [],
+        tarball_path: null,
+        tarball_size: null,
+        error: null,
+      });
     } catch (e) {
+      if (aborted.current) return;
       setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setIsStarting(false);
+      if (!aborted.current) setIsStarting(false);
     }
-  }, [refresh]);
+  }, []);
 
   const fetchTestOutput = useCallback(async (testId: string): Promise<string> => {
     const res = await authFetch(
