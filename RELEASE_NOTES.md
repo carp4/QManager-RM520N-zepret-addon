@@ -4,6 +4,7 @@ A Tower Locking quality-of-life upgrade, plus a major install/update/uninstall r
 
 ## ✨ New Features
 
+- **System Health Check.** A new page under System Settings that runs end-to-end diagnostics across binaries, permissions, AT transport, SMS, sudoers, systemd services, network, and configuration. Failed and warning rows expand to show the captured output, and a one-click download produces a redacted `.tar.gz` bundle ready for support handoff.
 - **Simple Mode for Tower Locking (LTE & NR-SA).** A per-card toggle that swaps the Channel field for a dropdown of currently visible carriers from `AT+QCAINFO` — band, channel, PCI, and RSRP at a glance. NR auto-fills band and SCS; LTE dedups picks across all 3 slots. Falls back to manual entry when no carriers are visible.
 - **Live step-by-step install progress in the UI.** The Software Update card now streams each install step as it happens (Stopping services → Installing backend → Cleaning up legacy → Enabling services → …) instead of just "Installing update…". Same status surfaces in the staged-download flow.
 - **Crash detection for interrupted updates.** If an install was killed mid-flight (power loss, OOM, accidental reboot), the next update check banners "Previous update did not complete cleanly" so you know to investigate before continuing.
