@@ -1507,7 +1507,20 @@ print_summary() {
 
     printf "\n"
     printf "  Open in browser:  ${BOLD}https://192.168.225.1${NC}\n"
-    printf "  Web console:      ${BOLD}https://192.168.225.1/console${NC}\n\n"
+    printf "  Web console:      ${BOLD}https://192.168.225.1/console${NC}\n"
+
+    case "$SSH_BOOTSTRAP_STATUS" in
+        installed)
+            printf "  SSH:              ${BOLD}ssh root@192.168.225.1${NC} ${DIM}(temp password: qmanager — replaced on web onboarding)${NC}\n"
+            ;;
+        failed_install|failed_unit|failed_start|failed_password)
+            printf "  ${YELLOW}${BOLD}SSH bootstrap failed${NC} (${SSH_BOOTSTRAP_STATUS}). Re-run installer or set up dropbear manually.\n"
+            ;;
+        skipped_ota|skipped_existing|not_run)
+            : # no SSH line — avoid noise on upgrades or pre-existing setups
+            ;;
+    esac
+    printf "\n"
 
     if [ ! -f "$CONF_DIR/auth.json" ]; then
         info "First-time setup: you will be prompted to create a password"
