@@ -286,6 +286,62 @@ else
     esac
 fi
 
+section "qmanager-poller ExecStartPre uses bounded wait"
+
+unit="$REPO_ROOT/scripts/etc/systemd/system/qmanager-poller.service"
+
+if grep -E '^ExecStartPre=.*while.*\[ ! -e /dev/smd11 \]' "$unit" >/dev/null 2>&1; then
+    ok "ExecStartPre polls for /dev/smd11 with a while loop"
+else
+    bad "ExecStartPre does not poll for /dev/smd11"
+fi
+
+# Smoke-test the loop logic against a stub path.
+stub="$work/smd_stub"
+rm -f "$stub"
+
+loop_body() {
+    i=0
+    while [ "$i" -lt 5 ] && [ ! -e "$1" ]; do
+        sleep 1
+        i=$((i + 1))
+    done
+    [ -e "$1" ]
+}
+
+# Case A: file never appears → exit 1 after ~5s.
+start=$(date +%s)
+if loop_body "$stub"; then
+    bad "loop returned 0 with missing stub file"
+else
+    ok "loop returned non-zero when stub never appears"
+fi
+end=$(date +%s)
+elapsed=$((end - start))
+if [ "$elapsed" -ge 4 ] && [ "$elapsed" -le 7 ]; then
+    ok "loop slept ~5s before giving up (got ${elapsed}s)"
+else
+    bad "loop elapsed ${elapsed}s, expected 4–7s"
+fi
+
+# Case B: file appears after ~2s → exit 0 promptly.
+( sleep 2 && touch "$stub" ) &
+spawner=$!
+start=$(date +%s)
+if loop_body "$stub"; then
+    ok "loop returned 0 once stub appeared"
+else
+    bad "loop returned non-zero despite stub appearance"
+fi
+end=$(date +%s)
+elapsed=$((end - start))
+wait "$spawner" 2>/dev/null || true
+if [ "$elapsed" -le 4 ]; then
+    ok "loop exited promptly (~${elapsed}s) once stub appeared"
+else
+    bad "loop took ${elapsed}s to notice stub (expected ≤4s)"
+fi
+
 printf '\n%d passed, %d failed' "$pass_count" "$fail_count"
 if [ "$fail" -eq 0 ]; then
     printf ', ALL PASS\n'
