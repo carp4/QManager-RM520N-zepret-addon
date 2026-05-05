@@ -1,16 +1,23 @@
 # 🚀 QManager RM520N BETA v0.1.7
 
-A reliability release for the modem poller — five hardening fixes that prevent the dashboard from freezing during alert delivery, eliminate misleading traffic numbers, and surface previously-silent failure modes.
+A comprehensive reliability release for the modem poller — new visibility into cycle health and daemon liveness, plus a batch of hardening fixes that eliminate misleading data, prevent silent failures, and trim polling overhead across the board.
 
 > One-click OTA from **System Settings → Software Update** if you're on v0.1.5 or newer. SSH/ADB is not required.
 
+## ✨ New Features
+
+- **Cycle-budget watchdog.** The background poller now records each cycle's wall-clock time and logs a warning when one exceeds the 10-second budget. Stuck cycles that don't actually crash the daemon are now visible to anyone tailing the logs.
+- **Ping-daemon liveness event.** When the ping daemon goes silent for 60+ seconds the poller now surfaces a `ping_daemon_stale` event in the activity feed instead of failing silently. Also auto-recovers when the daemon resumes.
+
 ## 🛠️ Improvements
 
-- **Alert delivery no longer freezes the dashboard.** Email and SMS recovery notifications are now sent in the background, so a slow SMTP server or a busy modem can no longer stall modem polling for 30–90 seconds at a time.
-- **Traffic rates are accurate after long or blocked cycles.** Bytes-per-second values are now calculated from real elapsed time, eliminating the false spikes that previously appeared right after any cycle that took longer than expected.
-- **Stuck "scan in progress" clears itself after 5 minutes.** A stale flag left behind by a crashed scan no longer requires a reboot — the poller detects and clears it automatically.
-- **Silent connectivity-monitor outages are now visible.** If the connectivity daemon stops reporting for 60 seconds while the poller is running, an event appears in the activity feed so you know alerts may have been missed rather than silently dropped.
-- **Connection status is always fresh each cycle.** The dashboard's connection status is recomputed from scratch on every pass, preventing a momentarily empty sample from leaving yesterday's connection state displayed indefinitely.
+- **Alerts no longer block the poller.** Email and SMS notifications dispatch in the background, so a slow SMTP server, a stuck registration retry, or a 30-second TCP timeout can't pause data collection any more. Status reflects this within a couple of cycles either way.
+- **Accurate traffic rate after slow cycles.** The bytes-per-second math now uses elapsed wall time rather than a fixed 2-second divisor, so the false 30× spikes that used to appear after a long-running scan or AT-command stall are gone.
+- **Self-healing scan-in-progress flag.** The "long-running operation" marker now expires automatically after 5 minutes, so a CGI script that crashed mid-scan can no longer wedge the poller into a permanent `scan_in_progress` state.
+- **Stale "optimal" no longer bleeds across cycles.** The connection status is now reset on every poll, so a transient registration loss can't leave a misleading "optimal" badge behind.
+- **Faster, cheaper polling.** Carrier-aggregation parsing no longer fork-spams `cut`/`sed` for every QCAINFO line, SIM-state reads use a single `jq` call per file, and `AT+CFUN?` runs every 30 seconds instead of every 2. On slow ARM hardware this trims around 50 ms off most cycles and keeps the daemon comfortably inside its 2-second budget under CA-heavy 5G-NSA conditions.
+- **No more lost events on poller restart.** Network-type, band, PCI, and CA state are now persisted to `/tmp` and restored on the next start, so a crash, OOM, or deploy no longer silently drops events that happened during the restart window. A real reboot still starts cold (events suppressed), as before.
+- **Cleaner cold boots.** The poller's systemd unit now waits up to 30 seconds for `/dev/smd11` to appear before failing, ending the noisy "AT device not found" entries on the very first boot after a flash.
 
 ## 📥 Installation
 
