@@ -1236,6 +1236,150 @@ at_stack_check() {
     fi
 }
 
+# --- Early SSH Bootstrap (fresh installs only) -------------------------------
+# Runs once, right after install_dependencies (so Entware/dropbear are available)
+# and before the rest of the install. On fresh installs with no existing SSH,
+# installs dropbear, writes a systemd unit, starts it, and sets root's password
+# to "qmanager" so the user can SSH in immediately. Web-UI onboarding overwrites
+# this temporary password later.
+#
+# Skips entirely on OTA upgrades (VERSION file present) or when port 22 is
+# already in use by another SSH server.
+
+setup_ssh_early() {
+    step "Bootstrap SSH (fresh install)"
+
+    # 1. Fresh-install gate. /etc/qmanager/VERSION only exists from a prior
+    #    successful install. VERSION.pending (written by preflight) is ignored
+    #    on purpose — that's the in-flight marker, not the prior-install marker.
+    if [ -f "$CONF_DIR/VERSION" ]; then
+        SSH_BOOTSTRAP_STATUS="skipped_ota"
+        info "OTA upgrade detected — skipping SSH bootstrap"
+        return 0
+    fi
+
+    # 2. Port-22 safety check. If anything is already listening, leave it alone.
+    if command -v ss >/dev/null 2>&1; then
+        if ss -ltn 2>/dev/null | awk '{print $4}' | grep -qE '(^|:)22$'; then
+            SSH_BOOTSTRAP_STATUS="skipped_existing"
+            info "SSH already running on port 22 — skipping bootstrap"
+            return 0
+        fi
+    elif command -v netstat >/dev/null 2>&1; then
+        if netstat -ltn 2>/dev/null | awk '{print $4}' | grep -qE '(^|:)22$'; then
+            SSH_BOOTSTRAP_STATUS="skipped_existing"
+            info "SSH already running on port 22 — skipping bootstrap"
+            return 0
+        fi
+    fi
+    if pidof dropbear >/dev/null 2>&1 || pidof sshd >/dev/null 2>&1; then
+        SSH_BOOTSTRAP_STATUS="skipped_existing"
+        info "SSH daemon already running — skipping bootstrap"
+        return 0
+    fi
+
+    # 3. Ensure dropbear is installed. install_dependencies already does this on
+    #    a fresh install, so this is normally a no-op fallback. We still try the
+    #    bundled .ipk first, then Entware, in case install_dependencies failed
+    #    on dropbear specifically.
+    if ! command -v dropbear >/dev/null 2>&1; then
+        if [ -x "$OPKG" ]; then
+            if ls "$SRC_DEPS"/dropbear*.ipk >/dev/null 2>&1; then
+                "$OPKG" install "$SRC_DEPS"/dropbear*.ipk >/dev/null 2>&1 \
+                    && info "dropbear installed from bundled package" \
+                    || { warn "dropbear install failed (bundled .ipk)"; SSH_BOOTSTRAP_STATUS="failed_install"; return 0; }
+            else
+                "$OPKG" install dropbear >/dev/null 2>&1 \
+                    && info "dropbear installed from Entware" \
+                    || { warn "dropbear install failed (Entware)"; SSH_BOOTSTRAP_STATUS="failed_install"; return 0; }
+            fi
+        else
+            warn "Cannot install dropbear — opkg not available"
+            SSH_BOOTSTRAP_STATUS="failed_install"
+            return 0
+        fi
+    else
+        info "dropbear already installed"
+    fi
+
+    # 4. Write the systemd unit. opkg's post-install hook generates RSA/ECDSA/
+    #    ED25519 host keys in /opt/etc/dropbear/, which persists via the
+    #    /usrdata/opt bind mount. dropbear finds them automatically.
+    if [ ! -f "$SYSTEMD_DIR/dropbear.service" ]; then
+        mount -o remount,rw / 2>/dev/null || true
+        cat > "$SYSTEMD_DIR/dropbear.service" << 'SSHEOF'
+[Unit]
+Description=Dropbear SSH Server
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/opt/sbin/dropbear -F -E -p 22
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+SSHEOF
+        if [ ! -f "$SYSTEMD_DIR/dropbear.service" ]; then
+            warn "Failed to write dropbear.service"
+            SSH_BOOTSTRAP_STATUS="failed_unit"
+            return 0
+        fi
+        info "Created dropbear.service"
+    fi
+
+    # systemctl enable does not work on RM520N-GL — direct symlink instead.
+    ln -sf "$SYSTEMD_DIR/dropbear.service" "$WANTS_DIR/dropbear.service"
+    systemctl daemon-reload 2>/dev/null || true
+
+    # 5. Start dropbear and verify it's active.
+    systemctl start dropbear 2>/dev/null || true
+    sleep 1
+    if ! systemctl is-active dropbear >/dev/null 2>&1; then
+        warn "dropbear failed to start — check: journalctl -u dropbear"
+        SSH_BOOTSTRAP_STATUS="failed_start"
+        return 0
+    fi
+    info "dropbear started on port 22"
+
+    # 6. Set root's password to "qmanager" inline. The qmanager_set_ssh_password
+    #    helper isn't installed at this point in the install (backend hasn't run),
+    #    so we replicate its core logic here. Onboarding will overwrite the
+    #    password on first web login.
+    local _password="qmanager"
+    local _salt _hash _escaped_hash
+    _salt=$(head -c 4 /dev/urandom | od -An -tx1 | tr -d ' \n')
+    _hash=$(printf '%s\n' "$_password" | openssl passwd -1 -salt "$_salt" -stdin 2>/dev/null)
+
+    if [ -z "$_hash" ]; then
+        warn "openssl passwd failed — root password not set"
+        SSH_BOOTSTRAP_STATUS="failed_password"
+        return 0
+    fi
+
+    if [ ! -f /etc/shadow ]; then
+        warn "/etc/shadow not found — root password not set"
+        SSH_BOOTSTRAP_STATUS="failed_password"
+        return 0
+    fi
+
+    mount -o remount,rw / 2>/dev/null || true
+
+    # Escape sed-special chars in the hash. Using | as the sed delimiter so /
+    # in the hash isn't a problem; only &, \, and | need escaping.
+    _escaped_hash=$(printf '%s' "$_hash" | sed 's/[&\\|]/\\&/g')
+
+    # Match locked (root:!:...), passwordless (root::...), or any-existing-hash forms.
+    if ! sed -i "s|^root:[^:]*:|root:${_escaped_hash}:|" /etc/shadow 2>/dev/null; then
+        warn "Failed to update /etc/shadow"
+        SSH_BOOTSTRAP_STATUS="failed_password"
+        return 0
+    fi
+
+    SSH_BOOTSTRAP_STATUS="installed"
+    info "Root password set to 'qmanager' (will be replaced on web onboarding)"
+}
+
 # --- SSH Setup (Optional) ----------------------------------------------------
 
 setup_ssh() {
