@@ -27,8 +27,31 @@ else
     bad "qmanager library directory missing"
 fi
 
-printf '\n%s passed, %s failed' "$pass_count" "$fail_count"
-if [ $fail -eq 0 ]; then
+section "CFUN polling moved to Tier 2 cadence"
+
+poller_src="$REPO_ROOT/scripts/usr/bin/qmanager_poller"
+
+# Extract the body of poll_cycle().
+pc_body=$(awk '/^poll_cycle\(\)/,/^\}/' "$poller_src")
+
+# Split into "before the Tier 2 block" vs "Tier 2 block onward".
+pre_tier2=$(printf '%s\n' "$pc_body" | awk '/# Tier 2 \(/ { exit } { print }')
+tier2_on=$(printf '%s\n' "$pc_body" | awk 'f { print } /# Tier 2 \(/ { f=1; print }')
+
+if printf '%s\n' "$pre_tier2" | grep -q 'AT+CFUN?'; then
+    bad "AT+CFUN? still runs on every cycle (found before Tier 2 block)"
+else
+    ok "AT+CFUN? no longer runs on every cycle"
+fi
+
+if printf '%s\n' "$tier2_on" | grep -q 'AT+CFUN?'; then
+    ok "AT+CFUN? lives inside the Tier 2 block"
+else
+    bad "AT+CFUN? not found in Tier 2 block — was it removed entirely?"
+fi
+
+printf '\n%d passed, %d failed' "$pass_count" "$fail_count"
+if [ "$fail" -eq 0 ]; then
     printf ', ALL PASS\n'
     exit 0
 else

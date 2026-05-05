@@ -1385,16 +1385,6 @@ poll_cycle() {
     fi
     sleep "$SIP_DELAY"
 
-    # CFUN — standalone query every cycle (compound commands timeout in CFUN=0)
-    local cfun_result
-    cfun_result=$(qcmd 'AT+CFUN?' 2>/dev/null)
-    if [ -n "$cfun_result" ]; then
-        local cfun_val
-        cfun_val=$(printf '%s\n' "$cfun_result" | grep '+CFUN:' | head -1 | tr -d '\r' | awk -F': ' '{print $2}' | tr -d ' ')
-        [ -n "$cfun_val" ] && t1_cfun="$cfun_val"
-    fi
-    sleep "$SIP_DELAY"
-
     # Tier 1.5 (per-antenna signal history + watchcat state)
     if [ $((cycle_count % TIER1_5_EVERY)) -eq 0 ]; then
         poll_per_antenna_signal
@@ -1402,10 +1392,21 @@ poll_cycle() {
         read_watchcat_state
     fi
 
-    # Tier 2 (warm data + SIM state)
+    # Tier 2 (warm data + SIM state + CFUN)
     if [ $((cycle_count % TIER2_EVERY)) -eq 0 ]; then
         poll_tier2
         read_sim_state
+
+        # CFUN — standalone query (compound commands timeout in CFUN=0).
+        # Cadence is Tier 2 because airplane-mode toggles are user-driven and rare.
+        local cfun_result
+        cfun_result=$(qcmd 'AT+CFUN?' 2>/dev/null)
+        if [ -n "$cfun_result" ]; then
+            local cfun_val
+            cfun_val=$(printf '%s\n' "$cfun_result" | grep '+CFUN:' | head -1 | tr -d '\r' | awk -F': ' '{print $2}' | tr -d ' ')
+            [ -n "$cfun_val" ] && t1_cfun="$cfun_val"
+        fi
+        sleep "$SIP_DELAY"
     fi
 
     # Ping history (every Tier 1.5 interval — 10s)
