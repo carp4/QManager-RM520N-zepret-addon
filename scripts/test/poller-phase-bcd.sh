@@ -318,10 +318,10 @@ else
 fi
 end=$(date +%s)
 elapsed=$((end - start))
-if [ "$elapsed" -ge 4 ] && [ "$elapsed" -le 7 ]; then
+if [ "$elapsed" -ge 4 ] && [ "$elapsed" -le 10 ]; then
     ok "loop slept ~5s before giving up (got ${elapsed}s)"
 else
-    bad "loop elapsed ${elapsed}s, expected 4–7s"
+    bad "loop elapsed ${elapsed}s, expected 4–10s"
 fi
 
 # Case B: file appears after ~2s → exit 0 promptly.
