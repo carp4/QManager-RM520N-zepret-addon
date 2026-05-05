@@ -164,6 +164,7 @@ errors=""
 # Traffic tracking
 prev_rx_bytes=0
 prev_tx_bytes=0
+prev_traffic_ts=0
 rx_bytes_per_sec=0
 tx_bytes_per_sec=0
 
@@ -366,10 +367,17 @@ update_proc_metrics() {
         fi
     fi
 
-    # Calculate bytes per second
-    if [ "$prev_rx_bytes" -gt 0 ] 2>/dev/null; then
-        rx_bytes_per_sec=$(( (rx_bytes - prev_rx_bytes) / POLL_INTERVAL ))
-        tx_bytes_per_sec=$(( (tx_bytes - prev_tx_bytes) / POLL_INTERVAL ))
+    # Calculate bytes per second using actual elapsed wall time. Dividing by
+    # POLL_INTERVAL would inflate rates ~30x after any blocking event (e.g.
+    # an alert send). Floor at 1 to guard against clock skew.
+    local now_ts
+    now_ts=$(date +%s)
+    if [ "$prev_rx_bytes" -gt 0 ] 2>/dev/null && [ "$prev_traffic_ts" -gt 0 ] 2>/dev/null; then
+        local elapsed
+        elapsed=$((now_ts - prev_traffic_ts))
+        [ "$elapsed" -lt 1 ] && elapsed=1
+        rx_bytes_per_sec=$(( (rx_bytes - prev_rx_bytes) / elapsed ))
+        tx_bytes_per_sec=$(( (tx_bytes - prev_tx_bytes) / elapsed ))
 
         [ "$rx_bytes_per_sec" -lt 0 ] 2>/dev/null && rx_bytes_per_sec=0
         [ "$tx_bytes_per_sec" -lt 0 ] 2>/dev/null && tx_bytes_per_sec=0
@@ -377,6 +385,7 @@ update_proc_metrics() {
 
     prev_rx_bytes=$rx_bytes
     prev_tx_bytes=$tx_bytes
+    prev_traffic_ts=$now_ts
     total_rx_bytes=$rx_bytes
     total_tx_bytes=$tx_bytes
 
