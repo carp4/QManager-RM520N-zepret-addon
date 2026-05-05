@@ -76,6 +76,7 @@ prev_ev_nr_ca_active=""
 prev_ev_nr_ca_count=""
 prev_ev_service_status=""
 prev_ev_carrier_components=""
+prev_ev_cfun=""
 
 # Data connection quality event debounce state
 ev_high_lat_streak=0
