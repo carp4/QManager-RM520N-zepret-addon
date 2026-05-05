@@ -1564,7 +1564,7 @@ main() {
     printf "  ══════════════════════════════════════════\n"
 
     # Calculate steps: preflight always runs; others are conditional
-    TOTAL_STEPS=3  # preflight + stop_services + cleanup_legacy_scripts
+    TOTAL_STEPS=4  # preflight + setup_ssh_early + stop_services + cleanup_legacy_scripts
     [ "$DO_PACKAGES" = "1" ] && TOTAL_STEPS=$(( TOTAL_STEPS + 1 ))
     [ "$DO_FRONTEND" = "1" ] && TOTAL_STEPS=$(( TOTAL_STEPS + 2 ))  # backup + frontend
     [ "$DO_BACKEND" = "1" ] && TOTAL_STEPS=$(( TOTAL_STEPS + 2 ))   # backend + udev
@@ -1578,6 +1578,11 @@ main() {
     remove_conflicts
 
     [ "$DO_PACKAGES" = "1" ] && install_dependencies
+
+    # SSH bootstrap runs after install_dependencies so Entware + bundled
+    # dropbear .ipk are available, and before stop_services so it never has
+    # to wait on QManager service teardown.
+    setup_ssh_early
 
     stop_services
 
@@ -1597,8 +1602,6 @@ main() {
 
     [ "$DO_START" = "1" ] && health_check
     [ "$DO_START" = "1" ] && at_stack_check
-
-    setup_ssh
 
     print_summary
 
