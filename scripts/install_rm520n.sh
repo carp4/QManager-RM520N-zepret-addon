@@ -1514,7 +1514,7 @@ print_summary() {
             printf "  SSH:              ${BOLD}ssh root@192.168.225.1${NC} ${DIM}(temp password: qmanager — replaced on web onboarding)${NC}\n"
             ;;
         failed_install|failed_unit|failed_start|failed_password)
-            printf "  ${YELLOW}${BOLD}SSH bootstrap failed${NC} (${SSH_BOOTSTRAP_STATUS}). Re-run installer or set up dropbear manually.\n"
+            printf "  ${YELLOW}SSH bootstrap failed${NC} (${SSH_BOOTSTRAP_STATUS}). Re-run installer or set up dropbear manually.\n"
             ;;
         skipped_ota|skipped_existing|not_run)
             : # no SSH line — avoid noise on upgrades or pre-existing setups
