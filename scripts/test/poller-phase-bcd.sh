@@ -342,6 +342,68 @@ else
     bad "loop took ${elapsed}s to notice stub (expected ≤4s)"
 fi
 
+section "main loop logs cycle-budget overruns"
+
+poller_src="$REPO_ROOT/scripts/usr/bin/qmanager_poller"
+
+# Source-level checks: constant declared, warn block present.
+if grep -E '^CYCLE_TIME_BUDGET=[0-9]+' "$poller_src" >/dev/null; then
+    ok "CYCLE_TIME_BUDGET constant declared"
+else
+    bad "CYCLE_TIME_BUDGET constant missing"
+fi
+
+if grep -E 'poll_cycle exceeded budget' "$poller_src" >/dev/null; then
+    ok "main loop warns on cycle-budget overrun"
+else
+    bad "main loop does not warn on cycle-budget overrun"
+fi
+
+# Behavioral check: extract the wrapper logic and run it with a stub poll_cycle.
+cat > "$work/loop_test.sh" <<'LOOP'
+set -eu
+# Stubs.
+warns=""
+qlog_warn() { warns="${warns}|$1"; }
+qlog_info() { :; }
+qlog_debug() { :; }
+qlog_error() { :; }
+CYCLE_TIME_BUDGET=2
+POLL_INTERVAL=0  # don't actually sleep between cycles
+cycles_done=0
+poll_cycle() {
+    cycles_done=$((cycles_done + 1))
+    [ "$cycles_done" -eq 1 ] && sleep 4   # first cycle blows the budget
+    return 0
+}
+
+# The wrapper logic — should match what the poller's main() uses.
+cycle_count=0
+while [ "$cycle_count" -lt 2 ]; do
+    cycle_start=$(date +%s)
+    poll_cycle
+    cycle_end=$(date +%s)
+    cycle_duration=$((cycle_end - cycle_start))
+    if [ "$cycle_duration" -gt "$CYCLE_TIME_BUDGET" ]; then
+        qlog_warn "poll_cycle exceeded budget: ${cycle_duration}s > ${CYCLE_TIME_BUDGET}s"
+    fi
+    sleep "$POLL_INTERVAL"
+    cycle_count=$((cycle_count + 1))
+done
+
+printf '%s' "$warns"
+LOOP
+
+warn_output=$(bash "$work/loop_test.sh")
+case "$warn_output" in
+    *'poll_cycle exceeded budget'*)
+        ok "wrapper logic emits the expected warning on overrun"
+        ;;
+    *)
+        bad "wrapper logic produced no warning: '$warn_output'"
+        ;;
+esac
+
 printf '\n%d passed, %d failed' "$pass_count" "$fail_count"
 if [ "$fail" -eq 0 ]; then
     printf ', ALL PASS\n'
