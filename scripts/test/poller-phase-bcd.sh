@@ -50,6 +50,78 @@ else
     bad "AT+CFUN? not found in Tier 2 block — was it removed entirely?"
 fi
 
+section "read_sim_state coalesces jq calls per file"
+
+# Extract read_sim_state into an isolated file we can source.
+awk '/^read_sim_state\(\)/,/^\}/' "$REPO_ROOT/scripts/usr/bin/qmanager_poller" \
+    > "$work/sim_fn.sh"
+
+# Build fixture flag files.
+swap_file="$work/sim_swap.json"
+fo_file="$work/sim_failover.json"
+cat > "$swap_file" <<'JSON'
+{
+  "dismissed": false,
+  "matching_profile_id": "prof-42",
+  "matching_profile_name": "Home APN"
+}
+JSON
+cat > "$fo_file" <<'JSON'
+{
+  "active": true,
+  "original_slot": 1,
+  "current_slot": 2,
+  "switched_at": 1746500000
+}
+JSON
+
+# Counting jq shim — installs a fake `jq` ahead of the real one on PATH.
+shim_dir="$work/bin"
+mkdir -p "$shim_dir"
+jq_real=$(command -v jq 2>/dev/null || true)
+if [ -z "$jq_real" ]; then
+    printf '  SKIP  read_sim_state (jq not available on workstation)\n'
+else
+    counter="$work/jq_count"
+    : > "$counter"
+    cat > "$shim_dir/jq" <<SHIM
+#!/bin/sh
+printf 'x' >> "$counter"
+exec "$jq_real" "\$@"
+SHIM
+    chmod +x "$shim_dir/jq"
+
+    result=$(
+        set +eu
+        export PATH="$shim_dir:$PATH"
+        SIM_SWAP_FLAG="$swap_file"
+        SIM_FAILOVER_FILE="$fo_file"
+        . "$work/sim_fn.sh"
+        read_sim_state
+        printf '%s|%s|%s|%s|%s|%s|%s\n' \
+            "$sim_swap_detected" "$sim_swap_profile_id" "$sim_swap_profile_name" \
+            "$sim_fo_active" "$sim_fo_original_slot" "$sim_fo_current_slot" \
+            "$sim_fo_switched_at"
+    )
+
+    jq_calls=$(wc -c < "$counter" | tr -d ' ')
+
+    case "$result" in
+        "true|prof-42|Home APN|true|1|2|1746500000")
+            ok "read_sim_state populated all 7 fields correctly"
+            ;;
+        *)
+            bad "read_sim_state output mismatch: '$result'"
+            ;;
+    esac
+
+    if [ "$jq_calls" -le 2 ]; then
+        ok "read_sim_state used $jq_calls jq invocation(s) (≤2)"
+    else
+        bad "read_sim_state used $jq_calls jq invocations (expected ≤2)"
+    fi
+fi
+
 printf '\n%d passed, %d failed' "$pass_count" "$fail_count"
 if [ "$fail" -eq 0 ]; then
     printf ', ALL PASS\n'

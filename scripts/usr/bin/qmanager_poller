@@ -1072,24 +1072,38 @@ read_sim_state() {
     sim_swap_profile_id=""
     sim_swap_profile_name=""
     if [ -f "$SIM_SWAP_FLAG" ]; then
+        local _swap_data
+        _swap_data=$(jq -r '[
+            ((.dismissed) | if . == null then "false" else tostring end),
+            (.matching_profile_id // ""),
+            (.matching_profile_name // "")
+        ] | @tsv' "$SIM_SWAP_FLAG" 2>/dev/null)
         local _dismissed
-        _dismissed=$(jq -r '(.dismissed) | if . == null then "false" else tostring end' "$SIM_SWAP_FLAG" 2>/dev/null)
+        _dismissed=$(printf '%s' "$_swap_data" | cut -f1)
         if [ "$_dismissed" != "true" ]; then
             sim_swap_detected="true"
-            sim_swap_profile_id=$(jq -r '.matching_profile_id // empty' "$SIM_SWAP_FLAG" 2>/dev/null)
-            sim_swap_profile_name=$(jq -r '.matching_profile_name // empty' "$SIM_SWAP_FLAG" 2>/dev/null)
+            sim_swap_profile_id=$(printf '%s' "$_swap_data" | cut -f2)
+            sim_swap_profile_name=$(printf '%s' "$_swap_data" | cut -f3)
         fi
     fi
+
     # SIM failover state (written by watchcat Tier 3)
     sim_fo_active="false"
     sim_fo_original_slot="null"
     sim_fo_current_slot="null"
     sim_fo_switched_at="null"
     if [ -f "$SIM_FAILOVER_FILE" ]; then
-        sim_fo_active=$(jq -r '(.active) | if . == null then "false" else tostring end' "$SIM_FAILOVER_FILE" 2>/dev/null)
-        sim_fo_original_slot=$(jq -r '(.original_slot) | if . == null then "null" else tostring end' "$SIM_FAILOVER_FILE" 2>/dev/null)
-        sim_fo_current_slot=$(jq -r '(.current_slot) | if . == null then "null" else tostring end' "$SIM_FAILOVER_FILE" 2>/dev/null)
-        sim_fo_switched_at=$(jq -r '(.switched_at) | if . == null then "null" else tostring end' "$SIM_FAILOVER_FILE" 2>/dev/null)
+        local _fo_data
+        _fo_data=$(jq -r '[
+            ((.active) | if . == null then "false" else tostring end),
+            ((.original_slot) | if . == null then "null" else tostring end),
+            ((.current_slot) | if . == null then "null" else tostring end),
+            ((.switched_at) | if . == null then "null" else tostring end)
+        ] | @tsv' "$SIM_FAILOVER_FILE" 2>/dev/null)
+        sim_fo_active=$(printf '%s' "$_fo_data" | cut -f1)
+        sim_fo_original_slot=$(printf '%s' "$_fo_data" | cut -f2)
+        sim_fo_current_slot=$(printf '%s' "$_fo_data" | cut -f3)
+        sim_fo_switched_at=$(printf '%s' "$_fo_data" | cut -f4)
     fi
 }
 
