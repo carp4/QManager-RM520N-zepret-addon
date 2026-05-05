@@ -98,7 +98,7 @@ VERSION_PENDING="/etc/qmanager/VERSION.pending"
 WATCHCAT_LOCK="/tmp/qmanager_watchcat.lock"
 
 # Status of early SSH bootstrap; set by setup_ssh_early(), read by print_summary().
-# Values: installed | skipped_ota | skipped_existing | failed_install | failed_unit | failed_start | failed_password | not_run
+# Values: installed | skipped_ota | skipped_existing | failed_install | failed_start | failed_password | not_run
 SSH_BOOTSTRAP_STATUS="not_run"
 
 # Install log (qmanager_update tails this for step progress)
@@ -1320,11 +1320,6 @@ Restart=on-failure
 [Install]
 WantedBy=multi-user.target
 SSHEOF
-        if [ ! -f "$SYSTEMD_DIR/dropbear.service" ]; then
-            warn "Failed to write dropbear.service"
-            SSH_BOOTSTRAP_STATUS="failed_unit"
-            return 0
-        fi
         sync
         info "Created dropbear.service"
     fi
@@ -1408,7 +1403,7 @@ print_summary() {
         installed)
             printf "  SSH:              ${BOLD}ssh root@192.168.225.1${NC} ${DIM}(temp password: qmanager — replaced on web onboarding)${NC}\n"
             ;;
-        failed_install|failed_unit|failed_start|failed_password)
+        failed_install|failed_start|failed_password)
             printf "  ${YELLOW}SSH bootstrap failed${NC} (${SSH_BOOTSTRAP_STATUS}). Re-run installer or set up dropbear manually.\n"
             ;;
         skipped_ota|skipped_existing|not_run)
