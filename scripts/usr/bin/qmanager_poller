@@ -786,8 +786,10 @@ poll_tier2() {
 # =============================================================================
 
 determine_service_status() {
+    # Reset every cycle so a stale value cannot survive ambiguous inputs.
+    service_status="unknown"
+
     if [ "$modem_reachable" != "true" ]; then
-        service_status="unknown"
         return
     fi
 
@@ -806,7 +808,7 @@ determine_service_status() {
         return
     fi
 
-    # If we have signal values, assess quality
+    # Pick the primary RSRP — NR if connected, else LTE
     local primary_rsrp=""
     if [ "$nr_state" = "connected" ] && [ -n "$nr_rsrp" ]; then
         primary_rsrp=$nr_rsrp
@@ -818,10 +820,9 @@ determine_service_status() {
         service_status="optimal"
     elif [ -n "$primary_rsrp" ]; then
         service_status="connected"
-    fi
-
-    # If still idle but registered on a network, show connected
-    if [ "$service_status" = "idle" ]; then
+    elif [ "$lte_state" = "connected" ] || [ "$nr_state" = "connected" ]; then
+        # Registered but signal not yet sampled this cycle — keep "connected"
+        # rather than the default "unknown".
         service_status="connected"
     fi
 }
