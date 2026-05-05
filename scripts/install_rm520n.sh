@@ -97,6 +97,10 @@ VERSION_PENDING="/etc/qmanager/VERSION.pending"
 # Watchcat lock prevents Tier-4 reboot during install
 WATCHCAT_LOCK="/tmp/qmanager_watchcat.lock"
 
+# Status of early SSH bootstrap; set by setup_ssh_early(), read by print_summary().
+# Values: installed | skipped_ota | skipped_existing | failed_install | failed_unit | failed_start | failed_password | not_run
+SSH_BOOTSTRAP_STATUS="not_run"
+
 # Install log (qmanager_update tails this for step progress)
 LOG_FILE="/tmp/qmanager_install.log"
 
