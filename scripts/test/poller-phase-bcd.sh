@@ -122,6 +122,80 @@ SHIM
     fi
 fi
 
+section "parse_ca_info uses IFS field splitting (no per-line cut storm)"
+
+jq_real=$(command -v jq 2>/dev/null || true)
+if [ -z "$jq_real" ]; then
+    printf '  SKIP  parse_ca_info (jq not available on workstation)\n'
+else
+    # Source the parser library. It defines parse_ca_info, _lte_rb_to_mhz,
+    # _nr_bw_to_mhz, and uses helper variables we have to provide.
+    source_lib="$REPO_ROOT/scripts/usr/lib/qmanager/parse_at.sh"
+
+    # Counting cut shim.
+    shim_dir="$work/bin_pca"
+    mkdir -p "$shim_dir"
+    cut_real=$(command -v cut)
+    counter="$work/cut_count"
+    : > "$counter"
+    cat > "$shim_dir/cut" <<SHIM
+#!/bin/sh
+printf 'x' >> "$counter"
+exec "$cut_real" "\$@"
+SHIM
+    chmod +x "$shim_dir/cut"
+
+    # Sample QCAINFO output: 1 LTE PCC + 1 LTE SCC + 1 NR SCC long form.
+    sample_raw=$'+QCAINFO: "PCC",1350,75,"LTEBAND3",,135,-100,-12,-72,5\n+QCAINFO: "SCC",350,100,"LTEBAND7",1,200,-105,-13,-75,4\n+QCAINFO: "SCC",647424,3,"NR5GBAND78",1,500,0,0,2079167,-1000,-1100,500\nOK'
+
+    result=$(
+        set +eu
+        export PATH="$shim_dir:$PATH"
+        # Provide the few globals parse_ca_info reads.
+        network_type="5G-NSA"
+        # Source the library (includes _lte_rb_to_mhz, _nr_bw_to_mhz, parse_ca_info).
+        . "$source_lib"
+        parse_ca_info "$sample_raw"
+        printf '%s|%s|%s|%s|%s|%s\n' \
+            "$t2_ca_active" "$t2_ca_count" \
+            "$t2_nr_ca_active" "$t2_nr_ca_count" \
+            "$t2_total_bandwidth_mhz" "$t2_bandwidth_details"
+        # carrier_components must contain 3 entries with the expected bands.
+        printf '%s' "$t2_carrier_components" | jq -c 'map(.band)'
+    )
+
+    cut_calls=$(wc -c < "$counter" | tr -d ' ')
+
+    summary=$(printf '%s\n' "$result" | head -1)
+    bands=$(printf '%s\n' "$result" | tail -1)
+
+    case "$summary" in
+        'true|1|true|1|'*'|'*)
+            ok "parse_ca_info populated CA totals correctly"
+            ;;
+        *)
+            bad "parse_ca_info CA-totals output mismatch: '$summary'"
+            ;;
+    esac
+
+    case "$bands" in
+        '["B3","B7","N78"]')
+            ok "parse_ca_info emitted expected band order [B3,B7,N78]"
+            ;;
+        *)
+            bad "parse_ca_info band order mismatch: '$bands'"
+            ;;
+    esac
+
+    # Before the fix: ~10 cuts per QCAINFO line × 3 lines = 30+ forks.
+    # After: 0 cuts on the per-line path (only the final jq still uses cut-like ops indirectly).
+    if [ "$cut_calls" -lt 5 ]; then
+        ok "parse_ca_info issued $cut_calls cut invocations (<5)"
+    else
+        bad "parse_ca_info still issues $cut_calls cut invocations (expected <5)"
+    fi
+fi
+
 printf '\n%d passed, %d failed' "$pass_count" "$fail_count"
 if [ "$fail" -eq 0 ]; then
     printf ', ALL PASS\n'
