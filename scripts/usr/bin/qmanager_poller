@@ -192,6 +192,7 @@ conn_history_interval=5
 conn_history_size=60
 conn_during_recovery="false"
 _last_ping_ts=0          # tracks last processed ping.json timestamp (awk gate)
+_ping_stale_since=0      # epoch when ping daemon first went stale (0 = healthy)
 
 # History size constant (must match ping daemon)
 CONN_HISTORY_SIZE=60
@@ -844,6 +845,7 @@ determine_service_status() {
 PING_CACHE="/tmp/qmanager_ping.json"
 PING_HISTORY_RAW="/tmp/qmanager_ping_history"   # flat-file ring buffer from ping daemon
 PING_STALE_THRESHOLD=10  # seconds before ping data is considered stale
+PING_DAEMON_STALE_EVENT_THRESHOLD=60  # seconds before emitting ping_daemon_stale
 
 read_ping_data() {
     # Reset to defaults if ping file missing or stale
@@ -859,6 +861,7 @@ read_ping_data() {
         conn_ping_target=""
         conn_history="[]"
         conn_during_recovery="false"
+        _ping_stale_since=0
         return
     fi
 
@@ -883,9 +886,30 @@ read_ping_data() {
             conn_packet_loss=0
             conn_history="[]"
             conn_during_recovery="false"
+
+            # Track sustained staleness: emit a one-shot event when the
+            # ping daemon has been stale long enough that alerts could be
+            # silently missing. _ping_stale_since=0 means "not currently
+            # tracking"; a positive value is the epoch when staleness began.
+            if [ "$_ping_stale_since" -eq 0 ] 2>/dev/null; then
+                _ping_stale_since=$now
+            else
+                local stale_dur=$((now - _ping_stale_since))
+                if [ "$stale_dur" -ge "$PING_DAEMON_STALE_EVENT_THRESHOLD" ] 2>/dev/null; then
+                    append_event "ping_daemon_stale" \
+                        "Ping daemon stale for ${stale_dur}s — alerts may be suppressed" \
+                        "warning"
+                    # Advance _ping_stale_since by the threshold so the next
+                    # emission is only possible after another full threshold
+                    # period has elapsed — a rate-limited heartbeat.
+                    _ping_stale_since=$((now + PING_DAEMON_STALE_EVENT_THRESHOLD))
+                fi
+            fi
             return
         fi
     fi
+    # Fresh data — clear any stale-tracking state.
+    _ping_stale_since=0
 
     # Step A: Extract slim scalar fields from ping JSON (single jq call)
     # ping.json no longer carries stats/history — those are computed here from raw file.

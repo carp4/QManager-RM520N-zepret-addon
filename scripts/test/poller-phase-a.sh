@@ -193,6 +193,94 @@ else
     bad "fresh LONG_FLAG was wrongly cleared"
 fi
 
+section "dead ping daemon emits ping_daemon_stale event after 60s"
+
+# Setup: create a stale ping cache (timestamp 90s in the past).
+ping_cache="$work/qmanager_ping.json"
+events_file="$work/qmanager_events.json"
+old_ts=$(($(date +%s) - 90))
+cat > "$ping_cache" <<JSON
+{"timestamp":$old_ts,"reachable":true,"last_rtt_ms":12.3,"during_recovery":false,"interval_sec":5,"targets":["google.com","cloudflare.com"]}
+JSON
+
+# Stub the events.sh append_event function and required globals.
+shim="$work/ping_stale_shim.sh"
+cat > "$shim" <<SHIM
+PING_CACHE="$ping_cache"
+PING_HISTORY_RAW="$work/nope"
+PING_STALE_THRESHOLD=10
+PING_DAEMON_STALE_EVENT_THRESHOLD=60
+EVENTS_FILE="$events_file"
+MAX_EVENTS=50
+qlog_warn() { :; }
+qlog_info() { :; }
+qlog_debug() { :; }
+append_event() {
+    printf '{"type":"%s","message":"%s","severity":"%s"}\n' "\$1" "\$2" "\$3" >> "$events_file"
+}
+# Minimal jq stub for workstation tests that lack jq — handles only the
+# timestamp extraction used by read_ping_data.  On devices where real jq
+# is present this function is never called because the PATH resolves first.
+jq() {
+    # Usage: jq -r '<filter>' <file>
+    # Supports only: '.timestamp | if . == null then empty else tostring end'
+    local file="\${@: -1}"
+    awk -F'"timestamp":' 'NF>1{split(\$2,a,","); gsub(/[^0-9]/,"",a[1]); if(a[1]!="") print a[1]}' "\$file"
+}
+_ping_stale_since=0
+conn_internet_available="null"
+conn_status=""
+conn_latency=""
+conn_avg_latency=""
+conn_min_latency=""
+conn_max_latency=""
+conn_jitter=""
+conn_packet_loss=0
+conn_history=""
+conn_history_interval=5
+conn_during_recovery=""
+conn_ping_target=""
+_last_ping_ts=0
+SHIM
+
+# Extract read_ping_data from the poller.
+awk '/^read_ping_data\(\)/,/^\}/' \
+    "$REPO_ROOT/scripts/usr/bin/qmanager_poller" > "$work/read_ping_fn.sh"
+
+# Skip the "first detection" step by pre-seeding _ping_stale_since to
+# 90s ago (> 60s threshold). A single call to read_ping_data should
+# then emit the event immediately.
+(
+    set +eu
+    . "$shim"
+    . "$work/read_ping_fn.sh"
+    # Seed: stale since 90s ago (>60s threshold)
+    _ping_stale_since=$(($(date +%s) - 90))
+    read_ping_data
+)
+
+if grep -q 'ping_daemon_stale' "$events_file" 2>/dev/null; then
+    ok "ping_daemon_stale event emitted after sustained staleness"
+else
+    bad "no ping_daemon_stale event emitted (events file: $(cat "$events_file" 2>/dev/null || echo MISSING))"
+fi
+
+# Negative: fresh stale (< 60s) must NOT emit a duplicate.
+: > "$events_file"
+(
+    set +eu
+    . "$shim"
+    . "$work/read_ping_fn.sh"
+    # Seed: stale only 5s ago (< 60s threshold)
+    _ping_stale_since=$(($(date +%s) - 5))
+    read_ping_data
+)
+if grep -q 'ping_daemon_stale' "$events_file" 2>/dev/null; then
+    bad "ping_daemon_stale fired too early (<60s threshold)"
+else
+    ok "no spurious ping_daemon_stale event under threshold"
+fi
+
 printf '\n%d passed, %d failed\n' "$pass_count" "$fail_count"
 [ "$fail" -eq 0 ] || exit 1
 echo "ALL PASS"
