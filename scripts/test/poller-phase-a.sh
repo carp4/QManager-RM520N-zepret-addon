@@ -19,7 +19,7 @@ bad()  { printf '  FAIL  %s\n' "$1"; fail_count=$((fail_count + 1)); fail=1; }
 
 section() { printf '\n== %s ==\n' "$1"; }
 
-# --- Placeholder so the harness fails until Task 2 lands ---
+# --- Placeholder self-check — real fixture tests start in Task 2 ---
 section "harness self-check"
 if [ -d "$REPO_ROOT/scripts/usr/lib/qmanager" ]; then
     ok "qmanager library directory found"
