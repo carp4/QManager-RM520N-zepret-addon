@@ -1442,6 +1442,8 @@ poll_cycle() {
 # =============================================================================
 
 main() {
+    local cycle_start cycle_end cycle_duration
+
     qlog_info "========================================"
     qlog_info "QManager Poller starting"
     qlog_info "Config: interval=${POLL_INTERVAL}s tier2_every=${TIER2_EVERY} iface=${NETWORK_IFACE}"
@@ -1458,7 +1460,6 @@ main() {
     qlog_info "Boot data collected, entering poll loop"
 
     while true; do
-        local cycle_start cycle_end cycle_duration
         cycle_start=$(date +%s)
         poll_cycle
         cycle_end=$(date +%s)
