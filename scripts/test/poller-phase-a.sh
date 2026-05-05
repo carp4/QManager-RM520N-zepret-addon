@@ -449,6 +449,14 @@ else
     bad "check_sms_alert blocked for ${elapsed_ms}ms — send should have been backgrounded"
 fi
 
+# Confirm a background process was actually launched (pidfile written by parent).
+sleep 1  # give the forked child a moment to be scheduled
+if [ -f "$work/sms_send.pid" ] || [ -f "$work/sms_log.json" ]; then
+    ok "background SMS worker created pidfile or log entry"
+else
+    bad "no evidence background SMS worker started"
+fi
+
 # Cleanup any lingering mock sms_tool processes.
 pkill -P $$ sms_tool 2>/dev/null || true
 

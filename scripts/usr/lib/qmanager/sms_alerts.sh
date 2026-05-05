@@ -184,9 +184,17 @@ check_sms_alert() {
             trigger="Connection was down for ${dur_text}, now restored"
         fi
         _sa_do_send_async "$body" "$trigger"
-        # Note: registration retries are handled inside the background
-        # worker. The poller's tracking state is reset below regardless;
-        # the worker's _sa_log_event call records the eventual outcome.
+        # Note: with async dispatch, _sa_downtime_sms_status reflects
+        # dispatch INTENT, not delivery outcome — the background worker
+        # has no channel to mutate this parent variable. So:
+        #   "sent"  here means "downtime-start was dispatched" (which
+        #           may have actually failed; check the NDJSON log).
+        #   "failed" / "pending" / "none" all collapse into the dedup
+        #           branch above. This is intentional: the user gets
+        #           one combined "was down for X, now restored" SMS
+        #           when no successful downtime-start was visible.
+        # The poller's tracking state is reset below regardless; the
+        # worker's _sa_log_event call records the actual outcome.
 
         # Reset tracking
         _sa_was_down="false"

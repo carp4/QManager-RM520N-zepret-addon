@@ -899,10 +899,13 @@ read_ping_data() {
                     append_event "ping_daemon_stale" \
                         "Ping daemon stale for ${stale_dur}s — alerts may be suppressed" \
                         "warning"
-                    # Advance _ping_stale_since by the threshold so the next
-                    # emission is only possible after another full threshold
-                    # period has elapsed — a rate-limited heartbeat.
-                    _ping_stale_since=$((now + PING_DAEMON_STALE_EVENT_THRESHOLD))
+                    # Restart the window from now so the next emission only
+                    # fires after another full threshold has elapsed. Storing
+                    # a real epoch (rather than a future-offset value) keeps
+                    # the variable's invariant easy to reason about: it is
+                    # always either 0 (healthy) or the epoch at which we
+                    # last either started tracking or emitted a heartbeat.
+                    _ping_stale_since=$now
                 fi
             fi
             return
@@ -1327,6 +1330,7 @@ poll_cycle() {
     # otherwise stay in scan_in_progress mode forever. Treat any flag older
     # than LONG_FLAG_MAX_AGE seconds as stale and remove it.
     if [ -f "$LONG_FLAG" ]; then
+        local _lf_mtime _lf_now _lf_age
         _lf_mtime=$(stat -c %Y "$LONG_FLAG" 2>/dev/null || echo 0)
         _lf_now=$(date +%s)
         _lf_age=$((_lf_now - _lf_mtime))
