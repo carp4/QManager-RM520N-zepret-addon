@@ -374,6 +374,84 @@ fi
 # Cleanup any lingering background msmtp from the test.
 pkill -P $$ msmtp 2>/dev/null || true
 
+section "SMS dispatch from check_sms_alert returns immediately"
+
+fake_etc2="$work/etc/qmanager"
+mkdir -p "$fake_etc2"
+cat > "$fake_etc2/sms_alerts.json" <<JSON
+{
+  "enabled": true,
+  "recipient_phone": "+15551234567",
+  "threshold_minutes": 1
+}
+JSON
+
+mock_bin2="$work/bin2"
+mkdir -p "$mock_bin2"
+cat > "$mock_bin2/sms_tool" <<'EOF'
+#!/bin/sh
+sleep 4
+exit 0
+EOF
+chmod +x "$mock_bin2/sms_tool"
+
+runner2="$work/run_sms.sh"
+cat > "$runner2" <<EOF
+#!/bin/bash
+set +eu
+qlog_init() { :; }
+qlog_debug() { :; }
+qlog_info()  { :; }
+qlog_warn()  { :; }
+qlog_error() { :; }
+qlog_state_change() { :; }
+. "$REPO_ROOT/scripts/usr/lib/qmanager/sms_alerts.sh"
+_SA_CONFIG="$fake_etc2/sms_alerts.json"
+_SA_LOG_FILE="$work/sms_log.json"
+_SA_RELOAD_FLAG="$work/sms_reload"
+_SA_LOCK_FILE="$work/sms_lock"
+_SA_SMS_TOOL="$mock_bin2/sms_tool"
+_SA_AT_DEVICE="/dev/null"
+_SA_DISPATCH_PIDFILE="$work/sms_send.pid"
+touch "\$_SA_LOCK_FILE"
+sms_alerts_init
+# Force registration check to pass in this test context.
+_sa_is_registered() { return 0; }
+# Test environment lacks jq; inject the state directly.
+_sa_enabled="true"
+_sa_recipient="+15551234567"
+_sa_threshold_minutes=1
+# Simulate: outage was 2 min, recovered now.
+_sa_was_down="true"
+_sa_downtime_sms_status="sent"   # pretend downtime SMS succeeded
+_sa_downtime_start=\$(( \$(date +%s) - 120 ))
+conn_internet_available="true"
+modem_reachable="true"
+lte_state="connected"
+nr_state="inactive"
+check_sms_alert
+EOF
+chmod +x "$runner2"
+
+start_ts=$(date +%s%N 2>/dev/null || date +%s)
+bash "$runner2" >"$work/sms_run.out" 2>&1
+end_ts=$(date +%s%N 2>/dev/null || date +%s)
+
+if [ "${#start_ts}" -gt 12 ]; then
+    elapsed_ms=$(( (end_ts - start_ts) / 1000000 ))
+else
+    elapsed_ms=$(( (end_ts - start_ts) * 1000 ))
+fi
+
+if [ "$elapsed_ms" -lt 2000 ]; then
+    ok "check_sms_alert recovery dispatch returned in ${elapsed_ms}ms"
+else
+    bad "check_sms_alert blocked for ${elapsed_ms}ms — send should have been backgrounded"
+fi
+
+# Cleanup any lingering mock sms_tool processes.
+pkill -P $$ sms_tool 2>/dev/null || true
+
 printf '\n%d passed, %d failed\n' "$pass_count" "$fail_count"
 [ "$fail" -eq 0 ] || exit 1
 echo "ALL PASS"
