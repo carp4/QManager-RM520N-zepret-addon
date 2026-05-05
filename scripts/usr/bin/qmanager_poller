@@ -1450,6 +1450,7 @@ main() {
     update_proc_metrics
     email_alerts_init
     sms_alerts_init
+    restore_event_state
     write_cache
 
     qlog_info "Boot data collected, entering poll loop"

@@ -197,6 +197,95 @@ SHIM
     fi
 fi
 
+section "events_initialized state persists across restart"
+
+jq_real=$(command -v jq 2>/dev/null || true)
+if [ -z "$jq_real" ]; then
+    printf '  SKIP  event-state persistence (jq not available)\n'
+else
+    events_lib="$REPO_ROOT/scripts/usr/lib/qmanager/events.sh"
+    state_file="$work/event_state.json"
+
+    # First instance: snapshot a known state.
+    (
+        set +eu
+        # Stub qlog helpers and append_event used by the lib.
+        qlog_debug() { :; }
+        qlog_info() { :; }
+        qlog_warn() { :; }
+        qlog_error() { :; }
+        append_event() { :; }
+        EVENT_STATE_FILE="$state_file"
+        # Pretend prev_ev_* came from an earlier cycle.
+        prev_ev_network_type="5G-NSA"
+        prev_ev_lte_band="B3"
+        prev_ev_lte_pci="135"
+        prev_ev_nr_band="N78"
+        prev_ev_nr_pci="500"
+        prev_ev_nr_state="connected"
+        prev_ev_modem_reachable="true"
+        prev_ev_internet="true"
+        prev_ev_ca_active="true"
+        prev_ev_ca_count="1"
+        prev_ev_nr_ca_active="false"
+        prev_ev_nr_ca_count="0"
+        prev_ev_service_status="optimal"
+        prev_ev_carrier_components="[]"
+        prev_ev_cfun="1"
+        . "$events_lib"
+        snapshot_event_state
+    )
+
+    if [ -s "$state_file" ]; then
+        ok "snapshot_event_state wrote $state_file"
+    else
+        bad "snapshot_event_state did not write $state_file"
+    fi
+
+    # Second instance (simulated restart): restore_event_state should re-populate.
+    restored=$(
+        set +eu
+        qlog_debug() { :; }
+        qlog_info() { :; }
+        qlog_warn() { :; }
+        qlog_error() { :; }
+        EVENT_STATE_FILE="$state_file"
+        events_initialized=false
+        . "$events_lib"
+        restore_event_state
+        printf '%s|%s|%s|%s\n' \
+            "$events_initialized" "$prev_ev_lte_pci" "$prev_ev_nr_band" "$prev_ev_service_status"
+    )
+
+    case "$restored" in
+        'true|135|N78|optimal')
+            ok "restore_event_state re-populated prev_ev_* and set events_initialized=true"
+            ;;
+        *)
+            bad "restore_event_state mismatch: '$restored'"
+            ;;
+    esac
+
+    # Missing-state-file path (true cold boot, /tmp cleared) must not initialize.
+    cold=$(
+        set +eu
+        qlog_debug() { :; }
+        qlog_info() { :; }
+        qlog_warn() { :; }
+        qlog_error() { :; }
+        EVENT_STATE_FILE="$work/nonexistent.json"
+        events_initialized=false
+        . "$events_lib"
+        restore_event_state
+        printf '%s' "$events_initialized"
+    )
+
+    case "$cold" in
+        false) ok "restore_event_state leaves events_initialized=false on cold boot" ;;
+        *)     bad "restore_event_state forced events_initialized='$cold' on cold boot (expected false)" ;;
+    esac
+fi
+
 printf '\n%d passed, %d failed' "$pass_count" "$fail_count"
 if [ "$fail" -eq 0 ]; then
     printf ', ALL PASS\n'
