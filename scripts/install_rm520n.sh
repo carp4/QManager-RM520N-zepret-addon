@@ -1325,6 +1325,7 @@ SSHEOF
             SSH_BOOTSTRAP_STATUS="failed_unit"
             return 0
         fi
+        sync
         info "Created dropbear.service"
     fi
 
@@ -1375,6 +1376,7 @@ SSHEOF
         SSH_BOOTSTRAP_STATUS="failed_password"
         return 0
     fi
+    sync
 
     SSH_BOOTSTRAP_STATUS="installed"
     info "Root password set to 'qmanager' (will be replaced on web onboarding)"
