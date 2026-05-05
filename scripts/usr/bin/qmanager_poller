@@ -42,6 +42,7 @@ else
     NETWORK_IFACE="wwan0"        # RM551E on OpenWRT
 fi
 SIP_DELAY=0.1          # Delay between AT commands (seconds)
+LONG_FLAG_MAX_AGE=300  # seconds; auto-clear stale long-running flags
 
 # Signal history (NDJSON file for chart data)
 SIGNAL_HISTORY_FILE="/tmp/qmanager_signal_history.json"
@@ -1297,6 +1298,21 @@ write_cache() {
 # =============================================================================
 
 poll_cycle() {
+    # --- LONG_FLAG expiry guard ---
+    # If a CGI sets the flag and dies before clearing it, the poller would
+    # otherwise stay in scan_in_progress mode forever. Treat any flag older
+    # than LONG_FLAG_MAX_AGE seconds as stale and remove it.
+    if [ -f "$LONG_FLAG" ]; then
+        _lf_mtime=$(stat -c %Y "$LONG_FLAG" 2>/dev/null || echo 0)
+        _lf_now=$(date +%s)
+        _lf_age=$((_lf_now - _lf_mtime))
+        if [ "$_lf_age" -gt "$LONG_FLAG_MAX_AGE" ] 2>/dev/null; then
+            qlog_warn "LONG_FLAG stale (age=${_lf_age}s > ${LONG_FLAG_MAX_AGE}s) — removing"
+            rm -f "$LONG_FLAG"
+        fi
+    fi
+    # --- end LONG_FLAG expiry guard ---
+
     # --- Ping-based checks FIRST (no modem dependency) ---
     # These must run before AT commands in case qcmd blocks on serial I/O.
     update_proc_metrics

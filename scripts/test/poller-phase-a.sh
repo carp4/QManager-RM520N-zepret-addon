@@ -138,6 +138,61 @@ else
     bad "qmanager_poller missing prev_traffic_ts init or assignment"
 fi
 
+section "LONG_FLAG older than 5 minutes is auto-cleared"
+
+# Build a fake LONG_FLAG with mtime 10 minutes in the past.
+flag="$work/qmanager_long_running"
+touch "$flag"
+# Set mtime to now - 600s.
+old_ts=$(($(date +%s) - 600))
+# Cross-platform mtime set: GNU touch supports -d @epoch; BSD uses -t.
+touch -d "@$old_ts" "$flag" 2>/dev/null || \
+    touch -t "$(date -r "$old_ts" '+%Y%m%d%H%M.%S' 2>/dev/null || echo 197001010000.00)" "$flag"
+
+# Extract the expiry block. After the fix, the poller computes the file
+# age and unlinks if > 300s. Simulate that block here by sourcing it.
+cat > "$work/expire_shim.sh" <<SHIM
+LONG_FLAG="$flag"
+LONG_FLAG_MAX_AGE=300
+SHIM
+
+# The patched code lives at the top of poll_cycle. We extract it by
+# searching for the canonical comment we add: "LONG_FLAG expiry guard".
+awk '/# --- LONG_FLAG expiry guard/,/# --- end LONG_FLAG expiry guard/' \
+    "$REPO_ROOT/scripts/usr/bin/qmanager_poller" > "$work/expire_block.sh"
+
+if [ ! -s "$work/expire_block.sh" ]; then
+    bad "LONG_FLAG expiry guard not found in qmanager_poller"
+else
+    (
+        set +eu
+        . "$work/expire_shim.sh"
+        qlog_warn() { :; }
+        . "$work/expire_block.sh"
+    )
+    if [ -f "$flag" ]; then
+        bad "stale LONG_FLAG (>300s) was not cleared"
+    else
+        ok "stale LONG_FLAG cleared after expiry"
+    fi
+fi
+
+# Negative case: a fresh flag must NOT be removed.
+fresh="$work/qmanager_long_running_fresh"
+touch "$fresh"
+(
+    set +eu
+    LONG_FLAG="$fresh"
+    LONG_FLAG_MAX_AGE=300
+    qlog_warn() { :; }
+    . "$work/expire_block.sh" 2>/dev/null || true
+)
+if [ -f "$fresh" ]; then
+    ok "fresh LONG_FLAG preserved"
+else
+    bad "fresh LONG_FLAG was wrongly cleared"
+fi
+
 printf '\n%d passed, %d failed\n' "$pass_count" "$fail_count"
 [ "$fail" -eq 0 ] || exit 1
 echo "ALL PASS"
