@@ -77,7 +77,6 @@ list_scripts() {
 }
 
 syntax_failed=0
-syntax_total=0
 while IFS= read -r f; do
     [ -z "$f" ] && continue
     [ -f "$f" ] || continue
@@ -91,10 +90,14 @@ done < <(list_scripts)
 
 if [ "$syntax_failed" -gt 0 ]; then
     bad "$syntax_failed of $syntax_total scripts have syntax errors"
+    status_glyph_syntax="$GLYPH_FAIL"
+    gate_failed=1
+    gate_failed_at="bash -n syntax check"
     printf '\ngate FAIL: bash -n syntax check\n'
     exit 1
 fi
 ok "$syntax_total scripts parsed cleanly"
+status_glyph_syntax="$GLYPH_OK"
 
 # === Section 2: CRLF detector (warn-only) ===
 section "CRLF check (warn-only)"
@@ -132,11 +135,23 @@ if [ -n "$crlf_files" ]; then
     warn "CRLF line endings found in $crlf_count file(s):"
     printf '%s\n' "$crlf_files" | sed 's/^/    /'
     warn "Set your editor to LF — installer normalizes on-device, but this is a misconfig signal."
+    status_glyph_crlf="$GLYPH_WARN"
+    crlf_summary="$crlf_count warnings"
 else
     ok "no CRLF detected"
+    status_glyph_crlf="$GLYPH_OK"
+    crlf_summary="clean"
 fi
 
 # === Section 3: workstation harnesses ===
+# First pass: count discoverable harnesses (excluding run-all.sh itself).
+for harness in "$REPO_ROOT/scripts/test/"*.sh; do
+    [ -f "$harness" ] || continue
+    case "$(basename "$harness")" in run-all.sh) continue ;; esac
+    harness_total=$((harness_total + 1))
+done
+
+# Second pass: actually run them.
 for harness in "$REPO_ROOT/scripts/test/"*.sh; do
     [ -f "$harness" ] || continue
     name=$(basename "$harness")
@@ -144,9 +159,17 @@ for harness in "$REPO_ROOT/scripts/test/"*.sh; do
     rel="scripts/test/$name"
     section "$rel"
     if ! bash "$harness"; then
+        status_glyph_harn="$GLYPH_FAIL"
+        gate_failed=1
+        gate_failed_at="$rel"
         printf '\ngate FAIL: %s\n' "$rel"
         exit 1
     fi
+    harness_pass=$((harness_pass + 1))
 done
+
+if [ "$harness_total" -eq "$harness_pass" ]; then
+    status_glyph_harn="$GLYPH_OK"
+fi
 
 printf '\ngate PASS\n'
