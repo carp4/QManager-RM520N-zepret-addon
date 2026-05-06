@@ -145,14 +145,17 @@ exec "$cut_real" "\$@"
 SHIM
     chmod +x "$shim_dir/cut"
 
-    # Sample QCAINFO output: 1 LTE PCC + 1 LTE SCC + 1 NR SCC long form.
-    sample_raw=$'+QCAINFO: "PCC",1350,75,"LTEBAND3",,135,-100,-12,-72,5\n+QCAINFO: "SCC",350,100,"LTEBAND7",1,200,-105,-13,-75,4\n+QCAINFO: "SCC",647424,3,"NR5GBAND78",1,500,0,0,2079167,-1000,-1100,500\nOK'
+    # Real on-device AT+QCAINFO capture from RM520N-GL: 1 LTE PCC + 1 LTE SCC.
+    # Bands use spaced format ("LTE BAND 28") which the per-line parser
+    # normalizes via `tr -d ' '` and the CA-count grep at parse_at.sh:507
+    # matches via the substring "LTE BAND".
+    sample_raw=$'+QCAINFO: "PCC",9485,75,"LTE BAND 28",1,295,-86,-9,-58,19\n+QCAINFO: "SCC",1350,75,"LTE BAND 3",1,295,-95,-6,-79,0,0,-,-\nOK'
 
     result=$(
         set +eu
         export PATH="$shim_dir:$PATH"
         # Provide the few globals parse_ca_info reads.
-        network_type="5G-NSA"
+        network_type="LTE"
         # Source the library (includes _lte_rb_to_mhz, _nr_bw_to_mhz, parse_ca_info).
         . "$source_lib"
         parse_ca_info "$sample_raw"
@@ -160,32 +163,34 @@ SHIM
             "$t2_ca_active" "$t2_ca_count" \
             "$t2_nr_ca_active" "$t2_nr_ca_count" \
             "$t2_total_bandwidth_mhz" "$t2_bandwidth_details"
-        # carrier_components must contain 3 entries with the expected bands.
+        # carrier_components must contain 2 entries with the expected bands.
         printf '%s' "$t2_carrier_components" | jq -c 'map(.band)'
     )
 
     cut_calls=$(wc -c < "$counter" | tr -d ' ')
 
+    summary=$(printf '%s\n' "$result" | head -1)
     bands=$(printf '%s\n' "$result" | tail -1)
 
-    # NOTE: We don't assert on CA totals (t2_ca_active / t2_ca_count) here.
-    # The CA-count detection above the per-line loop (parse_at.sh:507) uses
-    # `grep -c 'LTE BAND'` with a literal space, which doesn't match the
-    # `LTEBAND<N>` no-space format documented in this file's spec block and
-    # accepted by the per-line `case "$band_str" in LTEBAND*)` matcher. That's
-    # a pre-existing issue independent of Task 4, so the test exercises only
-    # what this task changes: per-line field extraction (band order) and
-    # fork count (cut invocations).
+    case "$summary" in
+        'true|1|false|0|30|B28: 15 MHz + B3: 15 MHz')
+            ok "parse_ca_info populated CA totals correctly"
+            ;;
+        *)
+            bad "parse_ca_info CA-totals output mismatch: '$summary'"
+            ;;
+    esac
+
     case "$bands" in
-        '["B3","B7","N78"]')
-            ok "parse_ca_info emitted expected band order [B3,B7,N78]"
+        '["B28","B3"]')
+            ok "parse_ca_info emitted expected band order [B28,B3]"
             ;;
         *)
             bad "parse_ca_info band order mismatch: '$bands'"
             ;;
     esac
 
-    # Before the fix: ~10 cuts per QCAINFO line × 3 lines = 30+ forks.
+    # Before the fix: ~10 cuts per QCAINFO line × 2 lines = 20+ forks.
     # After: 0 cuts on the per-line path. The threshold 5 leaves headroom for
     # cut invocations issued by the *test harness itself* (e.g., `cut -f1` in
     # the read_sim_state section of this file), since the shim is on PATH for
