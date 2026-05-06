@@ -9,8 +9,13 @@ import (
 
 func writeTempJSON(t *testing.T, v any) string {
 	t.Helper()
-	f, _ := os.CreateTemp("", "cache*.json")
-	json.NewEncoder(f).Encode(v)
+	f, err := os.CreateTemp("", "cache*.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.NewEncoder(f).Encode(v); err != nil {
+		t.Fatal(err)
+	}
 	f.Close()
 	return f.Name()
 }
@@ -46,6 +51,13 @@ func TestReadStatus_Stale(t *testing.T) {
 	s, _ := readStatus(path)
 	if !s.IsStale() {
 		t.Error("expected cache to be stale")
+	}
+}
+
+func TestReadStatus_MissingFile(t *testing.T) {
+	_, err := readStatus("/nonexistent/qmanager_status.json")
+	if err == nil {
+		t.Fatal("expected error for missing file, got nil")
 	}
 }
 

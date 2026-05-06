@@ -84,6 +84,9 @@ func readEvents(path string) ([]Event, error) {
 			all = append(all, ev)
 		}
 	}
+	if err := sc.Err(); err != nil {
+		return nil, err
+	}
 	if len(all) <= 5 {
 		return all, nil
 	}
