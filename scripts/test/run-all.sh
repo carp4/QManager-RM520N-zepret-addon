@@ -11,6 +11,47 @@ set -eu
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 
+START_TIME=$(date +%s)
+
+# TTY-detected color and glyph helpers — mirrors build.sh convention.
+if [ -t 1 ]; then
+    GREEN='\033[0;32m' RED='\033[0;31m' YELLOW='\033[0;33m'
+    BOLD='\033[1m' DIM='\033[2m' NC='\033[0m'
+    GLYPH_OK='\xe2\x9c\x93'    # ✓
+    GLYPH_FAIL='\xe2\x9c\x97'  # ✗
+    GLYPH_WARN='\xe2\x9a\xa0'  # ⚠
+    HRULE='\xe2\x94\x81'       # ━ (heavy horizontal)
+    BOX_TL='\xe2\x94\x8c' BOX_TR='\xe2\x94\x90'
+    BOX_BL='\xe2\x94\x94' BOX_BR='\xe2\x94\x98'
+    BOX_H='\xe2\x94\x80'  BOX_V='\xe2\x94\x82'
+else
+    GREEN='' RED='' YELLOW='' BOLD='' DIM='' NC=''
+    GLYPH_OK='[OK]' GLYPH_FAIL='[FAIL]' GLYPH_WARN='[WARN]'
+    HRULE='='
+    BOX_TL='+' BOX_TR='+' BOX_BL='+' BOX_BR='+' BOX_H='-' BOX_V='|'
+fi
+
+# Status trackers populated by each section; consumed by the summary block.
+gate_failed=0
+gate_failed_at=""
+syntax_total=0
+crlf_count=0
+crlf_summary=""
+status_glyph_syntax=""
+status_glyph_crlf=""
+status_glyph_harn=""
+harness_pass=0
+harness_total=0
+
+# _repeat <byte-string> <count> — emits the byte string N times via printf '%b'.
+_repeat() {
+    local i=0
+    while [ "$i" -lt "$2" ]; do
+        printf '%b' "$1"
+        i=$((i + 1))
+    done
+}
+
 # Output helpers — same shape as the existing harnesses.
 section() { printf '\n== %s ==\n' "$1"; }
 ok()      { printf '  PASS  %s\n' "$1"; }
