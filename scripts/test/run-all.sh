@@ -50,7 +50,7 @@ fi
 ok "$syntax_total scripts parsed cleanly"
 
 # === Section 3: workstation harnesses ===
-# (Sections 1 and 2 land in subsequent tasks.)
+# (Section 2 CRLF detector lands in the next task.)
 for harness in "$REPO_ROOT/scripts/test/"*.sh; do
     [ -f "$harness" ] || continue
     name=$(basename "$harness")
