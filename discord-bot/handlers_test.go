@@ -37,6 +37,9 @@ func TestBuildStatusEmbed_InternetDown(t *testing.T) {
 	if !found {
 		t.Error("expected Internet field in status embed")
 	}
+	if embed.Color != colorRed {
+		t.Errorf("expected colorRed for internet=false, got %#x", embed.Color)
+	}
 }
 
 func TestBuildEventsEmbed_Empty(t *testing.T) {
@@ -52,5 +55,46 @@ func TestEmbedColorForInternet(t *testing.T) {
 	}
 	if embedColorForInternet("false") != colorRed {
 		t.Error("expected red for internet=false")
+	}
+}
+
+func TestBuildSignalEmbed_TitleIsCorrect(t *testing.T) {
+	s := makeStatus("true", "true", "NR5G-NSA")
+	embed := buildSignalEmbed(s)
+	if embed.Title != "Signal Metrics" {
+		t.Errorf("got title %q, want %q", embed.Title, "Signal Metrics")
+	}
+}
+
+func TestBuildBandsEmbed_Fields(t *testing.T) {
+	s := makeStatus("true", "true", "LTE")
+	s.LteBand = "3"
+	s.NrBand = "78"
+	embed := buildBandsEmbed(s)
+	if embed.Title != "Band Details" {
+		t.Errorf("got title %q, want %q", embed.Title, "Band Details")
+	}
+	found := false
+	for _, f := range embed.Fields {
+		if f.Name == "Technology" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected Technology field in bands embed")
+	}
+}
+
+func TestBuildEventsEmbed_WithEvents(t *testing.T) {
+	events := []Event{
+		{Timestamp: 1000, Type: "conn", Message: "Lost internet", Severity: "warning"},
+		{Timestamp: 2000, Type: "conn", Message: "Restored", Severity: "info"},
+	}
+	embed := buildEventsEmbed(events)
+	if embed.Description == "" {
+		t.Error("expected non-empty description for events embed")
+	}
+	if embed.Color != colorBlue {
+		t.Errorf("got color %#x, want colorBlue %#x", embed.Color, colorBlue)
 	}
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os/exec"
 	"strings"
 	"time"
@@ -67,7 +68,7 @@ func buildSignalEmbed(s *ModemStatus) *discordgo.MessageEmbed {
 func buildBandsEmbed(s *ModemStatus) *discordgo.MessageEmbed {
 	caInfo := "None"
 	if s.CaActive == "true" {
-		caInfo = fmt.Sprintf("%s component(s)", s.CaCount)
+		caInfo = fmt.Sprintf("%s component(s)", ifEmpty(s.CaCount, "?"))
 		if s.NrCaActive == "true" {
 			caInfo += fmt.Sprintf(" + NR CA (%s)", s.NrCaCount)
 		}
@@ -151,7 +152,10 @@ func ifEmpty(s, fallback string) string {
 }
 
 func runQcmd(atCmd string) (string, bool) {
-	out, _ := exec.Command("/usr/bin/qcmd", atCmd).CombinedOutput()
+	out, err := exec.Command("/usr/bin/qcmd", atCmd).CombinedOutput()
+	if err != nil {
+		log.Printf("qcmd exec error (%s): %v", atCmd, err)
+	}
 	response := strings.TrimSpace(string(out))
 	return response, strings.Contains(response, "OK")
 }
@@ -186,17 +190,21 @@ func handleCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 }
 
 func respondEmbed(s *discordgo.Session, i *discordgo.InteractionCreate, embed *discordgo.MessageEmbed) {
-	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+	if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{Embeds: []*discordgo.MessageEmbed{embed}},
-	})
+	}); err != nil {
+		log.Printf("InteractionRespond error: %v", err)
+	}
 }
 
 func respondError(s *discordgo.Session, i *discordgo.InteractionCreate, msg string) {
-	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+	if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{Content: "❌ " + msg},
-	})
+	}); err != nil {
+		log.Printf("InteractionRespond error: %v", err)
+	}
 }
 
 func handleSignal(s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -229,6 +237,7 @@ func handleStatus(s *discordgo.Session, i *discordgo.InteractionCreate) {
 func handleEvents(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	events, err := readEvents(eventsCachePath)
 	if err != nil {
+		log.Printf("readEvents error: %v", err)
 		events = []Event{}
 	}
 	respondEmbed(s, i, buildEventsEmbed(events))
