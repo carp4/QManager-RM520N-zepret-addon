@@ -3,7 +3,7 @@ package main
 import "github.com/bwmarrin/discordgo"
 
 func slashCommands() []*discordgo.ApplicationCommand {
-	nr := false // not required
+	optional := false
 	return []*discordgo.ApplicationCommand{
 		{Name: "signal", Description: "RF signal metrics per antenna port (RSRP, RSRQ, SINR, RSSI)"},
 		{Name: "bands", Description: "Active technology, band lock state, and carrier aggregation details"},
@@ -18,13 +18,13 @@ func slashCommands() []*discordgo.ApplicationCommand {
 					Type:        discordgo.ApplicationCommandOptionString,
 					Name:        "lte_bands",
 					Description: "LTE bands to lock, colon-separated (e.g. B3:B28), or 'auto' to unlock",
-					Required:    nr,
+					Required:    optional,
 				},
 				{
 					Type:        discordgo.ApplicationCommandOptionString,
 					Name:        "nr_bands",
 					Description: "NR bands to lock, colon-separated (e.g. n78), or 'auto' to unlock",
-					Required:    nr,
+					Required:    optional,
 				},
 			},
 		},
