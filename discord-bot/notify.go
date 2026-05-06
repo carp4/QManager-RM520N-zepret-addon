@@ -46,9 +46,12 @@ func (ns *notifyState) update(internet string, thresholdMinutes, _ int) notifyAc
 
 	// Internet is up
 	if ns.wasDown {
+		sendUp := ns.downSent
 		ns.wasDown = false
 		ns.downSent = false
-		return notifyUp
+		if sendUp {
+			return notifyUp
+		}
 	}
 	return notifyNone
 }

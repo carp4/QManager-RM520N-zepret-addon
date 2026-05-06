@@ -39,3 +39,19 @@ func TestNotifyState_AlreadySentDown(t *testing.T) {
 		t.Errorf("got %v, want notifyNone (already sent)", action)
 	}
 }
+
+func TestNotifyState_SubThresholdRecovery(t *testing.T) {
+	ns := &notifyState{}
+	// Down, threshold not exceeded
+	if action := ns.update("false", 5, 1); action != notifyNone {
+		t.Errorf("got %v, want notifyNone (sub-threshold)", action)
+	}
+	// Recovers before threshold — must NOT send notifyUp
+	if action := ns.update("true", 5, 1); action != notifyNone {
+		t.Errorf("got %v, want notifyNone (no down DM was sent)", action)
+	}
+	// State is reset
+	if ns.wasDown || ns.downSent {
+		t.Errorf("expected state reset, got wasDown=%v downSent=%v", ns.wasDown, ns.downSent)
+	}
+}
