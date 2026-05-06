@@ -243,9 +243,208 @@ func handleEvents(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	respondEmbed(s, i, buildEventsEmbed(events))
 }
 
-// handleReboot, handleComponent, handleLockBand, handleNetworkMode
-// are implemented in Task 5.
-func handleReboot(_ *discordgo.Session, _ *discordgo.InteractionCreate)      {}
-func handleComponent(_ *discordgo.Session, _ *discordgo.InteractionCreate)   {}
-func handleLockBand(_ *discordgo.Session, _ *discordgo.InteractionCreate)    {}
-func handleNetworkMode(_ *discordgo.Session, _ *discordgo.InteractionCreate) {}
+// parseBandOption converts user input (e.g. "B3:B28" or "n78") to AT format (e.g. "3:28" or "78").
+// Strips both B/b (LTE) and n/N (NR) prefixes. Returns "" for "auto" (caller sends "0" = all bands).
+func parseBandOption(input string) string {
+	if strings.EqualFold(strings.TrimSpace(input), "auto") {
+		return ""
+	}
+	parts := strings.Split(input, ":")
+	clean := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		upper := strings.ToUpper(p)
+		if strings.HasPrefix(upper, "B") {
+			p = upper[1:]
+		} else if strings.HasPrefix(upper, "N") {
+			p = upper[1:]
+		}
+		if p != "" {
+			clean = append(clean, p)
+		}
+	}
+	return strings.Join(clean, ":")
+}
+
+func handleReboot(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Content: "⚠️ **Reboot the modem?** This will disconnect all clients for ~30 seconds.",
+			Components: []discordgo.MessageComponent{
+				discordgo.ActionsRow{
+					Components: []discordgo.MessageComponent{
+						discordgo.Button{
+							Label:    "Confirm Reboot",
+							Style:    discordgo.DangerButton,
+							CustomID: "reboot_confirm",
+						},
+						discordgo.Button{
+							Label:    "Cancel",
+							Style:    discordgo.SecondaryButton,
+							CustomID: "reboot_cancel",
+						},
+					},
+				},
+			},
+		},
+	}); err != nil {
+		log.Printf("InteractionRespond error (reboot): %v", err)
+	}
+	go func() {
+		time.Sleep(30 * time.Second)
+		disabledRow := discordgo.ActionsRow{
+			Components: []discordgo.MessageComponent{
+				discordgo.Button{Label: "Confirm Reboot", Style: discordgo.DangerButton, CustomID: "reboot_confirm", Disabled: true},
+				discordgo.Button{Label: "Cancel", Style: discordgo.SecondaryButton, CustomID: "reboot_cancel", Disabled: true},
+			},
+		}
+		content := "⚠️ **Reboot the modem?** *(expired)*"
+		_, err := s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+			Content:    &content,
+			Components: &[]discordgo.MessageComponent{disabledRow},
+		})
+		if err != nil {
+			log.Printf("InteractionResponseEdit error (reboot expiry): %v", err)
+		}
+	}()
+}
+
+func handleComponent(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	switch i.MessageComponentData().CustomID {
+	case "reboot_confirm":
+		if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseDeferredMessageUpdate,
+		}); err != nil {
+			log.Printf("InteractionRespond error (reboot_confirm defer): %v", err)
+		}
+		_, ok := runQcmd(`AT+QPOWD=1`)
+		content := "✅ Reboot command sent. Reconnecting in ~30s..."
+		if !ok {
+			content = "❌ Reboot command failed. Check modem status."
+		}
+		disabledRow := discordgo.ActionsRow{
+			Components: []discordgo.MessageComponent{
+				discordgo.Button{Label: "Confirm Reboot", Style: discordgo.DangerButton, CustomID: "reboot_confirm", Disabled: true},
+				discordgo.Button{Label: "Cancel", Style: discordgo.SecondaryButton, CustomID: "reboot_cancel", Disabled: true},
+			},
+		}
+		_, errEdit := s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+			Content:    &content,
+			Components: &[]discordgo.MessageComponent{disabledRow},
+		})
+		if errEdit != nil {
+			log.Printf("InteractionResponseEdit error (reboot_confirm): %v", errEdit)
+		}
+	case "reboot_cancel":
+		content := "Reboot cancelled."
+		disabledRow := discordgo.ActionsRow{
+			Components: []discordgo.MessageComponent{
+				discordgo.Button{Label: "Confirm Reboot", Style: discordgo.DangerButton, CustomID: "reboot_confirm", Disabled: true},
+				discordgo.Button{Label: "Cancel", Style: discordgo.SecondaryButton, CustomID: "reboot_cancel", Disabled: true},
+			},
+		}
+		if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseUpdateMessage,
+			Data: &discordgo.InteractionResponseData{
+				Content:    content,
+				Components: []discordgo.MessageComponent{disabledRow},
+			},
+		}); err != nil {
+			log.Printf("InteractionRespond error (reboot_cancel): %v", err)
+		}
+	}
+}
+
+func handleLockBand(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+	}); err != nil {
+		log.Printf("InteractionRespond error (lock-band defer): %v", err)
+	}
+
+	opts := i.ApplicationCommandData().Options
+	optMap := map[string]string{}
+	for _, o := range opts {
+		optMap[o.Name] = o.StringValue()
+	}
+
+	var results []string
+
+	if lteBandInput, ok := optMap["lte_bands"]; ok {
+		parsed := parseBandOption(lteBandInput)
+		atVal := parsed
+		if atVal == "" {
+			atVal = "0" // 0 = all bands (unlock)
+		}
+		_, cmdOK := runQcmd(fmt.Sprintf(`AT+QNWPREFCFG="lte_band",%s`, atVal))
+		if cmdOK {
+			if parsed == "" {
+				results = append(results, "LTE: unlocked (auto)")
+			} else {
+				display := "B" + strings.ReplaceAll(parsed, ":", "/B")
+				results = append(results, fmt.Sprintf("LTE: locked to %s", display))
+			}
+		} else {
+			results = append(results, "LTE: command failed")
+		}
+	}
+
+	if nrBandInput, ok := optMap["nr_bands"]; ok {
+		parsed := parseBandOption(nrBandInput)
+		atVal := parsed
+		if atVal == "" {
+			atVal = "0"
+		}
+		_, cmdOK := runQcmd(fmt.Sprintf(`AT+QNWPREFCFG="nr5g_band",%s`, atVal))
+		if cmdOK {
+			if parsed == "" {
+				results = append(results, "NR: unlocked (auto)")
+			} else {
+				display := "n" + strings.ReplaceAll(parsed, ":", "/n")
+				results = append(results, fmt.Sprintf("NR: locked to %s", display))
+			}
+		} else {
+			results = append(results, "NR: command failed")
+		}
+	}
+
+	if len(results) == 0 {
+		results = append(results, "No bands specified. Use lte_bands and/or nr_bands options.")
+	}
+
+	content := "🔒 Band lock result:\n" + strings.Join(results, "\n")
+	_, errEdit := s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{Content: &content})
+	if errEdit != nil {
+		log.Printf("InteractionResponseEdit error (lock-band): %v", errEdit)
+	}
+}
+
+func handleNetworkMode(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+	}); err != nil {
+		log.Printf("InteractionRespond error (network-mode defer): %v", err)
+	}
+
+	mode := i.ApplicationCommandData().Options[0].StringValue()
+	_, ok := runQcmd(fmt.Sprintf(`AT+QNWPREFCFG="mode_pref",%s`, mode))
+
+	modeLabel := map[string]string{
+		"AUTO": "Auto (LTE + NR)", "LTE": "LTE only",
+		"NR5G": "NR only", "NR5G:LTE": "NR preferred",
+	}
+	label := modeLabel[mode]
+	if label == "" {
+		label = mode
+	}
+
+	content := fmt.Sprintf("✅ Network mode set to: **%s**", label)
+	if !ok {
+		content = fmt.Sprintf("❌ Failed to set network mode to %s. Check modem status.", label)
+	}
+	_, errEdit := s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{Content: &content})
+	if errEdit != nil {
+		log.Printf("InteractionResponseEdit error (network-mode): %v", errEdit)
+	}
+}

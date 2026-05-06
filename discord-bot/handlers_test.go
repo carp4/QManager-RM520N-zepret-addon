@@ -98,3 +98,34 @@ func TestBuildEventsEmbed_WithEvents(t *testing.T) {
 		t.Errorf("got color %#x, want colorBlue %#x", embed.Color, colorBlue)
 	}
 }
+
+func TestParseBandOption_StripsBPrefix(t *testing.T) {
+	// "B3:B28" -> "3:28" (strip B prefix for LTE AT command)
+	got := parseBandOption("B3:B28")
+	if got != "3:28" {
+		t.Errorf("got %q, want %q", got, "3:28")
+	}
+}
+
+func TestParseBandOption_StripsNPrefix(t *testing.T) {
+	// "n78" -> "78" (strip n prefix for NR AT command)
+	got := parseBandOption("n78")
+	if got != "78" {
+		t.Errorf("got %q, want %q", got, "78")
+	}
+}
+
+func TestParseBandOption_Auto(t *testing.T) {
+	got := parseBandOption("auto")
+	if got != "" {
+		t.Errorf("got %q, want empty string for auto", got)
+	}
+}
+
+func TestParseBandOption_MixedPrefixes(t *testing.T) {
+	// "B3:n78" mixed is unusual but should handle gracefully
+	got := parseBandOption("B3:n78")
+	if got != "3:78" {
+		t.Errorf("got %q, want %q", got, "3:78")
+	}
+}
