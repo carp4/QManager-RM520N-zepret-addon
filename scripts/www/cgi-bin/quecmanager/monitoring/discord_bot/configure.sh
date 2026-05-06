@@ -86,18 +86,18 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
         fi
         ;;
     uninstall)
-        systemctl stop qmanager-discord.service 2>/dev/null
-        systemctl disable qmanager-discord.service 2>/dev/null
+        svc_stop qmanager_discord
+        svc_disable qmanager_discord
         rm -f "$BOT_BIN" "$CONFIG"
         jq -n '{success:true}'
         ;;
     enable)
-        systemctl enable qmanager-discord.service 2>/dev/null
-        systemctl start qmanager-discord.service 2>/dev/null
+        svc_enable qmanager_discord
+        svc_start qmanager_discord
         jq -n '{success:true}'
         ;;
     disable)
-        systemctl stop qmanager-discord.service 2>/dev/null
+        svc_stop qmanager_discord
         jq -n '{success:true}'
         ;;
     *)

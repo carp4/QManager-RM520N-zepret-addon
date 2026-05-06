@@ -16,7 +16,12 @@ da_is_installed() {
 }
 
 da_is_running() {
-    [ -f /run/qmanager-discord.pid ] || systemctl is-active qmanager-discord.service >/dev/null 2>&1
+    # svc_is_running comes from platform.sh (sourced via cgi_base.sh) — uses sudo for www-data context.
+    if command -v svc_is_running >/dev/null 2>&1; then
+        svc_is_running qmanager_discord
+    else
+        [ -f /run/qmanager-discord.pid ]
+    fi
 }
 
 da_is_connected() {
