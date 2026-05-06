@@ -56,6 +56,7 @@ func TestWriteStatus(t *testing.T) {
 	path := f.Name()
 	f.Close()
 	defer os.Remove(path)
+	defer os.Remove(path + ".tmp")
 
 	writeStatus(path, BotStatus{Connected: true, LatencyMs: 42, Error: ""})
 
@@ -69,5 +70,8 @@ func TestWriteStatus(t *testing.T) {
 	}
 	if got.LatencyMs != 42 {
 		t.Errorf("got LatencyMs %d, want 42", got.LatencyMs)
+	}
+	if got.LastSeen == 0 {
+		t.Error("expected LastSeen to be set by writeStatus")
 	}
 }
