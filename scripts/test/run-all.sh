@@ -49,8 +49,47 @@ if [ "$syntax_failed" -gt 0 ]; then
 fi
 ok "$syntax_total scripts parsed cleanly"
 
+# === Section 2: CRLF detector (warn-only) ===
+section "CRLF check (warn-only)"
+
+# Tarball-bound files most sensitive to CRLF: shell scripts, systemd units,
+# sudoers rules. The installer normalizes these on-device, so this section
+# never fails the gate — it just nudges the operator to fix their editor.
+list_crlf_candidates() {
+    # -U: binary mode — prevents MSYS2/Windows grep from stripping \r before matching.
+    # -I: skip binary files (e.g. .ipk, compiled objects).  Both flags are safe on Linux.
+    grep -rUIl $'\r' "$REPO_ROOT/scripts" \
+        --include='*.sh' --include='*.service' \
+        2>/dev/null || true
+    # Extension-less daemon scripts in scripts/usr/bin/.
+    for f in "$REPO_ROOT/scripts/usr/bin/"*; do
+        [ -f "$f" ] || continue
+        if grep -qUI $'\r' "$f" 2>/dev/null; then
+            printf '%s\n' "$f"
+        fi
+    done
+    # sudoers.d/ files (unconventional extensions).
+    find "$REPO_ROOT/scripts" -path '*/sudoers.d/*' -type f 2>/dev/null \
+        | while IFS= read -r f; do
+            [ -f "$f" ] || continue
+            if grep -qUI $'\r' "$f" 2>/dev/null; then
+                printf '%s\n' "$f"
+            fi
+        done
+}
+
+crlf_files=$(list_crlf_candidates | sort -u)
+
+if [ -n "$crlf_files" ]; then
+    crlf_count=$(printf '%s\n' "$crlf_files" | wc -l | tr -d ' ')
+    warn "CRLF line endings found in $crlf_count file(s):"
+    printf '%s\n' "$crlf_files" | sed 's/^/    /'
+    warn "Set your editor to LF — installer normalizes on-device, but this is a misconfig signal."
+else
+    ok "no CRLF detected"
+fi
+
 # === Section 3: workstation harnesses ===
-# (Section 2 CRLF detector lands in the next task.)
 for harness in "$REPO_ROOT/scripts/test/"*.sh; do
     [ -f "$harness" ] || continue
     name=$(basename "$harness")
