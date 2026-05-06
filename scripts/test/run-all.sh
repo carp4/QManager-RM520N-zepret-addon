@@ -52,11 +52,17 @@ _repeat() {
     done
 }
 
-# Output helpers — same shape as the existing harnesses.
-section() { printf '\n== %s ==\n' "$1"; }
-ok()      { printf '  PASS  %s\n' "$1"; }
-bad()     { printf '  FAIL  %s\n' "$1"; }
-warn()    { printf '  WARN  %s\n' "$1"; }
+# Output helpers — colored + glyph variants. Falls back to ASCII on non-TTY.
+section() {
+    local title="$1"
+    local pad=$((58 - ${#title}))
+    [ "$pad" -lt 4 ] && pad=4
+    printf "\n${BOLD}%b%b %s %b${NC}\n" \
+        "$HRULE" "$HRULE" "$title" "$(_repeat "$HRULE" "$pad")"
+}
+ok()   { printf "  ${GREEN}%b${NC} %s\n"  "$GLYPH_OK"   "$1"; }
+bad()  { printf "  ${RED}%b${NC} %s\n"    "$GLYPH_FAIL" "$1"; }
+warn() { printf "  ${YELLOW}%b${NC} %s\n" "$GLYPH_WARN" "$1"; }
 
 # === Section 1: bash -n syntax check ===
 section "bash -n syntax check"
