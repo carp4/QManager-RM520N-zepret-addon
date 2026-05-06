@@ -52,6 +52,20 @@ _repeat() {
     done
 }
 
+# _render_summary_box — final summary table.  Reads status_glyph_*, syntax_total,
+# crlf_summary, harness_pass, harness_total.  Always called from the final-block path.
+_render_summary_box() {
+    printf "  ${DIM}%b%b%b Summary %b%b${NC}\n" \
+        "$BOX_TL" "$BOX_H" "$BOX_H" "$(_repeat "$BOX_H" 28)" "$BOX_TR"
+    printf "  ${DIM}%b${NC}  %b ${DIM}%-18s${NC} %16s ${DIM}%b${NC}\n" \
+        "$BOX_V" "$status_glyph_syntax" "Syntax check" "$syntax_total scripts" "$BOX_V"
+    printf "  ${DIM}%b${NC}  %b ${DIM}%-18s${NC} %16s ${DIM}%b${NC}\n" \
+        "$BOX_V" "$status_glyph_crlf"   "CRLF check"   "$crlf_summary" "$BOX_V"
+    printf "  ${DIM}%b${NC}  %b ${DIM}%-18s${NC} %16s ${DIM}%b${NC}\n" \
+        "$BOX_V" "$status_glyph_harn"   "Harnesses"    "$harness_pass/$harness_total pass" "$BOX_V"
+    printf "  ${DIM}%b%b${NC}\n\n" "$BOX_BL" "$(_repeat "$BOX_H" 38)"
+}
+
 # Output helpers — colored + glyph variants. Falls back to ASCII on non-TTY.
 section() {
     local title="$1"
@@ -93,7 +107,9 @@ if [ "$syntax_failed" -gt 0 ]; then
     status_glyph_syntax="$GLYPH_FAIL"
     gate_failed=1
     gate_failed_at="bash -n syntax check"
-    printf '\ngate FAIL: bash -n syntax check\n'
+    elapsed=$(($(date +%s) - START_TIME))
+    printf "\n  ${RED}${BOLD}%b gate FAIL: %s${NC} ${DIM}(${elapsed}s)${NC}\n\n" \
+        "$GLYPH_FAIL" "$gate_failed_at"
     exit 1
 fi
 ok "$syntax_total scripts parsed cleanly"
@@ -162,14 +178,19 @@ for harness in "$REPO_ROOT/scripts/test/"*.sh; do
         status_glyph_harn="$GLYPH_FAIL"
         gate_failed=1
         gate_failed_at="$rel"
-        printf '\ngate FAIL: %s\n' "$rel"
+        elapsed=$(($(date +%s) - START_TIME))
+        printf "\n  ${RED}${BOLD}%b gate FAIL: %s${NC} ${DIM}(${elapsed}s)${NC}\n\n" \
+            "$GLYPH_FAIL" "$gate_failed_at"
+        _render_summary_box
         exit 1
     fi
     harness_pass=$((harness_pass + 1))
 done
 
-if [ "$harness_total" -eq "$harness_pass" ]; then
+if [ "$harness_total" -gt 0 ] && [ "$harness_total" -eq "$harness_pass" ]; then
     status_glyph_harn="$GLYPH_OK"
 fi
 
-printf '\ngate PASS\n'
+elapsed=$(($(date +%s) - START_TIME))
+printf "\n  ${GREEN}${BOLD}%b gate PASS${NC} ${DIM}(${elapsed}s)${NC}\n\n" "$GLYPH_OK"
+_render_summary_box
