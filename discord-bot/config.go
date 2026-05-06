@@ -26,6 +26,7 @@ type BotStatus struct {
 	LastSeen  int64  `json:"last_seen"`
 	LatencyMs int    `json:"latency_ms"`
 	Error     string `json:"error,omitempty"`
+	AppID     string `json:"app_id,omitempty"`
 }
 
 func loadConfig(path string) (*Config, error) {

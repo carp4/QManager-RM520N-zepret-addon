@@ -14,6 +14,7 @@ export interface DiscordBotStatus {
   latency_ms: number;
   error?: string;
   installed: boolean;
+  app_id?: string;
 }
 
 export interface DiscordBotSavePayload {

@@ -113,10 +113,24 @@ export function DiscordBotCard() {
               <li>Paste your bot token below</li>
               <li>Enable Developer Mode in Discord (Settings → Advanced), right-click your avatar → Copy User ID</li>
               <li>Paste your User ID below, save settings</li>
-              <li>Use this OAuth2 URL to add the bot to your account (no server needed):<br/>
-                <code className="text-xs bg-muted px-1 rounded">
-                  https://discord.com/oauth2/authorize?client_id=YOUR_APP_ID&scope=applications.commands
-                </code>
+              <li>
+                Use this OAuth2 URL to add the bot to your account (no server needed):
+                {status?.app_id ? (
+                  <div className="mt-1">
+                    <a
+                      href={`https://discord.com/oauth2/authorize?client_id=${status.app_id}&scope=applications.commands&integration_type=1`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-xs underline text-foreground break-all"
+                    >
+                      {`https://discord.com/oauth2/authorize?client_id=${status.app_id}&scope=applications.commands&integration_type=1`}
+                    </a>
+                  </div>
+                ) : (
+                  <div className="mt-1 text-xs italic">
+                    Save your token first — the install URL appears here once the bot connects.
+                  </div>
+                )}
               </li>
             </ol>
           </div>

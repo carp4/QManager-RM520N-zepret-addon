@@ -23,11 +23,13 @@ func main() {
 		log.Fatal("bot_token and owner_discord_id must be set in config")
 	}
 
-	writeStatus(statusPath, BotStatus{Connected: false, Error: "starting"})
+	appID := appIDFromToken(cfg.BotToken)
+
+	writeStatus(statusPath, BotStatus{Connected: false, Error: "starting", AppID: appID})
 
 	s, err := newSession(cfg.BotToken)
 	if err != nil {
-		writeStatus(statusPath, BotStatus{Connected: false, Error: "session_error"})
+		writeStatus(statusPath, BotStatus{Connected: false, Error: "session_error", AppID: appID})
 		log.Fatalf("failed to create Discord session: %v", err)
 	}
 
@@ -35,16 +37,15 @@ func main() {
 
 	s.AddHandler(func(s *discordgo.Session, r *discordgo.Ready) {
 		log.Printf("Discord bot ready: %s#%s", r.User.Username, r.User.Discriminator)
-		writeStatus(statusPath, BotStatus{Connected: true, LatencyMs: int(s.HeartbeatLatency().Milliseconds())})
+		writeStatus(statusPath, BotStatus{Connected: true, LatencyMs: int(s.HeartbeatLatency().Milliseconds()), AppID: appID})
 	})
 
 	if err := s.Open(); err != nil {
-		writeStatus(statusPath, BotStatus{Connected: false, Error: "invalid_token"})
+		writeStatus(statusPath, BotStatus{Connected: false, Error: "invalid_token", AppID: appID})
 		log.Fatalf("failed to open Discord session: %v", err)
 	}
 	defer s.Close()
 
-	appID := appIDFromToken(cfg.BotToken)
 	if _, err := registerCommands(s, appID); err != nil {
 		log.Printf("warning: failed to register slash commands: %v", err)
 	}
@@ -59,6 +60,12 @@ func main() {
 		go RunNotifier(s, dmChannelID, cfg, stopNotifier)
 	}
 
+	// Test DM trigger watcher — CGI test.sh creates /tmp/qmanager_discord_test
+	stopTestWatcher := make(chan struct{})
+	if dmChannelID != "" {
+		go runTestDMWatcher(s, dmChannelID, stopTestWatcher)
+	}
+
 	// Periodic status update
 	go func() {
 		ticker := time.NewTicker(30 * time.Second)
@@ -67,6 +74,7 @@ func main() {
 			writeStatus(statusPath, BotStatus{
 				Connected: s.DataReady,
 				LatencyMs: int(s.HeartbeatLatency().Milliseconds()),
+				AppID:     appID,
 			})
 		}
 	}()
@@ -77,6 +85,30 @@ func main() {
 	<-sc
 
 	close(stopNotifier)
-	writeStatus(statusPath, BotStatus{Connected: false, Error: ""})
+	close(stopTestWatcher)
+	writeStatus(statusPath, BotStatus{Connected: false, Error: "", AppID: appID})
 	log.Println("Discord bot stopped.")
+}
+
+const testDMTriggerPath = "/tmp/qmanager_discord_test"
+
+// runTestDMWatcher polls for a trigger file written by the test.sh CGI;
+// when found, it sends a confirmation DM and removes the trigger.
+func runTestDMWatcher(s *discordgo.Session, dmChannelID string, stopCh <-chan struct{}) {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-stopCh:
+			return
+		case <-ticker.C:
+			if _, err := os.Stat(testDMTriggerPath); err != nil {
+				continue
+			}
+			os.Remove(testDMTriggerPath)
+			if _, err := s.ChannelMessageSend(dmChannelID, "✅ Test DM from QManager — your Discord bot is working."); err != nil {
+				log.Printf("test DM send failed: %v", err)
+			}
+		}
+	}
 }
