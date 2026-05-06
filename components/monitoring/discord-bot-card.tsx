@@ -12,7 +12,7 @@ import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import {
   CheckCircle2Icon, XCircleIcon, MinusCircleIcon,
-  SendIcon, Loader2Icon,
+  SendIcon, Loader2Icon, ExternalLinkIcon,
 } from "lucide-react";
 import { SaveButton, useSaveFlash } from "@/components/ui/save-button";
 import { useDiscordBot } from "@/hooks/use-discord-bot";
@@ -202,6 +202,21 @@ export function DiscordBotCard() {
               <><SendIcon className="size-4 mr-2" /> Send Test DM</>
             )}
           </Button>
+          {status?.app_id && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                window.open(
+                  `https://discord.com/oauth2/authorize?client_id=${status.app_id}&scope=applications.commands&integration_type=1`,
+                  "_blank",
+                  "noopener,noreferrer",
+                )
+              }
+            >
+              <ExternalLinkIcon className="size-4 mr-2" /> Add Bot to Account
+            </Button>
+          )}
           {status?.connected && (
             <Button variant="outline" size="sm" onClick={() => (enabled ? disable() : enable())}>
               {enabled ? "Stop Bot" : "Start Bot"}

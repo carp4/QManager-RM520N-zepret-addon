@@ -92,11 +92,22 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
         jq -n '{success:true}'
         ;;
     enable)
+        # Persist enabled=true in JSON so the bot doesn't exit on next restart
+        if [ -f "$CONFIG" ]; then
+            tmp="${CONFIG}.tmp"
+            jq '.enabled = true' "$CONFIG" > "$tmp" && mv "$tmp" "$CONFIG"
+            touch "$RELOAD_FLAG"
+        fi
         svc_enable qmanager_discord
         svc_start qmanager_discord
         jq -n '{success:true}'
         ;;
     disable)
+        if [ -f "$CONFIG" ]; then
+            tmp="${CONFIG}.tmp"
+            jq '.enabled = false' "$CONFIG" > "$tmp" && mv "$tmp" "$CONFIG"
+            touch "$RELOAD_FLAG"
+        fi
         svc_stop qmanager_discord
         jq -n '{success:true}'
         ;;
