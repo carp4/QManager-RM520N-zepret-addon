@@ -963,11 +963,11 @@ cleanup_legacy_scripts() {
 
     local removed=0
 
-    # /usr/bin/qmanager_* — remove if not in source
+    # /usr/bin/qmanager_* — remove if not in source (scripts/usr/bin/) AND not bundled in dependencies/
     for installed in "$BIN_DIR"/qmanager_*; do
         [ -f "$installed" ] || continue
         fname=$(basename "$installed")
-        if [ ! -f "$SRC_SCRIPTS/usr/bin/$fname" ]; then
+        if [ ! -f "$SRC_SCRIPTS/usr/bin/$fname" ] && [ ! -f "$SRC_DEPS/$fname" ]; then
             rm -f "$installed"
             rm -f "$WANTS_DIR/${fname}.service"
             _log_raw "Removed legacy: $fname"
