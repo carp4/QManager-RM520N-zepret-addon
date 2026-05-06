@@ -21,6 +21,7 @@ bad()  { printf '  FAIL  %s\n' "$1"; fail_count=$((fail_count + 1)); fail=1; }
 section() { printf '\n== %s ==\n' "$1"; }
 
 PARSE_AT="$REPO_ROOT/scripts/usr/lib/qmanager/parse_at.sh"
+jq_available=$(command -v jq 2>/dev/null || true)
 
 section "harness self-check"
 if [ -f "$PARSE_AT" ]; then
@@ -94,8 +95,7 @@ esac
 # ---------------------------------------------------------------------------
 section "parse_qrsrp — per-antenna LTE + NR"
 
-jq_real=$(command -v jq 2>/dev/null || true)
-if [ -z "$jq_real" ]; then
+if [ -z "$jq_available" ]; then
     printf '  SKIP  parse_qrsrp (jq not available on workstation)\n'
 else
     sample_qrsrp=$'+QRSRP: -95,-91,-89,-93,LTE\n+QRSRP: -90,-88,-86,-92,NR5G\nOK'
@@ -135,8 +135,7 @@ fi
 # ---------------------------------------------------------------------------
 section "parse_qrsrq — per-antenna LTE + NR"
 
-jq_real=$(command -v jq 2>/dev/null || true)
-if [ -z "$jq_real" ]; then
+if [ -z "$jq_available" ]; then
     printf '  SKIP  parse_qrsrq (jq not available on workstation)\n'
 else
     sample_qrsrq=$'+QRSRQ: -12,-13,-11,-14,LTE\n+QRSRQ: -10,-11,-9,-12,NR5G\nOK'
@@ -168,8 +167,7 @@ fi
 # ---------------------------------------------------------------------------
 section "parse_qsinr — per-antenna LTE + NR"
 
-jq_real=$(command -v jq 2>/dev/null || true)
-if [ -z "$jq_real" ]; then
+if [ -z "$jq_available" ]; then
     printf '  SKIP  parse_qsinr (jq not available on workstation)\n'
 else
     sample_qsinr=$'+QSINR: 11,12,10,9,LTE\n+QSINR: 15,14,16,13,NR5G\nOK'
