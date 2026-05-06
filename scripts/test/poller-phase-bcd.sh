@@ -207,6 +207,10 @@ else
     state_file="$work/event_state.json"
 
     # First instance: snapshot a known state.
+    # snapshot_event_state copies the *current* state vars (network_type,
+    # lte_pci, t1_cfun, etc.) into prev_ev_*, then persists prev_ev_* to disk.
+    # So we must set the source vars, NOT prev_ev_* — setting prev_ev_*
+    # directly would just be overwritten by the snapshot copy step.
     (
         set +eu
         # Stub qlog helpers and append_event used by the lib.
@@ -216,23 +220,23 @@ else
         qlog_error() { :; }
         append_event() { :; }
         EVENT_STATE_FILE="$state_file"
-        # Pretend prev_ev_* came from an earlier cycle.
-        prev_ev_network_type="5G-NSA"
-        prev_ev_lte_band="B3"
-        prev_ev_lte_pci="135"
-        prev_ev_nr_band="N78"
-        prev_ev_nr_pci="500"
-        prev_ev_nr_state="connected"
-        prev_ev_modem_reachable="true"
-        prev_ev_internet="true"
-        prev_ev_ca_active="true"
-        prev_ev_ca_count="1"
-        prev_ev_nr_ca_active="false"
-        prev_ev_nr_ca_count="0"
-        prev_ev_service_status="optimal"
-        prev_ev_carrier_components="[]"
-        prev_ev_cfun="1"
         . "$events_lib"
+        # Set the *current* state vars that snapshot_event_state reads.
+        network_type="5G-NSA"
+        lte_band="B3"
+        lte_pci="135"
+        nr_band="N78"
+        nr_pci="500"
+        nr_state="connected"
+        modem_reachable="true"
+        conn_internet_available="true"
+        t2_ca_active="true"
+        t2_ca_count="1"
+        t2_nr_ca_active="false"
+        t2_nr_ca_count="0"
+        service_status="optimal"
+        t2_carrier_components="[]"
+        t1_cfun="1"
         snapshot_event_state
     )
 
