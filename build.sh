@@ -86,6 +86,19 @@ cp "$DEPS_DIR/jq.ipk"      "$STAGING_DIR/dependencies/jq.ipk"
 cp "$DEPS_DIR"/dropbear_*.ipk "$STAGING_DIR/dependencies/"
 chmod 755 "$STAGING_DIR/dependencies/atcli_smd11" "$STAGING_DIR/dependencies/sms_tool"
 
+# Optional: Discord bot binary (Go cross-compile; staged only if built)
+if [ -f "$DEPS_DIR/qmanager_discord" ]; then
+    cp "$DEPS_DIR/qmanager_discord" "$STAGING_DIR/dependencies/qmanager_discord"
+    chmod 755 "$STAGING_DIR/dependencies/qmanager_discord"
+    step "Staged Discord bot binary"
+elif [ -f "$ROOT_DIR/qmanager-build/bin/qmanager_discord" ]; then
+    cp "$ROOT_DIR/qmanager-build/bin/qmanager_discord" "$STAGING_DIR/dependencies/qmanager_discord"
+    chmod 755 "$STAGING_DIR/dependencies/qmanager_discord"
+    step "Staged Discord bot binary (from qmanager-build/)"
+else
+    step "Discord bot binary not found — skipping (run build-discord-bot.sh to include)"
+fi
+
 step "Creating qmanager.tar.gz..."
 tar czf "$ARCHIVE" -C "$BUILD_DIR" qmanager_install
 

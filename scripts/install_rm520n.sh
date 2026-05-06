@@ -105,7 +105,7 @@ SSH_BOOTSTRAP_STATUS="not_run"
 LOG_FILE="/tmp/qmanager_install.log"
 
 # Services gated on config: only re-enable if they were already enabled
-UCI_GATED_SERVICES="qmanager-watchcat qmanager-tower-failover"
+UCI_GATED_SERVICES="qmanager-watchcat qmanager-tower-failover qmanager-discord"
 
 # Conflict packages that must be removed before installing
 CONFLICT_PACKAGES="socat socat-at-bridge"
@@ -401,6 +401,17 @@ install_dependencies() {
         info "sms_tool already installed"
     else
         warn "sms_tool not found — SMS features will not work"
+    fi
+
+    # --- qmanager_discord (optional Discord bot binary) -----------------------
+    if [ -f "$SRC_DEPS/qmanager_discord" ]; then
+        install_file "$SRC_DEPS/qmanager_discord" "$BIN_DIR/qmanager_discord" 755 \
+            || warn "Failed to install qmanager_discord"
+        info "qmanager_discord installed to $BIN_DIR/qmanager_discord"
+    elif [ -x "$BIN_DIR/qmanager_discord" ]; then
+        info "qmanager_discord already installed"
+    else
+        info "qmanager_discord not bundled — Discord bot feature disabled"
     fi
 
     # --- Entware bootstrap -------------------------------------------------------
@@ -1124,6 +1135,15 @@ enable_services() {
         fi
     done
 
+    # --- Discord bot (gated on binary + config + enabled flag) ----------------
+    if [ -x "$BIN_DIR/qmanager_discord" ] && [ -f /etc/qmanager/discord_bot.json ]; then
+        enabled=$(jq -r '.enabled // false' /etc/qmanager/discord_bot.json 2>/dev/null)
+        if [ "$enabled" = "true" ]; then
+            ln -sf "$SYSTEMD_DIR/qmanager-discord.service" "$WANTS_DIR/qmanager-discord.service"
+            info "Discord bot service enabled"
+        fi
+    fi
+
     sync
     systemctl daemon-reload
 }
@@ -1154,6 +1174,15 @@ start_services() {
     for svc in qmanager-ping qmanager-poller qmanager-ttl qmanager-mtu qmanager-imei-check; do
         systemctl start "$svc" 2>/dev/null || true
     done
+
+    # Start Discord bot if binary present, config exists, and enabled flag is true
+    if [ -x "$BIN_DIR/qmanager_discord" ] && [ -f /etc/qmanager/discord_bot.json ]; then
+        _dc_enabled=$(jq -r '.enabled // false' /etc/qmanager/discord_bot.json 2>/dev/null)
+        if [ "$_dc_enabled" = "true" ]; then
+            systemctl start qmanager-discord 2>/dev/null || warn "Could not start qmanager-discord"
+            info "Discord bot started"
+        fi
+    fi
     sleep 2
 
     # Download ttyd for web console (non-fatal — console is optional)
