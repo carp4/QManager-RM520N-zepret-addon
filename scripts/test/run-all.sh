@@ -14,21 +14,29 @@ REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 START_TIME=$(date +%s)
 
 # TTY-detected color and glyph helpers — mirrors build.sh convention.
+# Per-mode border-H counts size the summary box so top/bottom borders match
+# the row content width (which differs because non-TTY glyphs like "[WARN]"
+# are wider than TTY's 1-cell ✓/⚠/✗).
 if [ -t 1 ]; then
     GREEN='\033[0;32m' RED='\033[0;31m' YELLOW='\033[0;33m'
     BOLD='\033[1m' DIM='\033[2m' NC='\033[0m'
-    GLYPH_OK='\xe2\x9c\x93'    # ✓
-    GLYPH_FAIL='\xe2\x9c\x97'  # ✗
-    GLYPH_WARN='\xe2\x9a\xa0'  # ⚠
+    GLYPH_OK='\xe2\x9c\x93'    # ✓ (1 cell)
+    GLYPH_FAIL='\xe2\x9c\x97'  # ✗ (1 cell)
+    GLYPH_WARN='\xe2\x9a\xa0'  # ⚠ (1 cell)
     HRULE='\xe2\x94\x81'       # ━ (heavy horizontal)
     BOX_TL='\xe2\x94\x8c' BOX_TR='\xe2\x94\x90'
     BOX_BL='\xe2\x94\x94' BOX_BR='\xe2\x94\x98'
     BOX_H='\xe2\x94\x80'  BOX_V='\xe2\x94\x82'
+    _BOX_TOP_H=29   # row inner width 41 - 2 lead H - " Summary " (9) = 30 -1 for symmetry → 29
+    _BOX_BOT_H=40   # row inner width 41 - 1 (BL) ... = 40
 else
     GREEN='' RED='' YELLOW='' BOLD='' DIM='' NC=''
-    GLYPH_OK='[OK]' GLYPH_FAIL='[FAIL]' GLYPH_WARN='[WARN]'
+    # Pad to uniform 6-char width so rows align: "[OK]  " "[FAIL]" "[WARN]"
+    GLYPH_OK='[OK]  ' GLYPH_FAIL='[FAIL]' GLYPH_WARN='[WARN]'
     HRULE='='
     BOX_TL='+' BOX_TR='+' BOX_BL='+' BOX_BR='+' BOX_H='-' BOX_V='|'
+    _BOX_TOP_H=34   # +5 over TTY because non-TTY glyph is 6 chars vs 1
+    _BOX_BOT_H=45
 fi
 
 # Status trackers populated by each section; consumed by the summary block.
@@ -56,14 +64,14 @@ _repeat() {
 # crlf_summary, harness_pass, harness_total.  Always called from the final-block path.
 _render_summary_box() {
     printf "  ${DIM}%b%b%b Summary %b%b${NC}\n" \
-        "$BOX_TL" "$BOX_H" "$BOX_H" "$(_repeat "$BOX_H" 28)" "$BOX_TR"
+        "$BOX_TL" "$BOX_H" "$BOX_H" "$(_repeat "$BOX_H" "$_BOX_TOP_H")" "$BOX_TR"
     printf "  ${DIM}%b${NC}  %b ${DIM}%-18s${NC} %16s ${DIM}%b${NC}\n" \
         "$BOX_V" "$status_glyph_syntax" "Syntax check" "$syntax_total scripts" "$BOX_V"
     printf "  ${DIM}%b${NC}  %b ${DIM}%-18s${NC} %16s ${DIM}%b${NC}\n" \
         "$BOX_V" "$status_glyph_crlf"   "CRLF check"   "$crlf_summary" "$BOX_V"
     printf "  ${DIM}%b${NC}  %b ${DIM}%-18s${NC} %16s ${DIM}%b${NC}\n" \
         "$BOX_V" "$status_glyph_harn"   "Harnesses"    "$harness_pass/$harness_total pass" "$BOX_V"
-    printf "  ${DIM}%b%b${NC}\n\n" "$BOX_BL" "$(_repeat "$BOX_H" 38)"
+    printf "  ${DIM}%b%b%b${NC}\n\n" "$BOX_BL" "$(_repeat "$BOX_H" "$_BOX_BOT_H")" "$BOX_BR"
 }
 
 # Output helpers — colored + glyph variants. Falls back to ASCII on non-TTY.
