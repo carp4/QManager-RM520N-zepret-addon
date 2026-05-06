@@ -59,7 +59,7 @@ list_crlf_candidates() {
     # -U: binary mode — prevents MSYS2/Windows grep from stripping \r before matching.
     # -I: skip binary files (e.g. .ipk, compiled objects).  Both flags are safe on Linux.
     grep -rUIl $'\r' "$REPO_ROOT/scripts" \
-        --include='*.sh' --include='*.service' \
+        --include='*.sh' --include='*.service' --include='*.rules' \
         2>/dev/null || true
     # Extension-less daemon scripts in scripts/usr/bin/.
     for f in "$REPO_ROOT/scripts/usr/bin/"*; do
