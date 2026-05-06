@@ -6,6 +6,7 @@ A comprehensive reliability release for the modem poller — new visibility into
 
 ## ✨ New Features
 
+- **SSH ready out of the box on fresh installs.** Dropbear is now installed, started, and pre-configured with a temporary root password (`qmanager`) automatically during fresh installs — so you can `ssh root@192.168.225.1` immediately without finishing web onboarding first. Your real password takes over the moment you complete first-time setup in the UI. OTA upgrades and devices that already have SSH running are left alone.
 - **Cycle-budget watchdog.** The background poller now records each cycle's wall-clock time and logs a warning when one exceeds the 10-second budget. Stuck cycles that don't actually crash the daemon are now visible to anyone tailing the logs.
 - **Ping-daemon liveness event.** When the ping daemon goes silent for 60+ seconds the poller now surfaces a `ping_daemon_stale` event in the activity feed instead of failing silently. Also auto-recovers when the daemon resumes.
 
