@@ -75,3 +75,16 @@ func TestWriteStatus(t *testing.T) {
 		t.Error("expected LastSeen to be set by writeStatus")
 	}
 }
+
+func TestCommandDefinitions_AllPresent(t *testing.T) {
+	names := map[string]bool{}
+	for _, cmd := range slashCommands() {
+		names[cmd.Name] = true
+	}
+	required := []string{"signal", "bands", "status", "events", "reboot", "lock-band", "network-mode"}
+	for _, r := range required {
+		if !names[r] {
+			t.Errorf("missing slash command: %s", r)
+		}
+	}
+}

@@ -1,0 +1,62 @@
+package main
+
+import "github.com/bwmarrin/discordgo"
+
+func slashCommands() []*discordgo.ApplicationCommand {
+	nr := false // not required
+	return []*discordgo.ApplicationCommand{
+		{Name: "signal", Description: "RF signal metrics per antenna port (RSRP, RSRQ, SINR, RSSI)"},
+		{Name: "bands", Description: "Active technology, band lock state, and carrier aggregation details"},
+		{Name: "status", Description: "Connectivity, WAN IP, operator, uptime, and CPU temperature"},
+		{Name: "events", Description: "Last 5 network events"},
+		{Name: "reboot", Description: "Reboot the modem (requires confirmation)"},
+		{
+			Name:        "lock-band",
+			Description: "Lock LTE and/or NR bands, or unlock all",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "lte_bands",
+					Description: "LTE bands to lock, colon-separated (e.g. B3:B28), or 'auto' to unlock",
+					Required:    nr,
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "nr_bands",
+					Description: "NR bands to lock, colon-separated (e.g. n78), or 'auto' to unlock",
+					Required:    nr,
+				},
+			},
+		},
+		{
+			Name:        "network-mode",
+			Description: "Set network mode preference",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "mode",
+					Description: "Preferred network mode",
+					Required:    true,
+					Choices: []*discordgo.ApplicationCommandOptionChoice{
+						{Name: "Auto (LTE + NR)", Value: "AUTO"},
+						{Name: "LTE only", Value: "LTE"},
+						{Name: "NR only", Value: "NR5G"},
+						{Name: "NR preferred", Value: "NR5G:LTE"},
+					},
+				},
+			},
+		},
+	}
+}
+
+func registerCommands(s *discordgo.Session, appID string) ([]*discordgo.ApplicationCommand, error) {
+	var registered []*discordgo.ApplicationCommand
+	for _, cmd := range slashCommands() {
+		c, err := s.ApplicationCommandCreate(appID, "", cmd)
+		if err != nil {
+			return registered, err
+		}
+		registered = append(registered, c)
+	}
+	return registered, nil
+}
