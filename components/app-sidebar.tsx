@@ -222,6 +222,10 @@ const data = {
           title: "SMS Alerts",
           url: "/monitoring/sms-alerts",
         },
+        {
+          title: "Discord Bot",
+          url: "/monitoring/discord-bot",
+        },
       ],
     },
     {
