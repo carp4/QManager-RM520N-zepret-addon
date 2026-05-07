@@ -52,6 +52,11 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { SaveButton, useSaveFlash } from "@/components/ui/save-button";
 import { useDiscordBot } from "@/hooks/use-discord-bot";
 import type {
@@ -62,12 +67,6 @@ import type {
 // Discord snowflake: 17–20 numeric digits.
 const DISCORD_ID_REGEX = /^\d{17,20}$/;
 
-// localStorage key — bound to the bot's app_id and the user's Discord ID.
-// A successful test DM proves the user completed the OAuth install step.
-// Changing the token (new app_id) or User ID invalidates the prior verification.
-const verifyStorageKey = (appId: string, ownerId: string) =>
-  `qm-discord-dm-verified:${appId}:${ownerId}`;
-
 // --- Onboarding stepper -----------------------------------------------------
 type StepState = "done" | "active" | "pending";
 
@@ -75,16 +74,20 @@ function StepperPill({ n, label, state }: { n: number; label: string; state: Ste
   return (
     <div
       className={cn(
-        "flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs whitespace-nowrap",
+        "flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs whitespace-nowrap transition-colors",
         state === "done" &&
           "border-success/30 bg-success/15 text-success",
+        // Active gets a non-color cue (font-semibold + ring) so users with
+        // color-vision differences can still see which step they're on —
+        // WCAG 1.4.1 (Use of Color).
         state === "active" &&
-          "border-warning/30 bg-warning/15 text-warning",
+          "border-warning/40 bg-warning/15 text-warning font-semibold ring-1 ring-warning/40",
         state === "pending" &&
           "border-muted-foreground/30 bg-muted/50 text-muted-foreground",
       )}
     >
       <span
+        aria-hidden
         className={cn(
           "flex size-4 items-center justify-center rounded-full text-[10px] font-medium tabular-nums",
           state === "done" && "bg-success/25",
@@ -118,7 +121,10 @@ function OnboardingStepper({ tokenSet, ownerIdSet, online, authorized }: Onboard
   const firstPendingIndex = steps.findIndex((s) => !s.done);
 
   return (
-    <div className="flex items-center gap-1.5 flex-wrap" role="list" aria-label="Setup progress">
+    <ol
+      className="flex items-center gap-1.5 flex-wrap m-0 p-0 list-none"
+      aria-label="Setup progress"
+    >
       {steps.map((s, i) => {
         const state: StepState = s.done
           ? "done"
@@ -126,15 +132,22 @@ function OnboardingStepper({ tokenSet, ownerIdSet, online, authorized }: Onboard
             ? "active"
             : "pending";
         return (
-          <div key={s.n} className="flex items-center gap-1.5" role="listitem">
+          <li
+            key={s.n}
+            className="flex items-center gap-1.5"
+            aria-current={state === "active" ? "step" : undefined}
+          >
             <StepperPill n={s.n} label={s.label} state={state} />
             {i < steps.length - 1 && (
-              <ChevronRightIcon className="size-3 text-muted-foreground/60" aria-hidden />
+              <ChevronRightIcon
+                className="size-3 text-muted-foreground/60"
+                aria-hidden
+              />
             )}
-          </div>
+          </li>
         );
       })}
-    </div>
+    </ol>
   );
 }
 
@@ -164,10 +177,17 @@ export function DiscordBotCard() {
   const [ownerID, setOwnerID] = useState("");
   const [threshold, setThreshold] = useState("5");
   const [enabled, setEnabled] = useState(false);
-  const [authorized, setAuthorized] = useState(false);
+  // Optimistic auth flag — bridges the gap between a successful test send
+  // and the next status poll landing with `authorized: true` from the
+  // backend. The backend (status.sh checking the dm_channel cache file) is
+  // the source of truth; this only suppresses flicker and is cleared on
+  // reset.
+  const [optimisticAuth, setOptimisticAuth] = useState(false);
+  const authorized = !!status?.authorized || optimisticAuth;
   // Tracks when the user clicked "Add Bot to Account". When the QManager tab
-  // regains focus after this, we auto-fire a test DM to verify reachability —
-  // since OAuth has no callback into us, the only proof is a delivered DM.
+  // regains focus after this, we auto-fire a test message to verify
+  // reachability — OAuth has no callback into us, so a delivered message is
+  // the only proof.
   const oauthClickedAtRef = useRef<number | null>(null);
   const [autoVerifying, setAutoVerifying] = useState(false);
 
@@ -177,22 +197,6 @@ export function DiscordBotCard() {
     setThreshold(String(settings.threshold_minutes));
     setEnabled(settings.enabled);
   }
-
-  // Re-read authorization flag whenever the (app_id, owner_id) pair changes.
-  // Changing either invalidates the prior "user has installed bot in account"
-  // proof — the user must re-test to re-confirm reachability.
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const appId = status?.app_id;
-    const ownerId = settings?.owner_discord_id;
-    if (!appId || !ownerId) {
-      setAuthorized(false);
-      return;
-    }
-    setAuthorized(
-      window.localStorage.getItem(verifyStorageKey(appId, ownerId)) === "true",
-    );
-  }, [status?.app_id, settings?.owner_discord_id]);
 
   // --- Validation ------------------------------------------------------------
   const ownerIDError =
@@ -273,27 +277,30 @@ export function DiscordBotCard() {
     }
   };
 
-  // Persist the "user has authorized the bot in their account" proof.
-  // Only call after a successful DM round-trip — that's the only reliable signal.
+  // Optimistic UI bridge for the gap between "test message delivered" and the
+  // next status poll landing the backend's authoritative `authorized` flag.
+  // Only call after a successful round-trip; backend persistence comes from
+  // the daemon writing /etc/qmanager/discord_dm_channel.
   const markAuthorized = useCallback(() => {
-    if (typeof window === "undefined") return;
-    if (!status?.app_id || !settings?.owner_discord_id) return;
-    window.localStorage.setItem(
-      verifyStorageKey(status.app_id, settings.owner_discord_id),
-      "true",
-    );
-    setAuthorized(true);
-  }, [status?.app_id, settings?.owner_discord_id]);
+    setOptimisticAuth(true);
+    refresh();
+  }, [refresh]);
 
   const handleSendTest = async () => {
     const result = await sendTestDm();
+    // Stable toast id — keeps manual sends and the auto-verify-on-focus
+    // path from stacking duplicate "Test message…" notifications when the
+    // user clicks Send while a focus-fired auto-verify is also resolving.
     if (result.success) {
       markAuthorized();
-      toast.success("Test DM sent — bot is authorized");
+      toast.success("Test message delivered — bot is authorized", {
+        id: "discord-test-message",
+      });
     } else {
       toast.error(
         result.error ||
-          "Failed to send test DM — make sure you've added the bot to your Discord account",
+          "Couldn't deliver the test message — make sure you've added the bot to your Discord account",
+        { id: "discord-test-message" },
       );
     }
   };
@@ -328,11 +335,14 @@ export function DiscordBotCard() {
       const result = await sendTestDm();
       if (result.success) {
         markAuthorized();
-        toast.success("Bot authorized — test DM delivered");
+        toast.success("Bot authorized — test message delivered", {
+          id: "discord-test-message",
+        });
       } else {
         toast.error(
           result.error ||
-            "Couldn't verify — finish authorization in Discord, then click Send Test DM",
+            "Couldn't verify — finish authorization in Discord, then send a test message",
+          { id: "discord-test-message" },
         );
       }
       setAutoVerifying(false);
@@ -388,7 +398,10 @@ export function DiscordBotCard() {
       >
         <CheckCircle2Icon className="size-3" /> Authorized
         {status.latency_ms > 0 && (
-          <span className="ml-1 text-success/70">{status.latency_ms}ms</span>
+          // Drop the prior `text-success/70` — gray-on-color killed contrast
+          // below 3:1 in light mode. Use a thin separator + tabular-nums so
+          // the latency reads cleanly and doesn't jitter as it polls.
+          <span className="ml-1 tabular-nums">· {status.latency_ms}ms</span>
         )}
       </Badge>
     );
@@ -403,11 +416,12 @@ export function DiscordBotCard() {
   // --- Loading skeleton ------------------------------------------------------
   if (isLoading) {
     return (
-      <Card className="@container/card">
+      <Card>
         <CardHeader>
-          <CardTitle>Bot Settings</CardTitle>
+          <CardTitle as="h2">Connection</CardTitle>
           <CardDescription>
-            Token, recipient, and alert threshold.
+            Connect your Discord account and choose when downtime alerts
+            are sent.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -429,11 +443,12 @@ export function DiscordBotCard() {
   // --- Error state (initial fetch failed) -----------------------------------
   if (!isLoading && error && !settings) {
     return (
-      <Card className="@container/card">
+      <Card>
         <CardHeader>
-          <CardTitle>Bot Settings</CardTitle>
+          <CardTitle as="h2">Connection</CardTitle>
           <CardDescription>
-            Token, recipient, and alert threshold.
+            Connect your Discord account and choose when downtime alerts
+            are sent.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -455,13 +470,14 @@ export function DiscordBotCard() {
 
   // --- Render ---------------------------------------------------------------
   return (
-    <Card className="@container/card">
+    <Card>
       <CardHeader>
         <div className="flex items-center justify-between gap-4">
           <div className="min-w-0">
-            <CardTitle>Bot Settings</CardTitle>
+            <CardTitle as="h2">Connection</CardTitle>
             <CardDescription>
-              Token, recipient, and alert threshold.
+              Connect your Discord account and choose when downtime alerts
+              are sent.
             </CardDescription>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -492,40 +508,48 @@ export function DiscordBotCard() {
       <CardContent>
         {/* First-time setup help — flat typography, no nested-card chrome */}
         {(!status?.installed || !tokenSet) && (
-          <details className="mb-6 group">
-            <summary className="cursor-pointer text-sm font-medium select-none list-none flex items-center gap-1.5 [&::-webkit-details-marker]:hidden">
-              <ChevronRightIcon className="size-3.5 transition-transform group-open:rotate-90" />
+          <Collapsible className="mb-6 group/setup">
+            <CollapsibleTrigger
+              type="button"
+              className="flex items-center gap-1.5 text-sm font-medium cursor-pointer select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+            >
+              <ChevronRightIcon
+                className="size-4 transition-transform group-data-[state=open]/setup:rotate-90"
+                aria-hidden
+              />
               First-time setup — how to get a bot token
-            </summary>
-            <ol className="mt-2 ml-5 list-decimal list-outside space-y-1.5 text-sm text-muted-foreground marker:text-muted-foreground/60">
-              <li>
-                Go to{" "}
-                <a
-                  href="https://discord.com/developers/applications"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-info underline underline-offset-2 hover:text-info/80"
-                >
-                  discord.com/developers
-                </a>{" "}
-                → New Application → Bot → copy token.
-              </li>
-              <li>Paste the token in the field below.</li>
-              <li>
-                In Discord, enable Developer Mode (Settings → Advanced), then
-                right-click your avatar → Copy User ID.
-              </li>
-              <li>Paste your User ID below and save.</li>
-              <li>
-                Once the bot connects, click{" "}
-                <span className="font-medium text-foreground">
-                  Add Bot to Account
-                </span>{" "}
-                to authorize it for direct messages — then send a test DM to
-                confirm.
-              </li>
-            </ol>
-          </details>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <ol className="mt-2 ml-5 list-decimal list-outside space-y-1.5 text-sm text-muted-foreground marker:text-muted-foreground/60">
+                <li>
+                  Go to{" "}
+                  <a
+                    href="https://discord.com/developers/applications"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-info underline underline-offset-2 hover:text-info/80"
+                  >
+                    discord.com/developers
+                  </a>{" "}
+                  → New Application → Bot → copy token.
+                </li>
+                <li>Paste the token in the field below.</li>
+                <li>
+                  In Discord, enable Developer Mode (Settings → Advanced),
+                  then right-click your avatar → Copy User ID.
+                </li>
+                <li>Paste your User ID below and save.</li>
+                <li>
+                  Once the bot connects, click{" "}
+                  <span className="font-medium text-foreground">
+                    Add Bot to Account
+                  </span>{" "}
+                  to authorize it for direct messages — then send a test
+                  message to confirm.
+                </li>
+              </ol>
+            </CollapsibleContent>
+          </Collapsible>
         )}
 
         {/* Awaiting-authorization callout — connected but no test DM has succeeded */}
@@ -541,7 +565,7 @@ export function DiscordBotCard() {
               {autoVerifying ? (
                 <p className="flex items-center gap-2">
                   <Loader2 className="size-4 animate-spin" />
-                  Sending a test DM to confirm reachability…
+                  Sending a test message to confirm reachability…
                 </p>
               ) : (
                 <>
@@ -551,8 +575,8 @@ export function DiscordBotCard() {
                       Add Bot to Account
                     </span>{" "}
                     to install the bot in your Discord account. When you
-                    return to this tab, we&apos;ll automatically send a test
-                    DM to confirm it can reach you.
+                    return to this tab, we&apos;ll automatically send a
+                    test message to confirm it can reach you.
                   </p>
                   <div className="flex items-center gap-2 flex-wrap">
                     <Button
@@ -579,7 +603,7 @@ export function DiscordBotCard() {
                       ) : (
                         <>
                           <SendIcon className="size-4" />
-                          Send Test DM manually
+                          Send test message manually
                         </>
                       )}
                     </Button>
@@ -619,22 +643,22 @@ export function DiscordBotCard() {
                   <Input
                     id="discord-token"
                     name="discord-bot-token"
-                    type="text"
+                    // Use a real password input so masking works in every
+                    // browser (the previous CSS `text-security` trick was
+                    // WebKit-only — Firefox would leak the token in
+                    // plaintext). `autoComplete="new-password"` tells
+                    // browsers/managers this isn't a saved-password field
+                    // to auto-fill from.
+                    type={showToken ? "text" : "password"}
                     placeholder={
                       settings?.token_set ? "••••••••" : "Paste your bot token"
                     }
-                    className="pr-10"
-                    style={
-                      showToken
-                        ? undefined
-                        : ({
-                            WebkitTextSecurity: "disc",
-                            textSecurity: "disc",
-                          } as React.CSSProperties)
-                    }
+                    // Suppress the Edge/IE native reveal button so it doesn't
+                    // duplicate our show/hide toggle.
+                    className="pr-11 [&::-ms-reveal]:hidden [&::-ms-clear]:hidden"
                     value={token}
                     onChange={(e) => setToken(e.target.value)}
-                    autoComplete="off"
+                    autoComplete="new-password"
                     autoCorrect="off"
                     autoCapitalize="off"
                     spellCheck={false}
@@ -651,7 +675,12 @@ export function DiscordBotCard() {
                   <button
                     type="button"
                     aria-label={showToken ? "Hide token" : "Show token"}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                    aria-pressed={showToken}
+                    // p-1.5 around a size-4 (16px) icon yields a ~28px hit
+                    // area — meets WCAG 2.5.8 AA minimum (24px). The
+                    // negative margin keeps the icon visually flush with
+                    // the input's right edge.
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1.5 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
                     onClick={() => setShowToken((v) => !v)}
                   >
                     {showToken ? (
@@ -750,9 +779,9 @@ export function DiscordBotCard() {
                 saved={saved}
                 disabled={!canSave}
               />
-              {/* Send Test DM and Add Bot live in the awaiting-auth callout
-                  while the user is mid-onboarding — hide here to avoid
-                  duplicate CTAs. Once authorized, they live here as
+              {/* Send test message and Add Bot live in the awaiting-auth
+                  callout while the user is mid-onboarding — hide here to
+                  avoid duplicate CTAs. Once authorized, they live here as
                   routine actions. */}
               {authorized && (
                 <Button
@@ -769,7 +798,7 @@ export function DiscordBotCard() {
                   ) : (
                     <>
                       <SendIcon className="size-4" />
-                      Send Test DM
+                      Send test message
                     </>
                   )}
                 </Button>
@@ -777,7 +806,7 @@ export function DiscordBotCard() {
             </div>
             {isDirty && enabled && authorized && (
               <p className="text-xs text-muted-foreground">
-                Save your changes — test DMs use the saved configuration.
+                Save your changes — the test uses the saved settings.
               </p>
             )}
           </div>
@@ -815,8 +844,22 @@ export function DiscordBotCard() {
                 <AlertDialogContent>
                   <AlertDialogHeader>
                     <AlertDialogTitle>Reset Discord Bot?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      This stops the bot, deletes the saved token and Discord User ID, and clears the authorization proof. The bot binary stays installed and your Discord application stays on Discord&apos;s servers — you can reuse the same token if you&apos;ve kept it. The bot must be set up again before alerts can resume.
+                    <AlertDialogDescription asChild>
+                      <div className="space-y-3 text-sm text-muted-foreground">
+                        <p>
+                          Stops the bot and deletes the saved token, Discord
+                          User ID, and authorization on this device.
+                        </p>
+                        <ul className="list-disc list-outside ml-5 space-y-1 marker:text-muted-foreground/60">
+                          <li>The bot binary stays installed on this router.</li>
+                          <li>
+                            Your Discord application stays on Discord&apos;s
+                            servers — you can reuse the same token if
+                            you&apos;ve kept it.
+                          </li>
+                        </ul>
+                        <p>You&apos;ll need to set up the bot again before alerts can resume.</p>
+                      </div>
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
@@ -824,16 +867,13 @@ export function DiscordBotCard() {
                     <AlertDialogAction
                       className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                       onClick={async () => {
-                        const appId = status?.app_id;
-                        const ownerId = settings?.owner_discord_id;
                         const ok = await resetBot();
                         if (ok) {
-                          // Wipe the localStorage authorization proof
-                          if (typeof window !== "undefined" && appId && ownerId) {
-                            window.localStorage.removeItem(verifyStorageKey(appId, ownerId));
-                          }
+                          // Backend reset removes /etc/qmanager/discord_dm_channel,
+                          // so status.authorized will flip to false on the next
+                          // poll — no client-side persistence to clean up here.
+                          setOptimisticAuth(false);
                           // Reset all local form state
-                          setAuthorized(false);
                           setToken("");
                           setShowToken(false);
                           setOwnerID("");
@@ -842,7 +882,7 @@ export function DiscordBotCard() {
                           setPrevSettings(null);
                           // Disarm any pending OAuth-return verification —
                           // otherwise a focus event after reset would fire a
-                          // spurious test DM against now-empty credentials.
+                          // spurious test message against now-empty credentials.
                           oauthClickedAtRef.current = null;
                           setAutoVerifying(false);
                           toast.success("Discord bot reset");

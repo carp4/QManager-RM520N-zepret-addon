@@ -14,6 +14,10 @@ export interface DiscordBotStatus {
   latency_ms: number;
   error?: string;
   installed: boolean;
+  // True iff the bot has captured the owner's DM channel cache
+  // (/etc/qmanager/discord_dm_channel). Source of truth for "authorized";
+  // cross-device, persists across browsers, cleared by reset.
+  authorized?: boolean;
   app_id?: string;
 }
 
