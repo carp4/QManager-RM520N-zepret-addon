@@ -52,3 +52,6 @@ RELEASE_NOTE.md
 
 # simpleadmin source
 /simpleadmin-source
+
+# bundled build tools (developer-local; not part of the repo)
+/tools/
