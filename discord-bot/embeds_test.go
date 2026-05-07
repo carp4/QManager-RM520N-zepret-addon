@@ -254,3 +254,16 @@ func buttonIDs(ar discordgo.ActionsRow) []string {
 	}
 	return out
 }
+
+func TestExpiredEmbedField(t *testing.T) {
+	f := expiredEmbedField()
+	if f.Name == "" || f.Value == "" {
+		t.Errorf("expired field has empty name/value: %+v", f)
+	}
+	if !strings.Contains(f.Value, "expired") {
+		t.Errorf("expired field value should mention expiry: %q", f.Value)
+	}
+	if f.Inline {
+		t.Error("expired field must be non-inline (full width)")
+	}
+}

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
 	"time"
@@ -299,4 +300,38 @@ func footerBlock(s *ModemStatus) *discordgo.MessageEmbedFooter {
 	return &discordgo.MessageEmbedFooter{
 		Text: "QManager • Updated " + rel,
 	}
+}
+
+// buttonExpiryWindow is how long after the initial response the buttons stay
+// active. Discord interaction tokens expire at 15 min; we disable a minute earlier.
+const buttonExpiryWindow = 14 * time.Minute
+
+func expiredEmbedField() *discordgo.MessageEmbedField {
+	return &discordgo.MessageEmbedField{
+		Name:   emoji.Expired + " Buttons expired",
+		Value:  "These buttons have expired. Run the command again to get fresh interactive buttons.",
+		Inline: false,
+	}
+}
+
+// scheduleButtonExpiry queues a one-shot edit that disables the action row
+// and appends an "expired" field to the original embed. Fires after
+// buttonExpiryWindow. If the bot restarts, the timer dies; buttons stay
+// enabled but clicks fail silently — Discord's hard 15-minute interaction
+// token expiry is the underlying constraint.
+func scheduleButtonExpiry(s *discordgo.Session, i *discordgo.Interaction, source string, originalEmbed *discordgo.MessageEmbed) {
+	time.AfterFunc(buttonExpiryWindow, func() {
+		// Append expired field to a copy (don't mutate caller's embed).
+		updated := *originalEmbed
+		updated.Fields = append(append([]*discordgo.MessageEmbedField{}, originalEmbed.Fields...), expiredEmbedField())
+		row := disabledActionRow(source)
+		_, err := s.InteractionResponseEdit(i, &discordgo.WebhookEdit{
+			Embeds:     &[]*discordgo.MessageEmbed{&updated},
+			Components: &[]discordgo.MessageComponent{row},
+		})
+		if err != nil {
+			// Token already expired — expected after 15 min. Log at debug level.
+			log.Printf("scheduleButtonExpiry: edit failed for source=%s: %v", source, err)
+		}
+	})
 }
