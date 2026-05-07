@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -55,7 +56,7 @@ func buildSignalEmbed(s *ModemStatus) *discordgo.MessageEmbed {
 
 	if note := provenanceNote(s); note != "" {
 		fields = append(fields, &discordgo.MessageEmbedField{
-			Name: "ℹ️ Source", Value: note, Inline: false,
+			Name: "Source", Value: note, Inline: false,
 		})
 	}
 
@@ -126,12 +127,12 @@ func buildBandsEmbed(s *ModemStatus) *discordgo.MessageEmbed {
 		// Fallback — show whatever single-band data we have.
 		if s.LteBand != "" {
 			fields = append(fields, &discordgo.MessageEmbedField{
-				Name: emoji.Network + " LTE Band", Value: s.LteBand, Inline: true,
+				Name: "LTE Band", Value: s.LteBand, Inline: true,
 			})
 		}
 		if s.NrBand != "" {
 			fields = append(fields, &discordgo.MessageEmbedField{
-				Name: emoji.Network + " NR Band", Value: s.NrBand, Inline: true,
+				Name: "NR Band", Value: s.NrBand, Inline: true,
 			})
 		}
 	} else {
@@ -215,11 +216,11 @@ func ccField(cc CarrierComponent) *discordgo.MessageEmbedField {
 		arfcnLabel = "ARFCN"
 	}
 	name := fmt.Sprintf("%s %s · %s %s", ccEmoji(cc.Type, cc.Technology), cc.Type, cc.Technology, cc.Band)
-	value := fmt.Sprintf("%s PCI %s\n%s %s %s\n%s %s MHz\n%s RSRP %s / SINR %s",
-		emoji.PCI, ifEmpty(cc.PCI, "—"),
-		emoji.EARFCN, arfcnLabel, ifEmpty(cc.EARFCN, "—"),
-		emoji.Bandwidth, ifEmpty(cc.BandwidthMHz, "—"),
-		emoji.Signal, ifEmpty(cc.RSRP, "—"), ifEmpty(cc.SINR, "—"),
+	value := fmt.Sprintf("PCI %s\n%s %s\n%s MHz\nRSRP %s / SINR %s",
+		ifEmpty(cc.PCI, "—"),
+		arfcnLabel, ifEmpty(cc.EARFCN, "—"),
+		ifEmpty(cc.BandwidthMHz, "—"),
+		ifEmpty(cc.RSRP, "—"), ifEmpty(cc.SINR, "—"),
 	)
 	return &discordgo.MessageEmbedField{Name: name, Value: value, Inline: true}
 }
@@ -233,7 +234,7 @@ func servingCellField(s *ModemStatus) *discordgo.MessageEmbedField {
 		parts = append(parts, "NR: "+s.NrCellID)
 	}
 	return &discordgo.MessageEmbedField{
-		Name:   emoji.Cell + " Serving cell",
+		Name:   "Serving cell",
 		Value:  strings.Join(parts, " · "),
 		Inline: false,
 	}
@@ -248,7 +249,7 @@ func tacField(s *ModemStatus) *discordgo.MessageEmbedField {
 		parts = append(parts, fmt.Sprintf("NR: %s (cell %s)", ifEmpty(s.NrTAC, "—"), ifEmpty(s.NrCellID, "—")))
 	}
 	return &discordgo.MessageEmbedField{
-		Name:   emoji.TAC + " TAC / Cell ID",
+		Name:   "TAC / Cell ID",
 		Value:  strings.Join(parts, " · "),
 		Inline: false,
 	}
@@ -338,7 +339,7 @@ func connectionField(s *ModemStatus) *discordgo.MessageEmbedField {
 		value += "\n" + strings.Join(line2Parts, " · ")
 	}
 	return &discordgo.MessageEmbedField{
-		Name: emoji.Connection + " Connection", Value: value, Inline: true,
+		Name: "Connection", Value: value, Inline: true,
 	}
 }
 
@@ -358,7 +359,7 @@ func networkField(s *ModemStatus) *discordgo.MessageEmbedField {
 		value += "\nWAN " + s.WanIP
 	}
 	return &discordgo.MessageEmbedField{
-		Name: emoji.Network + " Network", Value: ifEmpty(value, "—"), Inline: true,
+		Name: "Network", Value: ifEmpty(value, "—"), Inline: true,
 	}
 }
 
@@ -366,7 +367,7 @@ func uptimeField(s *ModemStatus) *discordgo.MessageEmbedField {
 	value := fmt.Sprintf("Connection: %s\nDevice: %s",
 		ifEmpty(s.ConnUptime, "—"), ifEmpty(s.Uptime, "—"))
 	return &discordgo.MessageEmbedField{
-		Name: emoji.Uptime + " Uptime", Value: value, Inline: true,
+		Name: "Uptime", Value: value, Inline: true,
 	}
 }
 
@@ -384,7 +385,7 @@ func watchcatField(s *ModemStatus) *discordgo.MessageEmbedField {
 	}
 	value := fmt.Sprintf("%s · %s failures\nLast recovery: %s", state, failures, last)
 	return &discordgo.MessageEmbedField{
-		Name: emoji.Watchcat + " Watchcat", Value: value, Inline: true,
+		Name: "Watchcat", Value: value, Inline: true,
 	}
 }
 
@@ -400,7 +401,7 @@ func deviceMetricsField(s *ModemStatus) *discordgo.MessageEmbedField {
 		parts = append(parts, "Mem "+s.MemUsedMB+"/"+s.MemTotalMB+" MB")
 	}
 	return &discordgo.MessageEmbedField{
-		Name: emoji.Device + " Device", Value: ifEmpty(strings.Join(parts, " · "), "—"), Inline: true,
+		Name: "Device", Value: ifEmpty(strings.Join(parts, " · "), "—"), Inline: true,
 	}
 }
 
@@ -412,7 +413,7 @@ func sccHandoffsField(s *ModemStatus) *discordgo.MessageEmbedField {
 		return nil
 	}
 	return &discordgo.MessageEmbedField{
-		Name:   emoji.Cells24h + " SCC handoffs (24h)",
+		Name:   "SCC handoffs (24h)",
 		Value:  fmt.Sprintf("%d PCI changes detected", count),
 		Inline: true,
 	}
@@ -562,6 +563,7 @@ func captureDMFromInteraction(i *discordgo.InteractionCreate, dmCh *dmChannelHol
 
 func handleCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	name := i.ApplicationCommandData().Name
+	log.Printf("[interaction] cmd=%s id=%s", name, i.ID)
 	switch name {
 	case "signal":
 		handleSignal(s, i)
@@ -641,25 +643,39 @@ func handleEvents(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	respondEmbedWithButtons(s, i, buildEventsEmbed(events, crit, warn, info, total), "events")
 }
 
-// parseBandOption converts user input (e.g. "B3:B28" or "n78") to AT format (e.g. "3:28" or "78").
-// Strips both B/b (LTE) and n/N (NR) prefixes. Returns "" for "auto" (caller sends "0" = all bands).
+// parseBandOption converts user input (e.g. "B3,B28" or "n78") to AT format
+// (e.g. "3:28" or "78"). Accepts commas (preferred) or colons (legacy) as
+// separators. Strips B/b (LTE) and n/N (NR) prefixes. Sorts band numbers
+// ascending so the modem always sees a canonical order regardless of how the
+// user typed them. Non-numeric tokens are dropped. Returns "" for "auto"
+// (caller sends "0" = all bands = unlock).
 func parseBandOption(input string) string {
 	if strings.EqualFold(strings.TrimSpace(input), "auto") {
 		return ""
 	}
-	parts := strings.Split(input, ":")
-	clean := make([]string, 0, len(parts))
+	// Accept either "," (preferred) or ":" (legacy) as separator.
+	normalized := strings.ReplaceAll(input, ":", ",")
+	parts := strings.Split(normalized, ",")
+	nums := make([]int, 0, len(parts))
 	for _, p := range parts {
 		p = strings.TrimSpace(p)
 		upper := strings.ToUpper(p)
-		if strings.HasPrefix(upper, "B") {
-			p = upper[1:]
-		} else if strings.HasPrefix(upper, "N") {
+		if strings.HasPrefix(upper, "B") || strings.HasPrefix(upper, "N") {
 			p = upper[1:]
 		}
-		if p != "" {
-			clean = append(clean, p)
+		if p == "" {
+			continue
 		}
+		n, err := strconv.Atoi(p)
+		if err != nil {
+			continue // skip non-numeric tokens defensively
+		}
+		nums = append(nums, n)
+	}
+	sort.Ints(nums)
+	clean := make([]string, 0, len(nums))
+	for _, n := range nums {
+		clean = append(clean, strconv.Itoa(n))
 	}
 	return strings.Join(clean, ":")
 }
@@ -908,14 +924,16 @@ const maxRawLen = 3900 // leave room for ```json fences (Discord cap is 4000)
 // for `source`, then schedules the auto-disable timer.
 func respondEmbedWithButtons(s *discordgo.Session, i *discordgo.InteractionCreate, embed *discordgo.MessageEmbed, source string) {
 	row := buildActionRow(source)
-	if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+	start := time.Now()
+	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
 			Embeds:     []*discordgo.MessageEmbed{embed},
 			Components: []discordgo.MessageComponent{row},
 		},
-	}); err != nil {
-		log.Printf("InteractionRespond error (%s): %v", source, err)
+	})
+	log.Printf("[interaction] respond source=%s elapsed=%s err=%v", source, time.Since(start), err)
+	if err != nil {
 		return
 	}
 	scheduleButtonExpiry(s, i.Interaction, source, embed)
@@ -925,15 +943,17 @@ func respondEmbedWithButtons(s *discordgo.Session, i *discordgo.InteractionCreat
 // ephemeral flag. Used by /sim.
 func respondEmbedEphemeral(s *discordgo.Session, i *discordgo.InteractionCreate, embed *discordgo.MessageEmbed, source string) {
 	row := buildActionRow(source)
-	if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+	start := time.Now()
+	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
 			Embeds:     []*discordgo.MessageEmbed{embed},
 			Components: []discordgo.MessageComponent{row},
 			Flags:      discordgo.MessageFlagsEphemeral,
 		},
-	}); err != nil {
-		log.Printf("InteractionRespond error (ephemeral %s): %v", source, err)
+	})
+	log.Printf("[interaction] respond ephemeral source=%s elapsed=%s err=%v", source, time.Since(start), err)
+	if err != nil {
 		return
 	}
 	scheduleButtonExpiry(s, i.Interaction, source, embed)
@@ -1063,15 +1083,15 @@ func buildDeviceEmbed(s *ModemStatus) *discordgo.MessageEmbed {
 		descr = strings.TrimSpace(strings.Join([]string{s.Model, s.Firmware}, " · "))
 	}
 	fields := []*discordgo.MessageEmbedField{
-		{Name: "📦 Model", Value: ifEmpty(s.Model, "—"), Inline: true},
-		{Name: "🏭 Manufacturer", Value: ifEmpty(s.Manufacturer, "—"), Inline: true},
-		{Name: "🔢 IMEI", Value: ifEmpty(s.IMEI, "—"), Inline: true},
-		{Name: "💾 Firmware", Value: ifEmpty(s.Firmware, "—"), Inline: true},
-		{Name: "📅 Build date", Value: ifEmpty(s.BuildDate, "—"), Inline: true},
-		{Name: "🛜 MIMO config", Value: ifEmpty(s.MIMO, "—"), Inline: true},
-		{Name: "📡 Supported LTE bands", Value: ifEmpty(s.SupportedLteBands, "—"), Inline: false},
-		{Name: "📡 Supported NR (NSA)", Value: ifEmpty(s.SupportedNsaBands, "—"), Inline: false},
-		{Name: "📡 Supported NR (SA)", Value: ifEmpty(s.SupportedSaBands, "—"), Inline: false},
+		{Name: "Model", Value: ifEmpty(s.Model, "—"), Inline: true},
+		{Name: "Manufacturer", Value: ifEmpty(s.Manufacturer, "—"), Inline: true},
+		{Name: "IMEI", Value: ifEmpty(s.IMEI, "—"), Inline: true},
+		{Name: "Firmware", Value: ifEmpty(s.Firmware, "—"), Inline: true},
+		{Name: "Build date", Value: ifEmpty(s.BuildDate, "—"), Inline: true},
+		{Name: "MIMO config", Value: ifEmpty(s.MIMO, "—"), Inline: true},
+		{Name: "Supported LTE bands", Value: ifEmpty(s.SupportedLteBands, "—"), Inline: false},
+		{Name: "Supported NR (NSA)", Value: ifEmpty(s.SupportedNsaBands, "—"), Inline: false},
+		{Name: "Supported NR (SA)", Value: ifEmpty(s.SupportedSaBands, "—"), Inline: false},
 	}
 	return &discordgo.MessageEmbed{
 		Author:      authorBlock(s),
@@ -1097,12 +1117,12 @@ func buildSimEmbed(s *ModemStatus) *discordgo.MessageEmbed {
 	descr := fmt.Sprintf("SIM %s · %s · APN %s",
 		ifEmpty(s.SimSlot, "?"), ifEmpty(s.Operator, "?"), ifEmpty(s.APN, "?"))
 	fields := []*discordgo.MessageEmbedField{
-		{Name: "🎯 Slot", Value: ifEmpty(s.SimSlot, "—"), Inline: true},
-		{Name: "📶 Carrier", Value: ifEmpty(s.Operator, "—"), Inline: true},
-		{Name: "🌐 APN", Value: ifEmpty(s.APN, "—"), Inline: true},
-		{Name: "🔢 ICCID", Value: ifEmpty(s.ICCID, "—"), Inline: true},
-		{Name: "🆔 IMSI", Value: ifEmpty(s.IMSI, "—"), Inline: true},
-		{Name: "📞 Phone", Value: ifEmpty(s.PhoneNumber, "—"), Inline: true},
+		{Name: "Slot", Value: ifEmpty(s.SimSlot, "—"), Inline: true},
+		{Name: "Carrier", Value: ifEmpty(s.Operator, "—"), Inline: true},
+		{Name: "APN", Value: ifEmpty(s.APN, "—"), Inline: true},
+		{Name: "ICCID", Value: ifEmpty(s.ICCID, "—"), Inline: true},
+		{Name: "IMSI", Value: ifEmpty(s.IMSI, "—"), Inline: true},
+		{Name: "Phone", Value: ifEmpty(s.PhoneNumber, "—"), Inline: true},
 	}
 	return &discordgo.MessageEmbed{
 		Author:      authorBlock(s),
@@ -1146,16 +1166,16 @@ func buildWatchcatEmbed(s *ModemStatus) *discordgo.MessageEmbed {
 	}
 
 	fields := []*discordgo.MessageEmbedField{
-		{Name: "🛡 Enabled", Value: yesNo(s.WatchcatEnabled), Inline: true},
-		{Name: "📊 State", Value: state, Inline: true},
-		{Name: "🪜 Current tier", Value: tier, Inline: true},
-		{Name: "❌ Failure count", Value: failures, Inline: true},
-		{Name: "🔄 Total recoveries", Value: ifEmpty(s.WatchcatTotal, "0"), Inline: true},
-		{Name: "⏰ Last recovery", Value: last, Inline: true},
+		{Name: "Enabled", Value: yesNo(s.WatchcatEnabled), Inline: true},
+		{Name: "State", Value: state, Inline: true},
+		{Name: "Current tier", Value: tier, Inline: true},
+		{Name: "Failure count", Value: failures, Inline: true},
+		{Name: "Total recoveries", Value: ifEmpty(s.WatchcatTotal, "0"), Inline: true},
+		{Name: "Last recovery", Value: last, Inline: true},
 	}
 	if s.WatchcatLastTime != "" && s.WatchcatLastTime != "0" && s.WatchcatLastTier != "" {
 		fields = append(fields, &discordgo.MessageEmbedField{
-			Name: "🪜 Last recovery tier", Value: s.WatchcatLastTier, Inline: false,
+			Name: "Last recovery tier", Value: s.WatchcatLastTier, Inline: false,
 		})
 	}
 
