@@ -605,7 +605,7 @@ func handleSignal(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		respondError(s, i, "Could not read modem status cache.")
 		return
 	}
-	respondEmbed(s, i, buildSignalEmbed(ms))
+	respondEmbedWithButtons(s, i, buildSignalEmbed(ms), "signal")
 }
 
 func handleBands(s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -614,7 +614,7 @@ func handleBands(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		respondError(s, i, "Could not read modem status cache.")
 		return
 	}
-	respondEmbed(s, i, buildBandsEmbed(ms))
+	respondEmbedWithButtons(s, i, buildBandsEmbed(ms), "bands")
 }
 
 func handleStatus(s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -623,7 +623,7 @@ func handleStatus(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		respondError(s, i, "Could not read modem status cache.")
 		return
 	}
-	respondEmbed(s, i, buildStatusEmbed(ms))
+	respondEmbedWithButtons(s, i, buildStatusEmbed(ms), "status")
 }
 
 func handleEvents(s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -633,8 +633,7 @@ func handleEvents(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		events = []Event{}
 	}
 	crit, warn, info, total, _ := readEventCounts(eventsCachePath)
-	embed := buildEventsEmbed(events, crit, warn, info, total)
-	respondEmbed(s, i, embed)
+	respondEmbedWithButtons(s, i, buildEventsEmbed(events, crit, warn, info, total), "events")
 }
 
 // parseBandOption converts user input (e.g. "B3:B28" or "n78") to AT format (e.g. "3:28" or "78").
@@ -705,6 +704,9 @@ func handleReboot(s *discordgo.Session, i *discordgo.InteractionCreate) {
 }
 
 func handleComponent(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	if dispatchQmComponent(s, i) {
+		return
+	}
 	switch i.MessageComponentData().CustomID {
 	case "reboot_confirm":
 		if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
@@ -841,4 +843,210 @@ func handleNetworkMode(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	if errEdit != nil {
 		log.Printf("InteractionResponseEdit error (network-mode): %v", errEdit)
 	}
+}
+
+// embedForSource is the router: given a source string from a custom ID,
+// returns a freshly-built embed of that type. Unknown sources return nil.
+// /sim, /device, /watchcat builders come from later tasks.
+func embedForSource(source string, s *ModemStatus) *discordgo.MessageEmbed {
+	switch source {
+	case "signal":
+		return buildSignalEmbed(s)
+	case "bands":
+		return buildBandsEmbed(s)
+	case "status":
+		return buildStatusEmbed(s)
+	case "device":
+		return buildDeviceEmbed(s)
+	case "sim":
+		return buildSimEmbed(s)
+	case "watchcat":
+		return buildWatchcatEmbed(s)
+	}
+	return nil
+}
+
+// rawSliceFor returns the JSON subset relevant to a given source, used by
+// the Copy raw button. raw is the bytes from /tmp/qmanager_status.json.
+func rawSliceFor(source string, raw []byte) ([]byte, error) {
+	var full map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &full); err != nil {
+		return nil, err
+	}
+	keys := map[string][]string{
+		"signal":   {"signal_per_antenna", "lte", "nr"},
+		"bands":    {"network", "lte", "nr"},
+		"status":   {"connectivity", "device", "network", "watchcat"},
+		"device":   {"device"},
+		"sim":      {"network", "device"},
+		"watchcat": {"watchcat"},
+		"events":   {},
+	}
+	wanted, ok := keys[source]
+	if !ok {
+		return raw, nil
+	}
+	out := make(map[string]json.RawMessage, len(wanted))
+	for _, k := range wanted {
+		if v, ok := full[k]; ok {
+			out[k] = v
+		}
+	}
+	return json.MarshalIndent(out, "", "  ")
+}
+
+const maxRawLen = 3900 // leave room for ```json fences (Discord cap is 4000)
+
+// respondEmbedWithButtons sends an initial embed response with the action row
+// for `source`, then schedules the auto-disable timer.
+func respondEmbedWithButtons(s *discordgo.Session, i *discordgo.InteractionCreate, embed *discordgo.MessageEmbed, source string) {
+	row := buildActionRow(source)
+	if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Embeds:     []*discordgo.MessageEmbed{embed},
+			Components: []discordgo.MessageComponent{row},
+		},
+	}); err != nil {
+		log.Printf("InteractionRespond error (%s): %v", source, err)
+		return
+	}
+	scheduleButtonExpiry(s, i.Interaction, source, embed)
+}
+
+// respondEmbedEphemeral is like respondEmbedWithButtons but sets the
+// ephemeral flag. Used by /sim.
+func respondEmbedEphemeral(s *discordgo.Session, i *discordgo.InteractionCreate, embed *discordgo.MessageEmbed, source string) {
+	row := buildActionRow(source)
+	if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Embeds:     []*discordgo.MessageEmbed{embed},
+			Components: []discordgo.MessageComponent{row},
+			Flags:      discordgo.MessageFlagsEphemeral,
+		},
+	}); err != nil {
+		log.Printf("InteractionRespond error (ephemeral %s): %v", source, err)
+		return
+	}
+	scheduleButtonExpiry(s, i.Interaction, source, embed)
+}
+
+// dispatchQmComponent handles "qm:<action>:<source>" component clicks.
+// Returns true if the click was a qm: ID (handled), false if not.
+func dispatchQmComponent(s *discordgo.Session, i *discordgo.InteractionCreate) bool {
+	action, source, ok := parseCustomID(i.MessageComponentData().CustomID)
+	if !ok {
+		return false
+	}
+	switch action {
+	case "refresh", "nav":
+		handleRefreshOrNav(s, i, source)
+	case "raw":
+		handleCopyRaw(s, i, source)
+	default:
+		log.Printf("dispatchQmComponent: unknown action %q (source=%q)", action, source)
+		_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: "❌ Unknown button action. Try running the command again.",
+				Flags:   discordgo.MessageFlagsEphemeral,
+			},
+		})
+	}
+	return true
+}
+
+func handleRefreshOrNav(s *discordgo.Session, i *discordgo.InteractionCreate, source string) {
+	if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseDeferredMessageUpdate,
+	}); err != nil {
+		log.Printf("defer error: %v", err)
+		return
+	}
+	ms, err := readStatus(statusCachePath)
+	if err != nil {
+		failTitle := capitalize(source)
+		if failTitle == "" {
+			failTitle = "Refresh"
+		}
+		failEmbed := &discordgo.MessageEmbed{
+			Title:       failTitle,
+			Description: emoji.Down + " Refresh failed — cache unreadable",
+			Color:       colorRed,
+		}
+		row := buildActionRow(source)
+		_, _ = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+			Embeds:     &[]*discordgo.MessageEmbed{failEmbed},
+			Components: &[]discordgo.MessageComponent{row},
+		})
+		return
+	}
+	embed := embedForSource(source, ms)
+	if embed == nil {
+		log.Printf("handleRefreshOrNav: unknown source %q", source)
+		failEmbed := &discordgo.MessageEmbed{
+			Title:       "Refresh",
+			Description: emoji.Down + " Unknown view — cannot refresh.",
+			Color:       colorRed,
+		}
+		row := buildActionRow(source) // builds a row even for unknown source — harmless
+		_, _ = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+			Embeds:     &[]*discordgo.MessageEmbed{failEmbed},
+			Components: &[]discordgo.MessageComponent{row},
+		})
+		return
+	}
+	row := buildActionRow(source)
+	if _, err := s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+		Embeds:     &[]*discordgo.MessageEmbed{embed},
+		Components: &[]discordgo.MessageComponent{row},
+	}); err != nil {
+		log.Printf("InteractionResponseEdit error (%s/%s): %v", "refresh-or-nav", source, err)
+	}
+}
+
+func handleCopyRaw(s *discordgo.Session, i *discordgo.InteractionCreate, source string) {
+	raw, err := os.ReadFile(statusCachePath)
+	if err != nil {
+		_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: "❌ Could not read cache file.",
+				Flags:   discordgo.MessageFlagsEphemeral,
+			},
+		})
+		return
+	}
+	slice, err := rawSliceFor(source, raw)
+	if err != nil {
+		slice = raw
+	}
+	body := string(slice)
+	truncated := ""
+	if len(body) > maxRawLen {
+		body = body[:maxRawLen]
+		truncated = "\n… (truncated)"
+	}
+	content := "```json\n" + body + "\n```" + truncated
+	if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Content: content,
+			Flags:   discordgo.MessageFlagsEphemeral,
+		},
+	}); err != nil {
+		log.Printf("InteractionRespond error (raw %s): %v", source, err)
+	}
+}
+
+// Stub implementations — replaced in Tasks 11/12/13.
+func buildDeviceEmbed(s *ModemStatus) *discordgo.MessageEmbed {
+	return &discordgo.MessageEmbed{Title: "Device Info", Description: "stub"}
+}
+func buildSimEmbed(s *ModemStatus) *discordgo.MessageEmbed {
+	return &discordgo.MessageEmbed{Title: "SIM Details", Description: "stub"}
+}
+func buildWatchcatEmbed(s *ModemStatus) *discordgo.MessageEmbed {
+	return &discordgo.MessageEmbed{Title: "Watchcat Status", Description: "stub"}
 }

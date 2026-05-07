@@ -400,3 +400,80 @@ func TestParseBandOption_MixedPrefixes(t *testing.T) {
 		t.Errorf("got %q, want %q", got, "3:78")
 	}
 }
+
+func TestEmbedForSource_Routes(t *testing.T) {
+	s := makeStatus("true", "true", "5G-NSA")
+	cases := []struct {
+		source string
+		want   string
+	}{
+		{"signal", "Signal Metrics"},
+		{"bands", "Band Details"},
+		{"status", "Modem Status"},
+	}
+	for _, c := range cases {
+		embed := embedForSource(c.source, s)
+		if embed == nil || embed.Title != c.want {
+			t.Errorf("embedForSource(%q): got %v, want title %q", c.source, embed, c.want)
+		}
+	}
+}
+
+func TestEmbedForSource_Unknown(t *testing.T) {
+	embed := embedForSource("totally-unknown", makeStatus("true", "true", "LTE"))
+	if embed != nil {
+		t.Errorf("expected nil for unknown source, got %+v", embed)
+	}
+}
+
+func TestRawSliceFor(t *testing.T) {
+	rawJSON := []byte(`{"network":{"type":"5G"},"lte":{"band":"B3"},"nr":{"band":"n78"},"connectivity":{"latency_ms":15},"device":{"model":"RM520"},"watchcat":{"state":"idle"},"signal_per_antenna":{"nr_rsrp":[1]},"traffic":{"rx_bytes_per_sec":100}}`)
+	cases := []struct {
+		source string
+		mustHave []string
+		mustNotHave []string
+	}{
+		{"bands", []string{`"network"`, `"lte"`, `"nr"`}, []string{`"watchcat"`, `"device"`}},
+		{"signal", []string{`"signal_per_antenna"`, `"lte"`, `"nr"`}, []string{`"network"`, `"watchcat"`}},
+		{"status", []string{`"connectivity"`, `"device"`, `"network"`, `"watchcat"`}, []string{`"signal_per_antenna"`}},
+		{"device", []string{`"device"`}, []string{`"network"`, `"watchcat"`}},
+		{"watchcat", []string{`"watchcat"`}, []string{`"device"`}},
+	}
+	for _, c := range cases {
+		got, err := rawSliceFor(c.source, rawJSON)
+		if err != nil {
+			t.Fatalf("rawSliceFor(%q): %v", c.source, err)
+		}
+		gotStr := string(got)
+		for _, want := range c.mustHave {
+			if !strings.Contains(gotStr, want) {
+				t.Errorf("rawSliceFor(%q) missing %s: %s", c.source, want, gotStr)
+			}
+		}
+		for _, no := range c.mustNotHave {
+			if strings.Contains(gotStr, no) {
+				t.Errorf("rawSliceFor(%q) should not contain %s: %s", c.source, no, gotStr)
+			}
+		}
+	}
+}
+
+// We can't easily unit-test the dispatcher (requires a live discordgo.Session),
+// but we can at least verify capitalize is used correctly for failure titles.
+// This is a sanity check for the title-aware failure-embed change.
+func TestCapitalize_UsedInFailureTitle(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{"signal", "Signal"},
+		{"bands", "Bands"},
+		{"status", "Status"},
+		{"", ""},
+	}
+	for _, c := range cases {
+		got := capitalize(c.in)
+		if got != c.want {
+			t.Errorf("capitalize(%q)=%q, want %q", c.in, got, c.want)
+		}
+	}
+}
