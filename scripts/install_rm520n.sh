@@ -275,6 +275,11 @@ preflight() {
         die "This script must be run as root"
     fi
 
+    # Hard requirement: curl with TLS. We removed all wget fallbacks intentionally.
+    if ! command -v curl >/dev/null 2>&1; then
+        die "curl is required but not found in PATH. Aborting."
+    fi
+
     if [ "$DO_FORCE" = "1" ]; then
         warn "--force: skipping modem firmware detection"
     else
@@ -483,11 +488,11 @@ SVCEOF
         done
         chmod 777 /opt/tmp
 
-        # Download opkg binary and config
-        wget -q "$ENTWARE_URL/opkg" -O /opt/bin/opkg \
+        # Download opkg binary and config (curl-only — BusyBox wget lacks TLS)
+        curl -fsSL -o /opt/bin/opkg "$ENTWARE_URL/opkg" \
             || die "Failed to download opkg from $ENTWARE_URL"
         chmod 755 /opt/bin/opkg
-        wget -q "$ENTWARE_URL/opkg.conf" -O /opt/etc/opkg.conf \
+        curl -fsSL -o /opt/etc/opkg.conf "$ENTWARE_URL/opkg.conf" \
             || die "Failed to download opkg.conf from $ENTWARE_URL"
         info "Downloaded opkg package manager"
 
@@ -621,8 +626,7 @@ RCEOF
         SPEEDTEST_URL="https://install.speedtest.net/app/cli/ookla-speedtest-1.2.0-linux-armhf.tgz"
         SPEEDTEST_DIR="/usrdata/root/bin"
         mkdir -p "$SPEEDTEST_DIR"
-        if wget -q "$SPEEDTEST_URL" -O /tmp/speedtest.tgz 2>/dev/null || \
-           curl -fsSL "$SPEEDTEST_URL" -o /tmp/speedtest.tgz 2>/dev/null; then
+        if curl -fsSL "$SPEEDTEST_URL" -o /tmp/speedtest.tgz 2>/dev/null; then
             tar -xzf /tmp/speedtest.tgz -C "$SPEEDTEST_DIR" speedtest 2>/dev/null
             rm -f /tmp/speedtest.tgz "$SPEEDTEST_DIR/speedtest.md"
             chmod +x "$SPEEDTEST_DIR/speedtest"
