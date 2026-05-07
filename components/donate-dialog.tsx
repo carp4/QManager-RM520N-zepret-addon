@@ -39,7 +39,7 @@ const DonateDialog = ({ open, onOpenChange }: DonateDialogProps) => {
       <DialogContent className="max-w-sm md:max-w-lg">
         <DialogHeader>
           <DialogTitle className="text-xl">
-            Donate to QManager
+            Give a Tip to QManager
           </DialogTitle>
           <DialogDescription>
             Support the development of this project.

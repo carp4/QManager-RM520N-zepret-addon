@@ -287,14 +287,17 @@ QManager runs 10 systemd services on the modem:
 
 ---
 
-## Support the Project
+## Tips for the Project
 
 <div align="center">
-  <h3>Support QManager's Development</h3>
-  <p>Your contribution helps maintain the project and fund continued development, testing on new cellular networks, and hardware costs.</p>
+  <h3>Tip QManager's Development</h3>
+  <p>Your tips help maintain the project and fund continued development, testing on new cellular networks, and hardware costs.</p>
   <br/>
   <a href="https://github.com/sponsors/dr-dolomite" target="_blank">
-    <img height="40" src="https://img.shields.io/badge/Sponsor-%E2%9D%A4-EA4AAA?style=for-the-badge&logo=githubsponsors&logoColor=white" alt="Sponsor on GitHub" />
+    <img height="40" src="https://img.shields.io/badge/GitHub%20Tip-%E2%9D%A4-EA4AAA?style=for-the-badge&logo=githubsponsors&logoColor=white" alt="Tip on GitHub" />
+  </a>
+  <a href="https://paypal.me/iamrusss" target="_blank">
+    <img height="40" src="https://img.shields.io/badge/PayPal%20Tip-00457C?style=for-the-badge&logo=paypal&logoColor=white" alt="Tip via PayPal" />
   </a>
   <br/><br/>
   <p><strong>GCash via Remitly</strong><br/>Name: Russel Yasol<br/>Number: +639544817486</p>
