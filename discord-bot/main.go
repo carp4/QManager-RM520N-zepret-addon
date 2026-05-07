@@ -55,8 +55,6 @@ func main() {
 		log.Fatalf("failed to create Discord session: %v", err)
 	}
 
-	s.AddHandler(handleInteraction)
-
 	s.AddHandler(func(s *discordgo.Session, r *discordgo.Ready) {
 		log.Printf("Discord bot ready: %s#%s", r.User.Username, r.User.Discriminator)
 		writeStatus(statusPath, BotStatus{Connected: true, LatencyMs: int(s.HeartbeatLatency().Milliseconds()), AppID: appID})
@@ -96,6 +94,14 @@ func main() {
 			}
 		}
 	}
+
+	// Capture DM channel ID from slash-command interactions. Discord does not deliver
+	// MESSAGE_CREATE Gateway events to user-installed apps (applications.commands scope
+	// only), but InteractionCreate IS delivered and carries the invoking ChannelID.
+	s.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+		captureDMFromInteraction(i, dmCh, cfg.OwnerDiscordID)
+		handleInteraction(s, i)
+	})
 
 	// Capture owner DM channel ID from inbound messages — self-healing path after
 	// token rotation. No MESSAGE_CONTENT intent needed; we only read channel ID.

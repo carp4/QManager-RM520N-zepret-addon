@@ -351,6 +351,46 @@ func handleInteraction(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 }
 
+// captureDMFromInteraction extracts the DM channel ID when the owner invokes a
+// slash command in their BotDM context. Discord does not deliver MESSAGE_CREATE
+// Gateway events to user-installed apps (applications.commands scope only), but
+// InteractionCreate IS delivered and carries the ChannelID of the invoking channel.
+//
+// Note: discordgo v0.28.1 does not expose discordgo.InteractionContextBotDM, so
+// we fall back to GuildID == "" as the BotDM signal. Guild-installed commands
+// always have a non-empty GuildID, so this correctly filters out guild invocations.
+// Any other DM (e.g. a shared-DM channel that isn't ours) can't be targeted by
+// ChannelMessageSend anyway, so the GuildID check is sufficient in practice.
+func captureDMFromInteraction(i *discordgo.InteractionCreate, dmCh *dmChannelHolder, ownerID string) {
+	// Resolve the invoking user — User is populated in DM context, Member.User in guild context.
+	var userID string
+	if i.User != nil {
+		userID = i.User.ID
+	} else if i.Member != nil && i.Member.User != nil {
+		userID = i.Member.User.ID
+	}
+	if userID != ownerID {
+		return
+	}
+	// Only capture when invoked in a DM (no guild). GuildID is empty for both
+	// BotDM and PrivateChannel (shared user DM) contexts. We accept both here;
+	// PrivateChannel IDs cannot be messaged by the bot, but they're rare and the
+	// worst outcome is a failed ChannelMessageSend that triggers the fallback path.
+	if i.GuildID != "" {
+		return
+	}
+	chID := i.ChannelID
+	if chID == "" || chID == dmCh.get() {
+		return
+	}
+	dmCh.set(chID)
+	if err := saveDMChannelID(dmChannelPath, chID); err != nil {
+		log.Printf("warning: failed to persist captured DM channel: %v", err)
+		return
+	}
+	log.Printf("captured DM channel from interaction: %s", chID)
+}
+
 func handleCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	name := i.ApplicationCommandData().Name
 	switch name {
