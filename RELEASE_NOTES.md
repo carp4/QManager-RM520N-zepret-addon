@@ -1,5 +1,9 @@
 # 🚀 QManager RM520N BETA vNext (Unreleased)
 
+## ✨ New Features
+
+- **Auto-recovery for modems that boot with the radio off.** A new boot-time service issues `AT+CFUN=1` once at startup, so modems that occasionally come up in `CFUN=0` (radio off, no signal even though the OS is alive) recover automatically without any manual intervention. Harmless no-op for healthy boots — runs after permission setup and before the poller, so the radio is guaranteed on by the time data collection starts.
+
 ## 🛠️ Improvements
 
 - Removed wget dependency from installer, OTA updater, and runtime CGIs — QManager now uses curl exclusively. This makes installs reliable on Quectel x5x/x6x firmwares that lack wget, and removes the ~5 MB Entware wget footprint that previous fallbacks would have required.

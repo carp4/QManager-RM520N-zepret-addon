@@ -1175,7 +1175,7 @@ start_services() {
     systemctl start qmanager-setup 2>/dev/null || true
 
     # Start always-on services with verification
-    for svc in qmanager-ping qmanager-poller qmanager-ttl qmanager-mtu qmanager-imei-check; do
+    for svc in qmanager-cfun-fix qmanager-ping qmanager-poller qmanager-ttl qmanager-mtu qmanager-imei-check; do
         systemctl start "$svc" 2>/dev/null || true
     done
 
