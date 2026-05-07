@@ -11,6 +11,7 @@ func slashCommands() []*discordgo.ApplicationCommand {
 		{Name: "events", Description: "Last 5 network events"},
 		{Name: "device", Description: "Modem hardware info — model, firmware, IMEI, supported bands"},
 		{Name: "sim", Description: "SIM details — slot, ICCID, IMSI, phone, APN (private response)"},
+		{Name: "watchcat", Description: "Watchcat recovery system status — current tier, failures, last recovery"},
 		{Name: "reboot", Description: "Reboot the modem (requires confirmation)"},
 		{
 			Name:        "lock-band",

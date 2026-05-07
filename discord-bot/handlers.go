@@ -1113,9 +1113,64 @@ func handleSim(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	respondEmbedEphemeral(s, i, buildSimEmbed(ms), "sim")
 }
 
-// Stub implementation — replaced in Task 13.
 func buildWatchcatEmbed(s *ModemStatus) *discordgo.MessageEmbed {
-	return &discordgo.MessageEmbed{Title: "Watchcat Status", Description: "stub"}
+	state := ifEmpty(s.WatchcatState, "unknown")
+	tier := ifEmpty(s.WatchcatTier, "?")
+	failures := ifEmpty(s.WatchcatFailures, "0")
+	stateEmoji := emoji.Ok
+	switch s.WatchcatState {
+	case "escalated":
+		stateEmoji = emoji.Down
+	case "monitoring":
+		stateEmoji = emoji.Warn
+	}
+	descr := fmt.Sprintf("%s Watchcat %s · Tier %s · %s failures",
+		stateEmoji, state, tier, failures)
+
+	last := "Never"
+	if s.WatchcatLastTime != "" && s.WatchcatLastTime != "0" {
+		if ts, err := strconv.ParseInt(s.WatchcatLastTime, 10, 64); err == nil && ts > 0 {
+			last = relativeTime(ts)
+		}
+	}
+
+	fields := []*discordgo.MessageEmbedField{
+		{Name: "🛡 Enabled", Value: yesNo(s.WatchcatEnabled), Inline: true},
+		{Name: "📊 State", Value: state, Inline: true},
+		{Name: "🪜 Current tier", Value: tier, Inline: true},
+		{Name: "❌ Failure count", Value: failures, Inline: true},
+		{Name: "🔄 Total recoveries", Value: ifEmpty(s.WatchcatTotal, "0"), Inline: true},
+		{Name: "⏰ Last recovery", Value: last, Inline: true},
+	}
+	if s.WatchcatLastTime != "" && s.WatchcatLastTime != "0" && s.WatchcatLastTier != "" {
+		fields = append(fields, &discordgo.MessageEmbedField{
+			Name: "🪜 Last recovery tier", Value: s.WatchcatLastTier, Inline: false,
+		})
+	}
+
+	return &discordgo.MessageEmbed{
+		Author:      authorBlock(s),
+		Title:       "Watchcat Status",
+		Description: descr,
+		Color:       embedColor(s),
+		Fields:      fields,
+		Footer:      footerBlock(s),
+		Timestamp:   time.Unix(s.CacheTime, 0).Format(time.RFC3339),
+	}
 }
 
-func handleWatchcat(s *discordgo.Session, i *discordgo.InteractionCreate) { respondError(s, i, "stub") }
+func yesNo(b string) string {
+	if b == "true" {
+		return "Yes"
+	}
+	return "No"
+}
+
+func handleWatchcat(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	ms, err := readStatus(statusCachePath)
+	if err != nil {
+		respondError(s, i, "Could not read modem status cache.")
+		return
+	}
+	respondEmbedWithButtons(s, i, buildWatchcatEmbed(ms), "watchcat")
+}

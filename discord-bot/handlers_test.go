@@ -541,3 +541,51 @@ func TestBuildSimEmbed(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildWatchcatEmbed(t *testing.T) {
+	s := makeStatus("true", "true", "LTE")
+	s.WatchcatEnabled = "true"
+	s.WatchcatState = "monitoring"
+	s.WatchcatTier = "2"
+	s.WatchcatFailures = "3"
+	s.WatchcatTotal = "5"
+	s.WatchcatLastTime = fmt.Sprintf("%d", time.Now().Unix()-3600)
+	s.WatchcatLastTier = "3"
+	embed := buildWatchcatEmbed(s)
+	if embed.Title != "Watchcat Status" {
+		t.Errorf("title=%q", embed.Title)
+	}
+	if !strings.Contains(embed.Description, "monitoring") {
+		t.Errorf("description=%q", embed.Description)
+	}
+	if !strings.Contains(embed.Description, "Tier 2") {
+		t.Errorf("description=%q want Tier 2", embed.Description)
+	}
+	have := func(name string) bool {
+		for _, f := range embed.Fields {
+			if strings.Contains(f.Name, name) {
+				return true
+			}
+		}
+		return false
+	}
+	for _, name := range []string{"Enabled", "State", "tier", "Failure", "Total", "Last recovery"} {
+		if !have(name) {
+			t.Errorf("missing field containing %q", name)
+		}
+	}
+}
+
+func TestBuildWatchcatEmbed_NeverRecovered(t *testing.T) {
+	s := makeStatus("true", "true", "LTE")
+	s.WatchcatState = "idle"
+	s.WatchcatLastTime = ""
+	embed := buildWatchcatEmbed(s)
+	for _, f := range embed.Fields {
+		if strings.Contains(f.Name, "Last recovery") {
+			if !strings.Contains(strings.ToLower(f.Value), "never") {
+				t.Errorf("expected Never for empty last recovery, got %q", f.Value)
+			}
+		}
+	}
+}
