@@ -511,3 +511,33 @@ func TestBuildDeviceEmbed(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildSimEmbed(t *testing.T) {
+	s := makeStatus("true", "true", "LTE")
+	s.SimSlot = "1"
+	s.Operator = "VZW"
+	s.APN = "internet"
+	s.ICCID = "8914800000123456789"
+	s.IMSI = "311480123456789"
+	s.PhoneNumber = "+15551234567"
+	embed := buildSimEmbed(s)
+	if embed.Title != "SIM Details" {
+		t.Errorf("title=%q", embed.Title)
+	}
+	if !strings.Contains(embed.Description, "VZW") || !strings.Contains(embed.Description, "internet") {
+		t.Errorf("description=%q", embed.Description)
+	}
+	have := func(name string) bool {
+		for _, f := range embed.Fields {
+			if strings.Contains(f.Name, name) {
+				return true
+			}
+		}
+		return false
+	}
+	for _, name := range []string{"Slot", "Carrier", "APN", "ICCID", "IMSI", "Phone"} {
+		if !have(name) {
+			t.Errorf("missing field containing %q", name)
+		}
+	}
+}

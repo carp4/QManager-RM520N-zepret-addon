@@ -1082,13 +1082,40 @@ func handleDevice(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	respondEmbedWithButtons(s, i, buildDeviceEmbed(ms), "device")
 }
 
-// Stub implementations — replaced in Tasks 12/13.
 func buildSimEmbed(s *ModemStatus) *discordgo.MessageEmbed {
-	return &discordgo.MessageEmbed{Title: "SIM Details", Description: "stub"}
+	descr := fmt.Sprintf("SIM %s · %s · APN %s",
+		ifEmpty(s.SimSlot, "?"), ifEmpty(s.Operator, "?"), ifEmpty(s.APN, "?"))
+	fields := []*discordgo.MessageEmbedField{
+		{Name: "🎯 Slot", Value: ifEmpty(s.SimSlot, "—"), Inline: true},
+		{Name: "📶 Carrier", Value: ifEmpty(s.Operator, "—"), Inline: true},
+		{Name: "🌐 APN", Value: ifEmpty(s.APN, "—"), Inline: true},
+		{Name: "🔢 ICCID", Value: ifEmpty(s.ICCID, "—"), Inline: true},
+		{Name: "🆔 IMSI", Value: ifEmpty(s.IMSI, "—"), Inline: true},
+		{Name: "📞 Phone", Value: ifEmpty(s.PhoneNumber, "—"), Inline: true},
+	}
+	return &discordgo.MessageEmbed{
+		Author:      authorBlock(s),
+		Title:       "SIM Details",
+		Description: descr,
+		Color:       embedColor(s),
+		Fields:      fields,
+		Footer:      footerBlock(s),
+		Timestamp:   time.Unix(s.CacheTime, 0).Format(time.RFC3339),
+	}
 }
+
+func handleSim(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	ms, err := readStatus(statusCachePath)
+	if err != nil {
+		respondError(s, i, "Could not read modem status cache.")
+		return
+	}
+	respondEmbedEphemeral(s, i, buildSimEmbed(ms), "sim")
+}
+
+// Stub implementation — replaced in Task 13.
 func buildWatchcatEmbed(s *ModemStatus) *discordgo.MessageEmbed {
 	return &discordgo.MessageEmbed{Title: "Watchcat Status", Description: "stub"}
 }
 
-func handleSim(s *discordgo.Session, i *discordgo.InteractionCreate)      { respondError(s, i, "stub") }
 func handleWatchcat(s *discordgo.Session, i *discordgo.InteractionCreate) { respondError(s, i, "stub") }
