@@ -142,14 +142,35 @@ type pollerNetwork struct {
 }
 
 type pollerRadio struct {
-	State     string `json:"state"`
-	Band      string `json:"band"`
-	EARFCN    *int   `json:"earfcn"`
-	ARFCN     *int   `json:"arfcn"`
-	PCI       *int   `json:"pci"`
-	CellID    string `json:"cell_id"`
-	TAC       string `json:"tac"`
-	Bandwidth *int   `json:"bandwidth"`
+	State     string      `json:"state"`
+	Band      string      `json:"band"`
+	EARFCN    *int        `json:"earfcn"`
+	ARFCN     *int        `json:"arfcn"`
+	PCI       *int        `json:"pci"`
+	CellID    stringOrNum `json:"cell_id"`
+	TAC       stringOrNum `json:"tac"`
+	Bandwidth *int        `json:"bandwidth"`
+}
+
+// stringOrNum decodes a JSON value that the poller may emit as either a quoted
+// string or a bare number (e.g. cell_id, tac). JSON null decodes to "".
+type stringOrNum string
+
+func (s *stringOrNum) UnmarshalJSON(data []byte) error {
+	if len(data) == 0 || string(data) == "null" {
+		*s = ""
+		return nil
+	}
+	if data[0] == '"' {
+		var str string
+		if err := json.Unmarshal(data, &str); err != nil {
+			return err
+		}
+		*s = stringOrNum(str)
+		return nil
+	}
+	*s = stringOrNum(string(data))
+	return nil
 }
 
 type pollerCarrierComponent struct {
@@ -260,12 +281,12 @@ func mapPollerToStatus(p *pollerCache) *ModemStatus {
 		WanIP:                 p.Network.WanIPv4,
 		LteBand:               p.LTE.Band,
 		LteState:              p.LTE.State,
-		LteCellID:             p.LTE.CellID,
-		LteTAC:                p.LTE.TAC,
+		LteCellID:             string(p.LTE.CellID),
+		LteTAC:                string(p.LTE.TAC),
 		NrBand:                p.NR.Band,
 		NrState:               p.NR.State,
-		NrCellID:              p.NR.CellID,
-		NrTAC:                 p.NR.TAC,
+		NrCellID:              string(p.NR.CellID),
+		NrTAC:                 string(p.NR.TAC),
 		CpuTemp:               floatPtrFmt(p.Device.Temperature, "%.1f °C"),
 		CpuUsage:              intPtrStr(p.Device.CpuUsage),
 		MemUsedMB:             intPtrStr(p.Device.MemoryUsedMB),

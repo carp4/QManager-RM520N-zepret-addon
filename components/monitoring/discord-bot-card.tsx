@@ -618,15 +618,29 @@ export function DiscordBotCard() {
                 <div className="relative max-w-sm">
                   <Input
                     id="discord-token"
-                    type={showToken ? "text" : "password"}
+                    name="discord-bot-token"
+                    type="text"
                     placeholder={
                       settings?.token_set ? "••••••••" : "Paste your bot token"
                     }
                     className="pr-10"
+                    style={
+                      showToken
+                        ? undefined
+                        : ({
+                            WebkitTextSecurity: "disc",
+                            textSecurity: "disc",
+                          } as React.CSSProperties)
+                    }
                     value={token}
                     onChange={(e) => setToken(e.target.value)}
                     autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
                     spellCheck={false}
+                    data-1p-ignore=""
+                    data-lpignore="true"
+                    data-form-type="other"
                     aria-invalid={!!tokenRequiredError}
                     aria-describedby={
                       tokenRequiredError

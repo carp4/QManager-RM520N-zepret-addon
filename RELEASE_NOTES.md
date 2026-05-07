@@ -11,6 +11,7 @@ A reliability and polish release. New visibility into poller health and daemon l
 - **Cycle-budget watchdog.** The background poller now records each cycle's wall-clock time and logs a warning when one exceeds the 10-second budget. Stuck cycles that don't actually crash the daemon are now visible to anyone tailing the logs.
 - **Ping-daemon liveness event.** When the ping daemon goes silent for 60+ seconds the poller now surfaces a `ping_daemon_stale` event in the activity feed instead of failing silently. Also auto-recovers when the daemon resumes.
 - **Discord Bot setup is now visible at a glance.** The Discord Bot card shows onboarding progress through a four-step indicator (Token → User ID → Online → Authorized) and surfaces a distinct **Awaiting Authorization** badge when the bot is online but you haven't yet added it to your Discord account via OAuth. A successful test DM flips the badge green and confirms the bot can actually reach you — the gap between "configured" and "actually working" is no longer guesswork.
+- **Antenna alignment recordings now persist across reloads and modem reboots.** Recorded angles and positions are saved locally in your browser, so you can move the modem to a new spot, reboot it, and still see your prior reference values when you come back. Each recorded slot also has a small trash icon to clear it individually without resetting the whole comparison.
 
 ## 🛠️ Improvements
 
@@ -42,47 +43,6 @@ curl -fsSL -o /tmp/qmanager-installer.sh \
   https://github.com/dr-dolomite/QManager-RM520N/raw/refs/heads/main/qmanager-installer.sh && \
   bash /tmp/qmanager-installer.sh
 ```
-
-## 💙 Thank You
-
-Bug reports and feature requests welcome on [GitHub Issues](https://github.com/dr-dolomite/QManager-RM520N/issues).
-
-If QManager saves you time, consider [sponsoring on GitHub](https://github.com/sponsors/dr-dolomite) or sending GCash via Remitly to **Russel Yasol** (+639544817486).
-
-**License:** MIT + Commons Clause — **Happy connecting!**
-
----
-
-# 🚀 QManager RM520N BETA v0.1.6
-
-A focused hotfix for **TTL & Hop Limit Configuration** on RM520N-GL. Saving TTL/HL now reflects correctly in the UI and survives a page refresh — and disabling actually disables.
-
-> One-click OTA from **System Settings → Software Update** if you're on v0.1.5. SSH/ADB is no longer required.
-
-## 🛠️ Fixes
-
-- **TTL/HL save no longer resets to disabled after refresh.** The live-state reader was passing a duplicate flag that legacy iptables on RM520N-GL rejects, so the form mistakenly reported "disabled" right after a successful save. The form now mirrors the actual kernel state.
-- **TTL/HL disable now fully clears the rules.** The apply path used to remove only one rule per save, so duplicate or stale rules from past changes could survive a disable and silently re-appear in the UI. The chain is now drained completely on every apply, with a hard cap to prevent runaway loops.
-
-## 📥 Installation
-
-### Upgrading from v0.1.5
-
-**System Settings → Software Update.** Click Download, then Install. No SSH/ADB needed. All settings preserved.
-
-### Fresh Install
-
-ADB or SSH into the modem and run:
-
-```sh
-curl -fsSL -o /tmp/qmanager-installer.sh \
-  https://github.com/dr-dolomite/QManager-RM520N/raw/refs/heads/main/qmanager-installer.sh && \
-  bash /tmp/qmanager-installer.sh
-```
-
-### Upgrading from v0.1.4
-
-**This one-time hop requires ADB or SSH** — the v0.1.4 update CGI lacks the sudo elevation needed to install v0.1.5+ cleanly. Run the same fresh-install command above; your settings, profiles, and password are preserved.
 
 ## 💙 Thank You
 
