@@ -19,23 +19,6 @@ const (
 	eventsCachePath = "/tmp/qmanager_events.json"
 )
 
-func embedColorForInternet(internet string) int {
-	switch internet {
-	case "true":
-		return colorGreen
-	case "false":
-		return colorRed
-	default:
-		return colorGray
-	}
-}
-
-func staleWarning(s *ModemStatus) string {
-	if s.IsStale() {
-		return "\n⚠ Data may be stale"
-	}
-	return ""
-}
 
 func buildSignalEmbed(s *ModemStatus) *discordgo.MessageEmbed {
 	bucket := signalQualityBucket(s.SignalPerAntenna)
@@ -461,7 +444,7 @@ func countSccHandoffs24h(path string) (int, error) {
 	return count, sc.Err()
 }
 
-func buildEventsEmbed(events []Event) *discordgo.MessageEmbed {
+func buildEventsEmbed(events []Event, crit, warn, info, total int) *discordgo.MessageEmbed {
 	if len(events) == 0 {
 		return &discordgo.MessageEmbed{
 			Title:       "Recent Events",
@@ -469,9 +452,32 @@ func buildEventsEmbed(events []Event) *discordgo.MessageEmbed {
 			Color:       colorGray,
 		}
 	}
+	descr := fmt.Sprintf("%s %d critical · %s %d warnings · ℹ️ %d info — last %d of %d",
+		emoji.Down, crit, emoji.Warn, warn, info, len(events), total,
+	)
+
 	severityIcon := map[string]string{
-		"info": "ℹ️", "warning": "⚠️", "critical": "🔴",
+		"info": "ℹ️", "warning": emoji.Warn, "critical": emoji.Down,
 	}
+	color := colorBlue
+	worst := ""
+	for _, ev := range events {
+		switch ev.Severity {
+		case "critical":
+			worst = "critical"
+		case "warning":
+			if worst != "critical" {
+				worst = "warning"
+			}
+		}
+	}
+	switch worst {
+	case "critical":
+		color = colorRed
+	case "warning":
+		color = colorAmber
+	}
+
 	var lines []string
 	for i := len(events) - 1; i >= 0; i-- {
 		ev := events[i]
@@ -484,8 +490,8 @@ func buildEventsEmbed(events []Event) *discordgo.MessageEmbed {
 	}
 	return &discordgo.MessageEmbed{
 		Title:       "Recent Events",
-		Description: strings.Join(lines, "\n"),
-		Color:       colorBlue,
+		Description: descr + "\n\n" + strings.Join(lines, "\n"),
+		Color:       color,
 		Footer:      &discordgo.MessageEmbedFooter{Text: "QManager"},
 	}
 }
@@ -626,7 +632,9 @@ func handleEvents(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		log.Printf("readEvents error: %v", err)
 		events = []Event{}
 	}
-	respondEmbed(s, i, buildEventsEmbed(events))
+	crit, warn, info, total, _ := readEventCounts(eventsCachePath)
+	embed := buildEventsEmbed(events, crit, warn, info, total)
+	respondEmbed(s, i, embed)
 }
 
 // parseBandOption converts user input (e.g. "B3:B28" or "n78") to AT format (e.g. "3:28" or "78").

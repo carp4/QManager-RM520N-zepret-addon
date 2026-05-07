@@ -198,18 +198,43 @@ func TestBuildStatusEmbed_WatchcatField(t *testing.T) {
 }
 
 func TestBuildEventsEmbed_Empty(t *testing.T) {
-	embed := buildEventsEmbed([]Event{})
+	embed := buildEventsEmbed([]Event{}, 0, 0, 0, 0)
 	if embed.Description == "" {
 		t.Error("expected description for empty events")
 	}
+	if embed.Color != colorGray {
+		t.Errorf("empty events color=%#x want gray", embed.Color)
+	}
 }
 
-func TestEmbedColorForInternet(t *testing.T) {
-	if embedColorForInternet("true") != colorGreen {
-		t.Error("expected green for internet=true")
+func TestBuildEventsEmbed_PillRow(t *testing.T) {
+	events := []Event{
+		{Timestamp: 1000, Severity: "warning", Message: "warn1"},
+		{Timestamp: 2000, Severity: "info", Message: "info1"},
 	}
-	if embedColorForInternet("false") != colorRed {
-		t.Error("expected red for internet=false")
+	embed := buildEventsEmbed(events, 1, 2, 7, 47)
+	if !strings.Contains(embed.Description, "1 critical") {
+		t.Errorf("description missing crit count: %q", embed.Description)
+	}
+	if !strings.Contains(embed.Description, "last 2 of 47") {
+		t.Errorf("description missing total: %q", embed.Description)
+	}
+}
+
+func TestBuildEventsEmbed_SeverityColorOverride(t *testing.T) {
+	cases := []struct {
+		events []Event
+		want   int
+	}{
+		{[]Event{{Severity: "critical", Message: "x"}}, colorRed},
+		{[]Event{{Severity: "warning", Message: "x"}}, colorAmber},
+		{[]Event{{Severity: "info", Message: "x"}}, colorBlue},
+	}
+	for _, c := range cases {
+		got := buildEventsEmbed(c.events, 0, 0, 0, len(c.events)).Color
+		if got != c.want {
+			t.Errorf("events color=%#x want %#x for severity %q", got, c.want, c.events[0].Severity)
+		}
 	}
 }
 
@@ -344,19 +369,6 @@ func TestBuildBandsEmbed_ServingCellField(t *testing.T) {
 	}
 }
 
-func TestBuildEventsEmbed_WithEvents(t *testing.T) {
-	events := []Event{
-		{Timestamp: 1000, Type: "conn", Message: "Lost internet", Severity: "warning"},
-		{Timestamp: 2000, Type: "conn", Message: "Restored", Severity: "info"},
-	}
-	embed := buildEventsEmbed(events)
-	if embed.Description == "" {
-		t.Error("expected non-empty description for events embed")
-	}
-	if embed.Color != colorBlue {
-		t.Errorf("got color %#x, want colorBlue %#x", embed.Color, colorBlue)
-	}
-}
 
 func TestParseBandOption_StripsBPrefix(t *testing.T) {
 	// "B3:B28" -> "3:28" (strip B prefix for LTE AT command)
