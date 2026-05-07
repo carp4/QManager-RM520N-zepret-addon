@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bufio"
+	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -270,31 +273,192 @@ func tacField(s *ModemStatus) *discordgo.MessageEmbedField {
 }
 
 func buildStatusEmbed(s *ModemStatus) *discordgo.MessageEmbed {
-	internet := "Down"
-	color := colorRed
-	if s.ConnInternetAvailable == "true" {
-		internet = fmt.Sprintf("Up (%s ms)", ifEmpty(s.ConnLatency, "?"))
-		color = colorGreen
-	}
-	modem := "Unreachable"
-	if s.ModemReachable == "true" {
-		modem = "OK"
-	}
+	descr := buildStatusDescription(s)
+	color := embedColor(s)
+
 	fields := []*discordgo.MessageEmbedField{
-		{Name: "Internet", Value: internet, Inline: true},
-		{Name: "Modem", Value: modem, Inline: true},
-		{Name: "Operator", Value: ifEmpty(s.Operator, "Unknown"), Inline: true},
-		{Name: "WAN IP", Value: ifEmpty(s.WanIP, "—"), Inline: true},
-		{Name: "SIM Slot", Value: ifEmpty(s.SimSlot, "—"), Inline: true},
-		{Name: "CPU Temp", Value: ifEmpty(s.CpuTemp, "—"), Inline: true},
-		{Name: "Uptime", Value: ifEmpty(s.Uptime, "—"), Inline: false},
+		connectionField(s),
+		networkField(s),
+		uptimeField(s),
+		watchcatField(s),
+		deviceMetricsField(s),
 	}
+	if scc := sccHandoffsField(s); scc != nil {
+		fields = append(fields, scc)
+	}
+
 	return &discordgo.MessageEmbed{
-		Title:  "Modem Status",
-		Color:  color,
-		Fields: fields,
-		Footer: &discordgo.MessageEmbedFooter{Text: "QManager" + staleWarning(s)},
+		Author:      authorBlock(s),
+		Title:       "Modem Status",
+		Description: descr,
+		Color:       color,
+		Fields:      fields,
+		Footer:      footerBlock(s),
+		Timestamp:   time.Unix(s.CacheTime, 0).Format(time.RFC3339),
 	}
+}
+
+func buildStatusDescription(s *ModemStatus) string {
+	if s.ModemReachable != "true" {
+		return emoji.Down + " Modem unreachable"
+	}
+	if s.ConnInternetAvailable == "false" {
+		return emoji.Down + " Internet down · modem reachable"
+	}
+	if s.ConnInternetAvailable != "true" {
+		return emoji.Unknown + " Connectivity unknown"
+	}
+	parts := []string{emoji.Ok + " Internet up"}
+	if s.ConnLatency != "" {
+		parts = append(parts, s.ConnLatency+" ms")
+	}
+	if s.RxRate != "" {
+		if rx, err := strconv.ParseInt(s.RxRate, 10, 64); err == nil {
+			parts = append(parts, "↓ "+formatBytes(rx))
+		}
+	}
+	if s.TxRate != "" {
+		if tx, err := strconv.ParseInt(s.TxRate, 10, 64); err == nil {
+			parts = append(parts, "↑ "+formatBytes(tx))
+		}
+	}
+	return strings.Join(parts, " · ")
+}
+
+func connectionField(s *ModemStatus) *discordgo.MessageEmbedField {
+	state := "Up"
+	if s.ConnInternetAvailable != "true" {
+		state = "Down"
+	}
+	line1Parts := []string{state}
+	if s.ConnLatency != "" {
+		line1Parts = append(line1Parts, "· "+s.ConnLatency+" ms")
+	}
+	if s.ConnAvgLatency != "" || s.ConnJitter != "" {
+		extra := []string{}
+		if s.ConnAvgLatency != "" {
+			extra = append(extra, "avg "+s.ConnAvgLatency)
+		}
+		if s.ConnJitter != "" {
+			extra = append(extra, "jitter "+s.ConnJitter)
+		}
+		line1Parts = append(line1Parts, "("+strings.Join(extra, ", ")+")")
+	}
+	line2Parts := []string{}
+	if s.ConnPacketLoss != "" {
+		line2Parts = append(line2Parts, s.ConnPacketLoss+"% loss")
+	}
+	if s.PingTarget != "" {
+		line2Parts = append(line2Parts, "ping "+s.PingTarget)
+	}
+	value := strings.Join(line1Parts, " ")
+	if len(line2Parts) > 0 {
+		value += "\n" + strings.Join(line2Parts, " · ")
+	}
+	return &discordgo.MessageEmbedField{
+		Name: emoji.Connection + " Connection", Value: value, Inline: true,
+	}
+}
+
+func networkField(s *ModemStatus) *discordgo.MessageEmbedField {
+	line1 := []string{}
+	if s.Operator != "" {
+		line1 = append(line1, s.Operator)
+	}
+	if s.NetworkType != "" {
+		line1 = append(line1, s.NetworkType)
+	}
+	if s.SimSlot != "" {
+		line1 = append(line1, "SIM "+s.SimSlot)
+	}
+	value := strings.Join(line1, " · ")
+	if s.WanIP != "" {
+		value += "\nWAN " + s.WanIP
+	}
+	return &discordgo.MessageEmbedField{
+		Name: emoji.Network + " Network", Value: ifEmpty(value, "—"), Inline: true,
+	}
+}
+
+func uptimeField(s *ModemStatus) *discordgo.MessageEmbedField {
+	value := fmt.Sprintf("Connection: %s\nDevice: %s",
+		ifEmpty(s.ConnUptime, "—"), ifEmpty(s.Uptime, "—"))
+	return &discordgo.MessageEmbedField{
+		Name: emoji.Uptime + " Uptime", Value: value, Inline: true,
+	}
+}
+
+func watchcatField(s *ModemStatus) *discordgo.MessageEmbedField {
+	state := s.WatchcatState
+	if state == "" {
+		state = "Unknown"
+	}
+	failures := ifEmpty(s.WatchcatFailures, "0")
+	last := "never"
+	if s.WatchcatLastTime != "" && s.WatchcatLastTime != "0" {
+		if ts, err := strconv.ParseInt(s.WatchcatLastTime, 10, 64); err == nil && ts > 0 {
+			last = relativeTime(ts)
+		}
+	}
+	value := fmt.Sprintf("%s · %s failures\nLast recovery: %s", state, failures, last)
+	return &discordgo.MessageEmbedField{
+		Name: emoji.Watchcat + " Watchcat", Value: value, Inline: true,
+	}
+}
+
+func deviceMetricsField(s *ModemStatus) *discordgo.MessageEmbedField {
+	parts := []string{}
+	if s.CpuUsage != "" {
+		parts = append(parts, "CPU "+s.CpuUsage+"%")
+	}
+	if s.CpuTemp != "" {
+		parts = append(parts, s.CpuTemp)
+	}
+	if s.MemUsedMB != "" && s.MemTotalMB != "" {
+		parts = append(parts, "Mem "+s.MemUsedMB+"/"+s.MemTotalMB+" MB")
+	}
+	return &discordgo.MessageEmbedField{
+		Name: emoji.Device + " Device", Value: ifEmpty(strings.Join(parts, " · "), "—"), Inline: true,
+	}
+}
+
+// sccHandoffsField returns a field summarizing scc_pci_change events in the
+// last 24h, or nil if events log unreadable / no events.
+func sccHandoffsField(s *ModemStatus) *discordgo.MessageEmbedField {
+	count, err := countSccHandoffs24h(eventsCachePath)
+	if err != nil || count == 0 {
+		return nil
+	}
+	return &discordgo.MessageEmbedField{
+		Name:   emoji.Cells24h + " SCC handoffs (24h)",
+		Value:  fmt.Sprintf("%d PCI changes detected", count),
+		Inline: true,
+	}
+}
+
+func countSccHandoffs24h(path string) (int, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return 0, err
+	}
+	defer f.Close()
+	cutoff := time.Now().Unix() - 86400
+	count := 0
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		line := sc.Bytes()
+		if len(line) == 0 {
+			continue
+		}
+		var ev Event
+		if json.Unmarshal(line, &ev) != nil {
+			continue
+		}
+		if ev.Type == "scc_pci_change" && ev.Timestamp >= cutoff {
+			count++
+		}
+	}
+	return count, sc.Err()
 }
 
 func buildEventsEmbed(events []Event) *discordgo.MessageEmbed {

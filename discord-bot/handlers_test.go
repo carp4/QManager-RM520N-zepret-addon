@@ -104,20 +104,96 @@ func TestBuildSignalEmbed_ProvenanceFootnote(t *testing.T) {
 	}
 }
 
-func TestBuildStatusEmbed_InternetDown(t *testing.T) {
+func TestBuildStatusEmbed_Title(t *testing.T) {
+	s := makeStatus("true", "true", "LTE")
+	if buildStatusEmbed(s).Title != "Modem Status" {
+		t.Errorf("wrong title")
+	}
+}
+
+func TestBuildStatusEmbed_PillRow_Up(t *testing.T) {
+	s := makeStatus("true", "true", "LTE")
+	s.ConnLatency = "23"
+	s.RxRate = "1500000"
+	s.TxRate = "250000"
+	embed := buildStatusEmbed(s)
+	if !strings.Contains(embed.Description, "Internet up") {
+		t.Errorf("description=%q", embed.Description)
+	}
+	if !strings.Contains(embed.Description, "23 ms") {
+		t.Errorf("description missing latency: %q", embed.Description)
+	}
+	if !strings.Contains(embed.Description, "MB/s") {
+		t.Errorf("description missing throughput: %q", embed.Description)
+	}
+}
+
+func TestBuildStatusEmbed_PillRow_Down(t *testing.T) {
 	s := makeStatus("false", "true", "LTE")
+	embed := buildStatusEmbed(s)
+	if !strings.Contains(embed.Description, "Internet down") {
+		t.Errorf("description=%q", embed.Description)
+	}
+	if embed.Color != colorAmber {
+		t.Errorf("color=%#x want amber for internet down + modem reachable", embed.Color)
+	}
+}
+
+func TestBuildStatusEmbed_ConnectionField_HasLatencyStats(t *testing.T) {
+	s := makeStatus("true", "true", "LTE")
+	s.ConnLatency = "23"
+	s.ConnAvgLatency = "28"
+	s.ConnJitter = "4"
+	s.ConnPacketLoss = "0.0"
+	s.PingTarget = "8.8.8.8"
 	embed := buildStatusEmbed(s)
 	found := false
 	for _, f := range embed.Fields {
-		if f.Name == "Internet" && f.Value != "" {
+		if strings.Contains(f.Name, "Connection") {
 			found = true
+			if !strings.Contains(f.Value, "avg 28") || !strings.Contains(f.Value, "jitter 4") {
+				t.Errorf("connection value missing avg/jitter: %q", f.Value)
+			}
+			if !strings.Contains(f.Value, "8.8.8.8") {
+				t.Errorf("connection value missing ping target: %q", f.Value)
+			}
 		}
 	}
 	if !found {
-		t.Error("expected Internet field in status embed")
+		t.Error("missing Connection field")
 	}
-	if embed.Color != colorRed {
-		t.Errorf("expected colorRed for internet=false, got %#x", embed.Color)
+}
+
+func TestBuildStatusEmbed_UptimeField_BothLines(t *testing.T) {
+	s := makeStatus("true", "true", "LTE")
+	s.Uptime = "2d 6h 30m"
+	s.ConnUptime = "4h 12m"
+	embed := buildStatusEmbed(s)
+	for _, f := range embed.Fields {
+		if strings.Contains(f.Name, "Uptime") {
+			if !strings.Contains(f.Value, "Connection") || !strings.Contains(f.Value, "Device") {
+				t.Errorf("uptime value missing both lines: %q", f.Value)
+			}
+		}
+	}
+}
+
+func TestBuildStatusEmbed_WatchcatField(t *testing.T) {
+	s := makeStatus("true", "true", "LTE")
+	s.WatchcatState = "monitoring"
+	s.WatchcatFailures = "3"
+	embed := buildStatusEmbed(s)
+	found := false
+	for _, f := range embed.Fields {
+		if strings.Contains(f.Name, "Watchcat") {
+			found = true
+			if !strings.Contains(f.Value, "monitoring") || !strings.Contains(f.Value, "3 failures") {
+				t.Errorf("watchcat value=%q", f.Value)
+			}
+		}
+	}
+	if !found {
+		t.Error("missing Watchcat field")
 	}
 }
 
