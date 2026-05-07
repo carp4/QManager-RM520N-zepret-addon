@@ -19,11 +19,88 @@ func makeStatus(internet, reachable, networkType string) *ModemStatus {
 	}
 }
 
-func TestBuildSignalEmbed_HasTitle(t *testing.T) {
-	s := makeStatus("true", "true", "NR5G-NSA")
+func TestBuildSignalEmbed_Title(t *testing.T) {
+	s := makeStatus("true", "true", "5G-NSA")
+	if buildSignalEmbed(s).Title != "Signal Metrics" {
+		t.Errorf("title wrong")
+	}
+}
+
+func TestBuildSignalEmbed_PillRow_HasBars(t *testing.T) {
+	s := makeStatus("true", "true", "5G-NSA")
+	s.NrState = "connected"
+	s.SignalPerAntenna = map[string]AntennaSignal{
+		"main": {RSRP: "-75", SINR: "18", RSRQ: "-10"},
+	}
 	embed := buildSignalEmbed(s)
-	if embed.Title == "" {
-		t.Error("expected non-empty embed title")
+	if !strings.Contains(embed.Description, "▰") {
+		t.Errorf("pill row missing bar glyphs: %q", embed.Description)
+	}
+	if !strings.Contains(embed.Description, "Excellent") {
+		t.Errorf("pill row missing Excellent label: %q", embed.Description)
+	}
+	if !strings.Contains(embed.Description, "NR primary") {
+		t.Errorf("pill row missing NR primary tag: %q", embed.Description)
+	}
+}
+
+func TestBuildSignalEmbed_PillRow_LtePrimary(t *testing.T) {
+	s := makeStatus("true", "true", "LTE")
+	s.NrState = ""
+	s.LteState = "connected"
+	s.SignalPerAntenna = map[string]AntennaSignal{
+		"main": {RSRP: "-100", SINR: "8"},
+	}
+	embed := buildSignalEmbed(s)
+	if !strings.Contains(embed.Description, "LTE primary") {
+		t.Errorf("pill row=%q want LTE primary", embed.Description)
+	}
+	if !strings.Contains(embed.Description, "Fair") {
+		t.Errorf("pill row=%q want Fair quality", embed.Description)
+	}
+}
+
+func TestBuildSignalEmbed_PerPortColorEmoji(t *testing.T) {
+	s := makeStatus("true", "true", "5G-NSA")
+	s.SignalPerAntenna = map[string]AntennaSignal{
+		"main":      {RSRP: "-85", SINR: "18", RSRQ: "-10"},
+		"diversity": {RSRP: "-100", SINR: "8", RSRQ: "-13"},
+		"mimo3":     {RSRP: "-115", SINR: "-2", RSRQ: "-18"},
+	}
+	embed := buildSignalEmbed(s)
+	greens, yellows, reds := 0, 0, 0
+	for _, f := range embed.Fields {
+		if strings.Contains(f.Name, "🟢") {
+			greens++
+		}
+		if strings.Contains(f.Name, "🟡") {
+			yellows++
+		}
+		if strings.Contains(f.Name, "🔴") {
+			reds++
+		}
+	}
+	if greens != 1 || yellows != 1 || reds != 1 {
+		t.Errorf("per-port emoji counts: green=%d yellow=%d red=%d", greens, yellows, reds)
+	}
+}
+
+func TestBuildSignalEmbed_ProvenanceFootnote(t *testing.T) {
+	s := makeStatus("true", "true", "5G-NSA")
+	s.NrState = "connected"
+	s.LteState = "connected"
+	s.SignalPerAntenna = map[string]AntennaSignal{
+		"main": {RSRP: "-85", SINR: "18"},
+	}
+	embed := buildSignalEmbed(s)
+	found := false
+	for _, f := range embed.Fields {
+		if strings.Contains(f.Value, "EN-DC") || strings.Contains(f.Value, "Showing NR") {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("missing provenance footnote field")
 	}
 }
 
@@ -57,14 +134,6 @@ func TestEmbedColorForInternet(t *testing.T) {
 	}
 	if embedColorForInternet("false") != colorRed {
 		t.Error("expected red for internet=false")
-	}
-}
-
-func TestBuildSignalEmbed_TitleIsCorrect(t *testing.T) {
-	s := makeStatus("true", "true", "NR5G-NSA")
-	embed := buildSignalEmbed(s)
-	if embed.Title != "Signal Metrics" {
-		t.Errorf("got title %q, want %q", embed.Title, "Signal Metrics")
 	}
 }
 

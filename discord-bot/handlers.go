@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
@@ -34,28 +35,97 @@ func staleWarning(s *ModemStatus) string {
 }
 
 func buildSignalEmbed(s *ModemStatus) *discordgo.MessageEmbed {
-	var fields []*discordgo.MessageEmbedField
+	bucket := signalQualityBucket(s.SignalPerAntenna)
+	primary := "LTE primary"
+	if s.NrState == "connected" {
+		primary = "NR primary"
+	}
+	descr := fmt.Sprintf("%s %s · %s · %s",
+		qualityEmojiForBucket(bucket),
+		capitalize(bucket),
+		primary,
+		signalQualityBars(bucket),
+	)
+
 	ports := []string{"main", "diversity", "mimo3", "mimo4"}
 	labels := map[string]string{
 		"main": "Main (PRX)", "diversity": "Diversity (DRX)",
 		"mimo3": "MIMO 3 (RX2)", "mimo4": "MIMO 4 (RX3)",
 	}
+	var fields []*discordgo.MessageEmbedField
 	for _, port := range ports {
 		ant, ok := s.SignalPerAntenna[port]
 		if !ok {
 			continue
 		}
+		portEmoji := perPortEmoji(ant.RSRP)
 		fields = append(fields, &discordgo.MessageEmbedField{
-			Name:   labels[port],
-			Value:  fmt.Sprintf("RSRP: %s dBm\nRSRQ: %s dB\nSINR: %s dB\nRSSI: %s dBm", ant.RSRP, ant.RSRQ, ant.SINR, ant.RSSI),
+			Name: fmt.Sprintf("%s %s", portEmoji, labels[port]),
+			Value: fmt.Sprintf("RSRP %s dBm  SINR %s dB\nRSRQ %s dB",
+				ifEmpty(ant.RSRP, "—"), ifEmpty(ant.SINR, "—"), ifEmpty(ant.RSRQ, "—"),
+			),
 			Inline: true,
 		})
 	}
+
+	if note := provenanceNote(s); note != "" {
+		fields = append(fields, &discordgo.MessageEmbedField{
+			Name: "ℹ️ Source", Value: note, Inline: false,
+		})
+	}
+
 	return &discordgo.MessageEmbed{
-		Title:  "Signal Metrics",
-		Color:  embedColorForInternet(s.ConnInternetAvailable),
-		Fields: fields,
-		Footer: &discordgo.MessageEmbedFooter{Text: "QManager" + staleWarning(s)},
+		Author:      authorBlock(s),
+		Title:       "Signal Metrics",
+		Description: descr,
+		Color:       embedColor(s),
+		Fields:      fields,
+		Footer:      footerBlock(s),
+		Timestamp:   time.Unix(s.CacheTime, 0).Format(time.RFC3339),
+	}
+}
+
+func qualityEmojiForBucket(b string) string {
+	switch b {
+	case "excellent", "good":
+		return emoji.Ok
+	case "fair":
+		return emoji.Warn
+	case "poor":
+		return emoji.Down
+	default:
+		return emoji.Unknown
+	}
+}
+
+func perPortEmoji(rsrpStr string) string {
+	if rsrpStr == "" {
+		return emoji.Unknown
+	}
+	v, err := strconv.ParseFloat(rsrpStr, 64)
+	if err != nil {
+		return emoji.Unknown
+	}
+	switch {
+	case v >= -90:
+		return emoji.Ok
+	case v >= -110:
+		return emoji.Warn
+	default:
+		return emoji.Down
+	}
+}
+
+func provenanceNote(s *ModemStatus) string {
+	switch {
+	case s.NrState == "connected" && s.LteState == "connected":
+		return "Showing NR values (EN-DC active — LTE leg also connected)"
+	case s.NrState == "connected":
+		return "Showing NR values"
+	case s.LteState == "connected":
+		return "Showing LTE values"
+	default:
+		return ""
 	}
 }
 
