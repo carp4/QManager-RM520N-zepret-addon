@@ -477,3 +477,37 @@ func TestCapitalize_UsedInFailureTitle(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildDeviceEmbed(t *testing.T) {
+	s := makeStatus("true", "true", "5G-NSA")
+	s.Model = "RM520N-GL"
+	s.Manufacturer = "Quectel"
+	s.Firmware = "RM520NGLAAR03A05M4G"
+	s.IMEI = "861234567890123"
+	s.LteCategory = "20"
+	s.MIMO = "4x4"
+	s.SupportedLteBands = "1,3,7"
+	embed := buildDeviceEmbed(s)
+	if embed.Title != "Device Info" {
+		t.Errorf("title=%q", embed.Title)
+	}
+	if !strings.Contains(embed.Description, "RM520N-GL") {
+		t.Errorf("description=%q", embed.Description)
+	}
+	if !strings.Contains(embed.Description, "Cat 20") {
+		t.Errorf("description missing LTE Cat: %q", embed.Description)
+	}
+	have := func(name string) bool {
+		for _, f := range embed.Fields {
+			if strings.Contains(f.Name, name) {
+				return true
+			}
+		}
+		return false
+	}
+	for _, name := range []string{"Model", "Manufacturer", "IMEI", "Firmware", "MIMO", "Supported LTE"} {
+		if !have(name) {
+			t.Errorf("missing field containing %q", name)
+		}
+	}
+}

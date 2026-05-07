@@ -572,6 +572,12 @@ func handleCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		handleStatus(s, i)
 	case "events":
 		handleEvents(s, i)
+	case "device":
+		handleDevice(s, i)
+	case "sim":
+		handleSim(s, i)
+	case "watchcat":
+		handleWatchcat(s, i)
 	case "reboot":
 		handleReboot(s, i)
 	case "lock-band":
@@ -1040,13 +1046,49 @@ func handleCopyRaw(s *discordgo.Session, i *discordgo.InteractionCreate, source 
 	}
 }
 
-// Stub implementations — replaced in Tasks 11/12/13.
 func buildDeviceEmbed(s *ModemStatus) *discordgo.MessageEmbed {
-	return &discordgo.MessageEmbed{Title: "Device Info", Description: "stub"}
+	descr := strings.TrimSpace(strings.Join([]string{s.Model, s.Firmware, "Cat " + s.LteCategory}, " · "))
+	if s.LteCategory == "" {
+		descr = strings.TrimSpace(strings.Join([]string{s.Model, s.Firmware}, " · "))
+	}
+	fields := []*discordgo.MessageEmbedField{
+		{Name: "📦 Model", Value: ifEmpty(s.Model, "—"), Inline: true},
+		{Name: "🏭 Manufacturer", Value: ifEmpty(s.Manufacturer, "—"), Inline: true},
+		{Name: "🔢 IMEI", Value: ifEmpty(s.IMEI, "—"), Inline: true},
+		{Name: "💾 Firmware", Value: ifEmpty(s.Firmware, "—"), Inline: true},
+		{Name: "📅 Build date", Value: ifEmpty(s.BuildDate, "—"), Inline: true},
+		{Name: "🛜 MIMO config", Value: ifEmpty(s.MIMO, "—"), Inline: true},
+		{Name: "📡 Supported LTE bands", Value: ifEmpty(s.SupportedLteBands, "—"), Inline: false},
+		{Name: "📡 Supported NR (NSA)", Value: ifEmpty(s.SupportedNsaBands, "—"), Inline: false},
+		{Name: "📡 Supported NR (SA)", Value: ifEmpty(s.SupportedSaBands, "—"), Inline: false},
+	}
+	return &discordgo.MessageEmbed{
+		Author:      authorBlock(s),
+		Title:       "Device Info",
+		Description: descr,
+		Color:       embedColor(s),
+		Fields:      fields,
+		Footer:      footerBlock(s),
+		Timestamp:   time.Unix(s.CacheTime, 0).Format(time.RFC3339),
+	}
 }
+
+func handleDevice(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	ms, err := readStatus(statusCachePath)
+	if err != nil {
+		respondError(s, i, "Could not read modem status cache.")
+		return
+	}
+	respondEmbedWithButtons(s, i, buildDeviceEmbed(ms), "device")
+}
+
+// Stub implementations — replaced in Tasks 12/13.
 func buildSimEmbed(s *ModemStatus) *discordgo.MessageEmbed {
 	return &discordgo.MessageEmbed{Title: "SIM Details", Description: "stub"}
 }
 func buildWatchcatEmbed(s *ModemStatus) *discordgo.MessageEmbed {
 	return &discordgo.MessageEmbed{Title: "Watchcat Status", Description: "stub"}
 }
+
+func handleSim(s *discordgo.Session, i *discordgo.InteractionCreate)      { respondError(s, i, "stub") }
+func handleWatchcat(s *discordgo.Session, i *discordgo.InteractionCreate) { respondError(s, i, "stub") }

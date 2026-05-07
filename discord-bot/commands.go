@@ -9,6 +9,7 @@ func slashCommands() []*discordgo.ApplicationCommand {
 		{Name: "bands", Description: "Active technology, band lock state, and carrier aggregation details"},
 		{Name: "status", Description: "Connectivity, WAN IP, operator, uptime, and CPU temperature"},
 		{Name: "events", Description: "Last 5 network events"},
+		{Name: "device", Description: "Modem hardware info — model, firmware, IMEI, supported bands"},
 		{Name: "reboot", Description: "Reboot the modem (requires confirmation)"},
 		{
 			Name:        "lock-band",
