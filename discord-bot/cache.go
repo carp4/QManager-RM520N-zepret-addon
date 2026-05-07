@@ -18,6 +18,10 @@ type ModemStatus struct {
 	ConnInternetAvailable string
 	ConnLatency           string
 	ConnAvgLatency        string
+	ConnJitter            string
+	ConnPacketLoss        string
+	PingTarget            string
+	DuringRecovery        string
 	ModemReachable        string
 	NetworkType           string
 	Operator              string
@@ -25,16 +29,73 @@ type ModemStatus struct {
 	LteBand               string
 	NrBand                string
 	NrState               string
+	LteState              string
 	CaActive              string
 	CaCount               string
 	NrCaActive            string
 	NrCaCount             string
+	TotalBandwidthMHz     string
+	BandwidthDetails      string
+	CarrierComponents     []CarrierComponent
+	APN                   string
 	WanIP                 string
 	SimSlot               string
-	Uptime                string
-	CpuTemp               string
-	ServiceStatus         string
-	CacheTime             int64
+
+	// Per-radio cell info
+	LteCellID string
+	NrCellID  string
+	LteTAC    string
+	NrTAC     string
+
+	// Device
+	Uptime           string
+	ConnUptime       string
+	CpuTemp          string
+	CpuUsage         string
+	MemUsedMB        string
+	MemTotalMB       string
+	Model            string
+	Manufacturer     string
+	Firmware         string
+	BuildDate        string
+	IMEI             string
+	IMSI             string
+	ICCID            string
+	PhoneNumber      string
+	LteCategory      string
+	MIMO             string
+	SupportedLteBands  string
+	SupportedNsaBands  string
+	SupportedSaBands   string
+
+	// Traffic
+	RxRate string
+	TxRate string
+
+	// Watchcat
+	WatchcatEnabled  string
+	WatchcatState    string
+	WatchcatTier     string
+	WatchcatFailures string
+	WatchcatTotal    string
+	WatchcatLastTime string
+	WatchcatLastTier string
+
+	ServiceStatus string
+	CacheTime     int64
+}
+
+type CarrierComponent struct {
+	Type         string
+	Technology   string
+	Band         string
+	EARFCN       string
+	BandwidthMHz string
+	PCI          string
+	RSRP         string
+	RSRQ         string
+	RSSI         string
+	SINR         string
 }
 
 type AntennaSignal struct {
@@ -51,32 +112,57 @@ func (s *ModemStatus) IsStale() bool {
 // pollerCache mirrors the actual /tmp/qmanager_status.json schema written
 // by qmanager_poller. Pointer types let us distinguish unset (null) from zero.
 type pollerCache struct {
-	Timestamp           int64           `json:"timestamp"`
-	ModemReachable      bool            `json:"modem_reachable"`
-	LastSuccessfulPoll  int64           `json:"last_successful_poll"`
-	Network             pollerNetwork   `json:"network"`
-	LTE                 pollerRadio     `json:"lte"`
-	NR                  pollerRadio     `json:"nr"`
-	SignalPerAntenna    pollerAntennas  `json:"signal_per_antenna"`
-	Device              pollerDevice    `json:"device"`
-	Connectivity        pollerConn      `json:"connectivity"`
+	Timestamp          int64          `json:"timestamp"`
+	ModemReachable     bool           `json:"modem_reachable"`
+	LastSuccessfulPoll int64          `json:"last_successful_poll"`
+	Network            pollerNetwork  `json:"network"`
+	LTE                pollerRadio    `json:"lte"`
+	NR                 pollerRadio    `json:"nr"`
+	SignalPerAntenna   pollerAntennas `json:"signal_per_antenna"`
+	Device             pollerDevice   `json:"device"`
+	Connectivity       pollerConn     `json:"connectivity"`
+	Traffic            pollerTraffic  `json:"traffic"`
+	Watchcat           pollerWatchcat `json:"watchcat"`
 }
 
 type pollerNetwork struct {
-	Type          string `json:"type"`
-	Carrier       string `json:"carrier"`
-	SimSlot       *int   `json:"sim_slot"`
-	ServiceStatus string `json:"service_status"`
-	CaActive      bool   `json:"ca_active"`
-	CaCount       *int   `json:"ca_count"`
-	NrCaActive    bool   `json:"nr_ca_active"`
-	NrCaCount     *int   `json:"nr_ca_count"`
-	WanIPv4       string `json:"wan_ipv4"`
+	Type              string                   `json:"type"`
+	Carrier           string                   `json:"carrier"`
+	SimSlot           *int                     `json:"sim_slot"`
+	ServiceStatus     string                   `json:"service_status"`
+	CaActive          bool                     `json:"ca_active"`
+	CaCount           *int                     `json:"ca_count"`
+	NrCaActive        bool                     `json:"nr_ca_active"`
+	NrCaCount         *int                     `json:"nr_ca_count"`
+	TotalBandwidthMHz *int                     `json:"total_bandwidth_mhz"`
+	BandwidthDetails  string                   `json:"bandwidth_details"`
+	CarrierComponents []pollerCarrierComponent `json:"carrier_components"`
+	APN               string                   `json:"apn"`
+	WanIPv4           string                   `json:"wan_ipv4"`
 }
 
 type pollerRadio struct {
-	State string `json:"state"`
-	Band  string `json:"band"`
+	State     string `json:"state"`
+	Band      string `json:"band"`
+	EARFCN    *int   `json:"earfcn"`
+	ARFCN     *int   `json:"arfcn"`
+	PCI       *int   `json:"pci"`
+	CellID    string `json:"cell_id"`
+	TAC       string `json:"tac"`
+	Bandwidth *int   `json:"bandwidth"`
+}
+
+type pollerCarrierComponent struct {
+	Type         string   `json:"type"`
+	Technology   string   `json:"technology"`
+	Band         string   `json:"band"`
+	EARFCN       *int     `json:"earfcn"`
+	BandwidthMHz *int     `json:"bandwidth_mhz"`
+	PCI          *int     `json:"pci"`
+	RSRP         *float64 `json:"rsrp"`
+	RSRQ         *float64 `json:"rsrq"`
+	RSSI         *float64 `json:"rssi"`
+	SINR         *float64 `json:"sinr"`
 }
 
 type pollerAntennas struct {
@@ -89,8 +175,25 @@ type pollerAntennas struct {
 }
 
 type pollerDevice struct {
-	Temperature   *float64 `json:"temperature"`
-	UptimeSeconds *int64   `json:"uptime_seconds"`
+	Temperature      *float64 `json:"temperature"`
+	CpuUsage         *int     `json:"cpu_usage"`
+	MemoryUsedMB     *int     `json:"memory_used_mb"`
+	MemoryTotalMB    *int     `json:"memory_total_mb"`
+	UptimeSeconds    *int64   `json:"uptime_seconds"`
+	ConnUptimeSecs   *int64   `json:"conn_uptime_seconds"`
+	Firmware         string   `json:"firmware"`
+	BuildDate        string   `json:"build_date"`
+	Manufacturer     string   `json:"manufacturer"`
+	Model            string   `json:"model"`
+	IMEI             string   `json:"imei"`
+	IMSI             string   `json:"imsi"`
+	ICCID            string   `json:"iccid"`
+	PhoneNumber      string   `json:"phone_number"`
+	LteCategory      string   `json:"lte_category"`
+	MIMO             string   `json:"mimo"`
+	SupportedLte     string   `json:"supported_lte_bands"`
+	SupportedNsaNr5g string   `json:"supported_nsa_nr5g_bands"`
+	SupportedSaNr5g  string   `json:"supported_sa_nr5g_bands"`
 }
 
 type pollerConn struct {
@@ -98,6 +201,25 @@ type pollerConn struct {
 	Status            string   `json:"status"`
 	LatencyMs         *float64 `json:"latency_ms"`
 	AvgLatencyMs      *float64 `json:"avg_latency_ms"`
+	JitterMs          *float64 `json:"jitter_ms"`
+	PacketLossPct     *float64 `json:"packet_loss_pct"`
+	PingTarget        string   `json:"ping_target"`
+	DuringRecovery    *bool    `json:"during_recovery"`
+}
+
+type pollerTraffic struct {
+	RxBytesPerSec *int64 `json:"rx_bytes_per_sec"`
+	TxBytesPerSec *int64 `json:"tx_bytes_per_sec"`
+}
+
+type pollerWatchcat struct {
+	Enabled          bool   `json:"enabled"`
+	State            string `json:"state"`
+	CurrentTier      *int   `json:"current_tier"`
+	FailureCount     *int   `json:"failure_count"`
+	LastRecoveryTime *int64 `json:"last_recovery_time"`
+	LastRecoveryTier *int   `json:"last_recovery_tier"`
+	TotalRecoveries  *int   `json:"total_recoveries"`
 }
 
 type Event struct {
@@ -121,28 +243,93 @@ func readStatus(path string) (*ModemStatus, error) {
 
 func mapPollerToStatus(p *pollerCache) *ModemStatus {
 	s := &ModemStatus{
-		CacheTime:        p.Timestamp,
-		ModemReachable:   boolStr(p.ModemReachable),
-		NetworkType:      p.Network.Type,
-		Operator:         p.Network.Carrier,
-		SimSlot:          intPtrStr(p.Network.SimSlot),
-		ServiceStatus:    p.Network.ServiceStatus,
-		CaActive:         boolStr(p.Network.CaActive),
-		CaCount:          intPtrStr(p.Network.CaCount),
-		NrCaActive:       boolStr(p.Network.NrCaActive),
-		NrCaCount:        intPtrStr(p.Network.NrCaCount),
-		WanIP:            p.Network.WanIPv4,
-		LteBand:          p.LTE.Band,
-		NrBand:           p.NR.Band,
-		NrState:          p.NR.State,
-		CpuTemp:          floatPtrFmt(p.Device.Temperature, "%.1f °C"),
-		Uptime:           uptimeStr(p.Device.UptimeSeconds),
+		CacheTime:             p.Timestamp,
+		ModemReachable:        boolStr(p.ModemReachable),
+		NetworkType:           p.Network.Type,
+		Operator:              p.Network.Carrier,
+		SimSlot:               intPtrStr(p.Network.SimSlot),
+		ServiceStatus:         p.Network.ServiceStatus,
+		CaActive:              boolStr(p.Network.CaActive),
+		CaCount:               intPtrStr(p.Network.CaCount),
+		NrCaActive:            boolStr(p.Network.NrCaActive),
+		NrCaCount:             intPtrStr(p.Network.NrCaCount),
+		TotalBandwidthMHz:     intPtrStr(p.Network.TotalBandwidthMHz),
+		BandwidthDetails:      p.Network.BandwidthDetails,
+		CarrierComponents:     mapCarrierComponents(p.Network.CarrierComponents),
+		APN:                   p.Network.APN,
+		WanIP:                 p.Network.WanIPv4,
+		LteBand:               p.LTE.Band,
+		LteState:              p.LTE.State,
+		LteCellID:             p.LTE.CellID,
+		LteTAC:                p.LTE.TAC,
+		NrBand:                p.NR.Band,
+		NrState:               p.NR.State,
+		NrCellID:              p.NR.CellID,
+		NrTAC:                 p.NR.TAC,
+		CpuTemp:               floatPtrFmt(p.Device.Temperature, "%.1f °C"),
+		CpuUsage:              intPtrStr(p.Device.CpuUsage),
+		MemUsedMB:             intPtrStr(p.Device.MemoryUsedMB),
+		MemTotalMB:            intPtrStr(p.Device.MemoryTotalMB),
+		Uptime:                uptimeStr(p.Device.UptimeSeconds),
+		ConnUptime:            uptimeStr(p.Device.ConnUptimeSecs),
+		Model:                 p.Device.Model,
+		Manufacturer:          p.Device.Manufacturer,
+		Firmware:              p.Device.Firmware,
+		BuildDate:             p.Device.BuildDate,
+		IMEI:                  p.Device.IMEI,
+		IMSI:                  p.Device.IMSI,
+		ICCID:                 p.Device.ICCID,
+		PhoneNumber:           p.Device.PhoneNumber,
+		LteCategory:           p.Device.LteCategory,
+		MIMO:                  p.Device.MIMO,
+		SupportedLteBands:     p.Device.SupportedLte,
+		SupportedNsaBands:     p.Device.SupportedNsaNr5g,
+		SupportedSaBands:      p.Device.SupportedSaNr5g,
 		ConnInternetAvailable: boolPtrStr(p.Connectivity.InternetAvailable),
 		ConnLatency:           floatPtrFmt(p.Connectivity.LatencyMs, "%.0f"),
 		ConnAvgLatency:        floatPtrFmt(p.Connectivity.AvgLatencyMs, "%.0f"),
+		ConnJitter:            floatPtrFmt(p.Connectivity.JitterMs, "%.0f"),
+		ConnPacketLoss:        floatPtrFmt(p.Connectivity.PacketLossPct, "%.1f"),
+		PingTarget:            p.Connectivity.PingTarget,
+		DuringRecovery:        boolPtrStr(p.Connectivity.DuringRecovery),
+		RxRate:                int64PtrStr(p.Traffic.RxBytesPerSec),
+		TxRate:                int64PtrStr(p.Traffic.TxBytesPerSec),
+		WatchcatEnabled:       boolStr(p.Watchcat.Enabled),
+		WatchcatState:         p.Watchcat.State,
+		WatchcatTier:          intPtrStr(p.Watchcat.CurrentTier),
+		WatchcatFailures:      intPtrStr(p.Watchcat.FailureCount),
+		WatchcatTotal:         intPtrStr(p.Watchcat.TotalRecoveries),
+		WatchcatLastTime:      int64PtrStr(p.Watchcat.LastRecoveryTime),
+		WatchcatLastTier:      intPtrStr(p.Watchcat.LastRecoveryTier),
 		SignalPerAntenna:      buildAntennaMap(&p.SignalPerAntenna, p.NR.State == "connected"),
 	}
 	return s
+}
+
+func mapCarrierComponents(in []pollerCarrierComponent) []CarrierComponent {
+	out := make([]CarrierComponent, 0, len(in))
+	for _, cc := range in {
+		out = append(out, CarrierComponent{
+			Type:         cc.Type,
+			Technology:   cc.Technology,
+			Band:         cc.Band,
+			EARFCN:       intPtrStr(cc.EARFCN),
+			BandwidthMHz: intPtrStr(cc.BandwidthMHz),
+			PCI:          intPtrStr(cc.PCI),
+			RSRP:         floatPtrFmt(cc.RSRP, "%.0f"),
+			RSRQ:         floatPtrFmt(cc.RSRQ, "%.0f"),
+			RSSI:         floatPtrFmt(cc.RSSI, "%.0f"),
+			SINR:         floatPtrFmt(cc.SINR, "%.1f"),
+		})
+	}
+	return out
+}
+
+func int64PtrStr(i *int64) string {
+	if i == nil {
+		return ""
+	}
+	return fmt.Sprintf("%d", *i)
 }
 
 // buildAntennaMap converts the poller's parallel arrays
