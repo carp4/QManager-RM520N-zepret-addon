@@ -20,13 +20,13 @@ func slashCommands() []*discordgo.ApplicationCommand {
 				{
 					Type:        discordgo.ApplicationCommandOptionString,
 					Name:        "lte_bands",
-					Description: "LTE bands to lock, colon-separated (e.g. B3:B28), or 'auto' to unlock",
+					Description: "LTE bands to lock, comma-separated (e.g. B3,B7,B28), or 'auto' to unlock",
 					Required:    optional,
 				},
 				{
 					Type:        discordgo.ApplicationCommandOptionString,
 					Name:        "nr_bands",
-					Description: "NR bands to lock, colon-separated (e.g. n78), or 'auto' to unlock",
+					Description: "NR bands to lock, comma-separated (e.g. n41,n78), or 'auto' to unlock",
 					Required:    optional,
 				},
 			},
