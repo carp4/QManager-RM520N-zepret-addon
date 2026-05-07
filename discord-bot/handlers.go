@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -647,8 +648,8 @@ func handleEvents(s *discordgo.Session, i *discordgo.InteractionCreate) {
 // (e.g. "3:28" or "78"). Accepts commas (preferred) or colons (legacy) as
 // separators. Strips B/b (LTE) and n/N (NR) prefixes. Sorts band numbers
 // ascending so the modem always sees a canonical order regardless of how the
-// user typed them. Non-numeric tokens are dropped. Returns "" for "auto"
-// (caller sends "0" = all bands = unlock).
+// user typed them. Duplicate band numbers and non-numeric tokens are dropped.
+// Returns "" for "auto" (caller sends "0" = all bands = unlock).
 func parseBandOption(input string) string {
 	if strings.EqualFold(strings.TrimSpace(input), "auto") {
 		return ""
@@ -673,6 +674,7 @@ func parseBandOption(input string) string {
 		nums = append(nums, n)
 	}
 	sort.Ints(nums)
+	nums = slices.Compact(nums)
 	clean := make([]string, 0, len(nums))
 	for _, n := range nums {
 		clean = append(clean, strconv.Itoa(n))

@@ -437,6 +437,35 @@ func TestParseBandOption_NonNumericTokenSkipped(t *testing.T) {
 	}
 }
 
+func TestParseBandOption_DropsDuplicateBands(t *testing.T) {
+	// Duplicate band numbers should be collapsed so the modem and the user-facing
+	// display ("B3/B3/B28") never show repeats.
+	got := parseBandOption("B3,B3,B28")
+	if got != "3:28" {
+		t.Errorf("got %q, want %q", got, "3:28")
+	}
+}
+
+func TestParseBandOption_DropsDuplicatesAcrossSeparatorsAndOrder(t *testing.T) {
+	// Duplicates introduced by mixing comma+colon and unordered input must also
+	// collapse after sort.
+	got := parseBandOption("B28,B3:B28,B7,B3")
+	if got != "3:7:28" {
+		t.Errorf("got %q, want %q", got, "3:7:28")
+	}
+}
+
+func TestParseBandOption_AllInvalidReturnsEmpty(t *testing.T) {
+	// Documenting test: if every token is non-numeric, the function returns "" —
+	// the caller (handleLockBand) treats this the same as "auto" and unlocks
+	// all bands. This is intentional but worth pinning down with a test so it
+	// can't regress silently.
+	got := parseBandOption("Bxx,Nyy")
+	if got != "" {
+		t.Errorf("got %q, want empty string", got)
+	}
+}
+
 func TestEmbedForSource_Routes(t *testing.T) {
 	s := makeStatus("true", "true", "5G-NSA")
 	cases := []struct {
