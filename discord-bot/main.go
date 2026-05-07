@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -60,11 +61,12 @@ func main() {
 		go RunNotifier(s, dmChannelID, cfg, stopNotifier)
 	}
 
-	// Test DM trigger watcher — CGI test.sh creates /tmp/qmanager_discord_test
+	// Test DM trigger watcher — CGI test.sh creates /tmp/qmanager_discord_test.
+	// Always spawn this, even if the initial openDMChannel failed: the user may
+	// authorize the bot via OAuth *after* startup, in which case dmChannelID
+	// will resolve cleanly on the first trigger after they're authorized.
 	stopTestWatcher := make(chan struct{})
-	if dmChannelID != "" {
-		go runTestDMWatcher(s, dmChannelID, stopTestWatcher)
-	}
+	go runTestDMWatcher(s, cfg.OwnerDiscordID, stopTestWatcher)
 
 	// Periodic status update
 	go func() {
@@ -90,12 +92,28 @@ func main() {
 	log.Println("Discord bot stopped.")
 }
 
-const testDMTriggerPath = "/tmp/qmanager_discord_test"
+const (
+	testDMTriggerPath = "/tmp/qmanager_discord_test"
+	testDMResultPath  = "/tmp/qmanager_discord_test_result"
+)
 
-// runTestDMWatcher polls for a trigger file written by the test.sh CGI;
-// when found, it sends a confirmation DM and removes the trigger.
-func runTestDMWatcher(s *discordgo.Session, dmChannelID string, stopCh <-chan struct{}) {
-	ticker := time.NewTicker(2 * time.Second)
+// writeTestResult writes a {success, error} JSON to testDMResultPath. The CGI
+// polls this file with a timeout and returns its contents to the frontend, so
+// the toast reflects actual delivery — not just "trigger file written".
+// 0644 is intentional: www-data needs read access; bot writes as its own user.
+func writeTestResult(success bool, errMsg string) {
+	payload := fmt.Sprintf(`{"success":%t,"error":%q}`, success, errMsg)
+	if err := os.WriteFile(testDMResultPath, []byte(payload), 0644); err != nil {
+		log.Printf("test DM: failed to write result file: %v", err)
+	}
+}
+
+// runTestDMWatcher polls for the trigger file written by test.sh. On each
+// trigger it lazily resolves the DM channel (handling the post-OAuth case
+// where openDMChannel failed at startup) and writes a result file the CGI
+// can wait on.
+func runTestDMWatcher(s *discordgo.Session, ownerID string, stopCh <-chan struct{}) {
+	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 	for {
 		select {
@@ -106,9 +124,19 @@ func runTestDMWatcher(s *discordgo.Session, dmChannelID string, stopCh <-chan st
 				continue
 			}
 			os.Remove(testDMTriggerPath)
-			if _, err := s.ChannelMessageSend(dmChannelID, "✅ Test DM from QManager — your Discord bot is working."); err != nil {
-				log.Printf("test DM send failed: %v", err)
+
+			ch, err := openDMChannel(s, ownerID)
+			if err != nil {
+				log.Printf("test DM: openDMChannel failed: %v", err)
+				writeTestResult(false, "Bot can't reach you — finish authorizing the bot in your Discord account, then try again.")
+				continue
 			}
+			if _, err := s.ChannelMessageSend(ch, "✅ Test DM from QManager — your Discord bot is working."); err != nil {
+				log.Printf("test DM send failed: %v", err)
+				writeTestResult(false, "Discord rejected the message — make sure you've added the bot via the OAuth link.")
+				continue
+			}
+			writeTestResult(true, "")
 		}
 	}
 }

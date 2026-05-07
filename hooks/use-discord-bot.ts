@@ -23,6 +23,8 @@ export interface UseDiscordBotReturn {
   sendTestDm: () => Promise<boolean>;
   enable: () => Promise<boolean>;
   disable: () => Promise<boolean>;
+  resetBot: () => Promise<boolean>;
+  isResetting: boolean;
   refresh: () => void;
 }
 
@@ -32,6 +34,7 @@ export function useDiscordBot(): UseDiscordBotReturn {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isSendingTest, setIsSendingTest] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const mountedRef = useRef(true);
 
@@ -117,6 +120,27 @@ export function useDiscordBot(): UseDiscordBotReturn {
     return json.success;
   }, [fetchAll]);
 
-  return { settings, status, isLoading, isSaving, isSendingTest, error,
-           saveSettings, sendTestDm, enable, disable, refresh: fetchAll };
+  const resetBot = useCallback(async (): Promise<boolean> => {
+    setIsResetting(true);
+    try {
+      const resp = await authFetch(CGI_CONFIGURE, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reset" }),
+      });
+      const json = await resp.json();
+      if (!mountedRef.current) return false;
+      if (!json.success) { setError(json.error ?? "Failed to reset"); return false; }
+      await fetchAll(true);
+      return true;
+    } catch (err) {
+      if (mountedRef.current) setError(err instanceof Error ? err.message : "Failed to reset");
+      return false;
+    } finally {
+      if (mountedRef.current) setIsResetting(false);
+    }
+  }, [fetchAll]);
+
+  return { settings, status, isLoading, isSaving, isSendingTest, isResetting, error,
+           saveSettings, sendTestDm, enable, disable, resetBot, refresh: fetchAll };
 }

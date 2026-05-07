@@ -39,7 +39,19 @@ import {
   TriangleAlertIcon,
   ChevronRightIcon,
   CheckIcon,
+  Trash2Icon,
 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { SaveButton, useSaveFlash } from "@/components/ui/save-button";
 import { useDiscordBot } from "@/hooks/use-discord-bot";
 import type {
@@ -137,6 +149,8 @@ export function DiscordBotCard() {
     saveSettings,
     sendTestDm,
     refresh,
+    resetBot,
+    isResetting,
   } = useDiscordBot();
 
   const { saved, markSaved } = useSaveFlash();
@@ -745,6 +759,80 @@ export function DiscordBotCard() {
             )}
           </div>
         </form>
+
+        {(tokenSet || ownerIdSet) && (
+          <>
+            <Separator className="mt-6" />
+            <div className="flex items-center justify-between gap-3 flex-wrap pt-6">
+              <div>
+                <p className="text-sm font-medium">Reset Discord Bot</p>
+                <p className="text-xs text-muted-foreground">
+                  Clear the saved token, recipient, and authorization. You&apos;ll need to set up the bot again from scratch.
+                </p>
+              </div>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="destructive" size="sm" disabled={isResetting}>
+                    {isResetting ? (
+                      <>
+                        <Loader2 className="size-4 animate-spin" />
+                        Resetting&hellip;
+                      </>
+                    ) : (
+                      <>
+                        <Trash2Icon className="size-4" />
+                        Reset
+                      </>
+                    )}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Reset Discord Bot?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This stops the bot, deletes the saved token and Discord User ID, and clears the authorization proof. The bot binary stays installed and your Discord application stays on Discord&apos;s servers — you can reuse the same token if you&apos;ve kept it. The bot must be set up again before alerts can resume.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      onClick={async () => {
+                        const appId = status?.app_id;
+                        const ownerId = settings?.owner_discord_id;
+                        const ok = await resetBot();
+                        if (ok) {
+                          // Wipe the localStorage authorization proof
+                          if (typeof window !== "undefined" && appId && ownerId) {
+                            window.localStorage.removeItem(verifyStorageKey(appId, ownerId));
+                          }
+                          // Reset all local form state
+                          setAuthorized(false);
+                          setToken("");
+                          setShowToken(false);
+                          setOwnerID("");
+                          setThreshold("5");
+                          setEnabled(false);
+                          setPrevSettings(null);
+                          // Disarm any pending OAuth-return verification —
+                          // otherwise a focus event after reset would fire a
+                          // spurious test DM against now-empty credentials.
+                          oauthClickedAtRef.current = null;
+                          setAutoVerifying(false);
+                          toast.success("Discord bot reset");
+                        } else {
+                          toast.error(error || "Failed to reset Discord bot");
+                        }
+                      }}
+                    >
+                      Reset
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
+          </>
+        )}
       </CardContent>
     </Card>
   );
