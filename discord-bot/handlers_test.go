@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 )
@@ -66,22 +68,134 @@ func TestBuildSignalEmbed_TitleIsCorrect(t *testing.T) {
 	}
 }
 
-func TestBuildBandsEmbed_Fields(t *testing.T) {
-	s := makeStatus("true", "true", "LTE")
-	s.LteBand = "3"
-	s.NrBand = "78"
+func TestBuildBandsEmbed_Title(t *testing.T) {
+	s := makeStatus("true", "true", "5G-NSA")
 	embed := buildBandsEmbed(s)
 	if embed.Title != "Band Details" {
-		t.Errorf("got title %q, want %q", embed.Title, "Band Details")
+		t.Errorf("title=%q, want Band Details", embed.Title)
 	}
+}
+
+func TestBuildBandsEmbed_PillRow_EnDc(t *testing.T) {
+	s := makeStatus("true", "true", "5G-NSA")
+	s.NrState = "connected"
+	s.LteState = "connected"
+	s.TotalBandwidthMHz = "100"
+	s.CarrierComponents = []CarrierComponent{
+		{Type: "PCC", Technology: "LTE", Band: "B3"},
+		{Type: "SCC", Technology: "LTE", Band: "B7"},
+		{Type: "SCC", Technology: "NR", Band: "n78"},
+	}
+	embed := buildBandsEmbed(s)
+	want := "🟢 EN-DC active • 📊 100 MHz total • 🛰️ 3 carriers"
+	if embed.Description != want {
+		t.Errorf("description=%q, want %q", embed.Description, want)
+	}
+}
+
+func TestBuildBandsEmbed_PillRow_LteOnly(t *testing.T) {
+	s := makeStatus("true", "true", "LTE-A")
+	s.LteState = "connected"
+	s.TotalBandwidthMHz = "40"
+	s.CarrierComponents = []CarrierComponent{
+		{Type: "PCC", Technology: "LTE", Band: "B3"},
+		{Type: "SCC", Technology: "LTE", Band: "B7"},
+	}
+	embed := buildBandsEmbed(s)
+	if !strings.Contains(embed.Description, "LTE-A active") {
+		t.Errorf("description=%q, want LTE-A active", embed.Description)
+	}
+}
+
+func TestBuildBandsEmbed_PillRow_NoCa(t *testing.T) {
+	s := makeStatus("true", "true", "LTE")
+	s.LteState = "connected"
+	s.LteBand = "B3"
+	embed := buildBandsEmbed(s)
+	if !strings.Contains(embed.Description, "No CA data") {
+		t.Errorf("description=%q, want No CA data note", embed.Description)
+	}
+}
+
+func TestBuildBandsEmbed_PillRow_ModemUnreachable(t *testing.T) {
+	s := makeStatus("false", "false", "")
+	embed := buildBandsEmbed(s)
+	if !strings.Contains(embed.Description, "unreachable") {
+		t.Errorf("description=%q, want unreachable", embed.Description)
+	}
+	if embed.Color != colorRed {
+		t.Errorf("color=%#x, want red", embed.Color)
+	}
+}
+
+func TestBuildBandsEmbed_CcCards_Order(t *testing.T) {
+	s := makeStatus("true", "true", "5G-NSA")
+	s.CarrierComponents = []CarrierComponent{
+		{Type: "PCC", Technology: "LTE", Band: "B3", PCI: "123", EARFCN: "1850", BandwidthMHz: "20", RSRP: "-85", SINR: "18"},
+		{Type: "SCC", Technology: "NR", Band: "n78", PCI: "789", EARFCN: "642000", BandwidthMHz: "60", RSRP: "-92", SINR: "11"},
+	}
+	embed := buildBandsEmbed(s)
+	if len(embed.Fields) < 2 {
+		t.Fatalf("want >=2 fields, got %d", len(embed.Fields))
+	}
+	if !strings.Contains(embed.Fields[0].Name, "PCC") || !strings.Contains(embed.Fields[0].Name, "B3") {
+		t.Errorf("field[0].Name=%q", embed.Fields[0].Name)
+	}
+	if !strings.Contains(embed.Fields[1].Name, "SCC") || !strings.Contains(embed.Fields[1].Name, "n78") {
+		t.Errorf("field[1].Name=%q", embed.Fields[1].Name)
+	}
+	if !strings.Contains(embed.Fields[1].Value, "ARFCN 642000") {
+		t.Errorf("field[1].Value missing ARFCN label: %q", embed.Fields[1].Value)
+	}
+	if !strings.Contains(embed.Fields[0].Value, "EARFCN 1850") {
+		t.Errorf("field[0].Value missing EARFCN label: %q", embed.Fields[0].Value)
+	}
+}
+
+func TestBuildBandsEmbed_CcCards_OverflowCap(t *testing.T) {
+	s := makeStatus("true", "true", "5G-NSA")
+	for i := 0; i < 8; i++ {
+		s.CarrierComponents = append(s.CarrierComponents, CarrierComponent{
+			Type: "SCC", Technology: "LTE", Band: fmt.Sprintf("B%d", i),
+		})
+	}
+	embed := buildBandsEmbed(s)
+	ccFields := 0
+	overflow := false
+	for _, f := range embed.Fields {
+		if strings.Contains(f.Name, "SCC") {
+			ccFields++
+		}
+		if strings.Contains(f.Name, "More carriers") {
+			overflow = true
+		}
+	}
+	if ccFields != 6 {
+		t.Errorf("CC fields=%d, want 6", ccFields)
+	}
+	if !overflow {
+		t.Error("missing overflow field for 8 CCs")
+	}
+}
+
+func TestBuildBandsEmbed_ServingCellField(t *testing.T) {
+	s := makeStatus("true", "true", "5G-NSA")
+	s.LteCellID = "0x1A2B3C"
+	s.NrCellID = "0x4D5E6F"
+	s.LteTAC = "12345"
+	s.NrTAC = "90123"
+	embed := buildBandsEmbed(s)
 	found := false
 	for _, f := range embed.Fields {
-		if f.Name == "Technology" {
+		if strings.Contains(f.Name, "Serving cell") {
 			found = true
+			if !strings.Contains(f.Value, "0x1A2B3C") || !strings.Contains(f.Value, "0x4D5E6F") {
+				t.Errorf("serving cell value=%q", f.Value)
+			}
 		}
 	}
 	if !found {
-		t.Error("expected Technology field in bands embed")
+		t.Error("missing Serving cell field")
 	}
 }
 

@@ -59,25 +59,143 @@ func buildSignalEmbed(s *ModemStatus) *discordgo.MessageEmbed {
 	}
 }
 
+const maxVisibleCCs = 6
+
 func buildBandsEmbed(s *ModemStatus) *discordgo.MessageEmbed {
-	caInfo := "None"
-	if s.CaActive == "true" {
-		caInfo = fmt.Sprintf("%s component(s)", ifEmpty(s.CaCount, "?"))
-		if s.NrCaActive == "true" {
-			caInfo += fmt.Sprintf(" + NR CA (%s)", s.NrCaCount)
+	descr := buildBandsDescription(s)
+	color := embedColor(s)
+
+	var fields []*discordgo.MessageEmbedField
+
+	if len(s.CarrierComponents) == 0 {
+		// Fallback — show whatever single-band data we have.
+		if s.LteBand != "" {
+			fields = append(fields, &discordgo.MessageEmbedField{
+				Name: emoji.Network + " LTE Band", Value: s.LteBand, Inline: true,
+			})
+		}
+		if s.NrBand != "" {
+			fields = append(fields, &discordgo.MessageEmbedField{
+				Name: emoji.Network + " NR Band", Value: s.NrBand, Inline: true,
+			})
+		}
+	} else {
+		visible := s.CarrierComponents
+		if len(visible) > maxVisibleCCs {
+			visible = visible[:maxVisibleCCs]
+		}
+		for _, cc := range visible {
+			fields = append(fields, ccField(cc))
+		}
+		if len(s.CarrierComponents) > maxVisibleCCs {
+			fields = append(fields, &discordgo.MessageEmbedField{
+				Name:   "More carriers",
+				Value:  fmt.Sprintf("+%d more — use Copy raw to view", len(s.CarrierComponents)-maxVisibleCCs),
+				Inline: false,
+			})
 		}
 	}
-	fields := []*discordgo.MessageEmbedField{
-		{Name: "Technology", Value: ifEmpty(s.NetworkType, "Unknown"), Inline: true},
-		{Name: "LTE Band", Value: ifEmpty(s.LteBand, "—"), Inline: true},
-		{Name: "NR Band", Value: ifEmpty(s.NrBand, "—"), Inline: true},
-		{Name: "Carrier Aggregation", Value: caInfo, Inline: false},
+
+	if s.LteCellID != "" || s.NrCellID != "" {
+		fields = append(fields, servingCellField(s), tacField(s))
 	}
+
 	return &discordgo.MessageEmbed{
-		Title:  "Band Details",
-		Color:  colorBlue,
-		Fields: fields,
-		Footer: &discordgo.MessageEmbedFooter{Text: "QManager" + staleWarning(s)},
+		Author:      authorBlock(s),
+		Title:       "Band Details",
+		Description: descr,
+		Color:       color,
+		Fields:      fields,
+		Footer:      footerBlock(s),
+		Timestamp:   time.Unix(s.CacheTime, 0).Format(time.RFC3339),
+	}
+}
+
+func buildBandsDescription(s *ModemStatus) string {
+	if s.ModemReachable != "true" {
+		return emoji.Down + " Modem unreachable"
+	}
+	stalePrefix := ""
+	if s.CacheTime > 0 && time.Now().Unix()-s.CacheTime > embedStaleSecs {
+		stalePrefix = emoji.Stale + " Stale · "
+	}
+	bw := s.TotalBandwidthMHz
+	if bw == "" {
+		bw = "?"
+	}
+	n := len(s.CarrierComponents)
+	if n == 0 {
+		return stalePrefix + emoji.Warn + " No CA data — single-carrier or modem report unavailable"
+	}
+	hasLte, hasNr := false, false
+	for _, cc := range s.CarrierComponents {
+		if cc.Technology == "LTE" {
+			hasLte = true
+		}
+		if cc.Technology == "NR" {
+			hasNr = true
+		}
+	}
+	var label string
+	switch {
+	case hasLte && hasNr:
+		label = "EN-DC active"
+	case hasLte && n > 1:
+		label = "LTE-A active"
+	case hasNr && n > 1:
+		label = "NR-CA active"
+	default:
+		label = "Single carrier"
+	}
+	if n == 1 {
+		return fmt.Sprintf("%s%s %s • %s %s MHz", stalePrefix, emoji.Ok, label, emoji.NavBands, bw)
+	}
+	return fmt.Sprintf("%s%s %s • %s %s MHz total • %s %d carriers",
+		stalePrefix, emoji.Ok, label, emoji.NavBands, bw, emoji.SCC, n)
+}
+
+func ccField(cc CarrierComponent) *discordgo.MessageEmbedField {
+	arfcnLabel := "EARFCN"
+	if cc.Technology == "NR" {
+		arfcnLabel = "ARFCN"
+	}
+	name := fmt.Sprintf("%s %s · %s %s", ccEmoji(cc.Type, cc.Technology), cc.Type, cc.Technology, cc.Band)
+	value := fmt.Sprintf("%s PCI %s\n%s %s %s\n%s %s MHz\n%s RSRP %s / SINR %s",
+		emoji.PCI, ifEmpty(cc.PCI, "—"),
+		emoji.EARFCN, arfcnLabel, ifEmpty(cc.EARFCN, "—"),
+		emoji.Bandwidth, ifEmpty(cc.BandwidthMHz, "—"),
+		emoji.Signal, ifEmpty(cc.RSRP, "—"), ifEmpty(cc.SINR, "—"),
+	)
+	return &discordgo.MessageEmbedField{Name: name, Value: value, Inline: true}
+}
+
+func servingCellField(s *ModemStatus) *discordgo.MessageEmbedField {
+	parts := []string{}
+	if s.LteCellID != "" {
+		parts = append(parts, "LTE: "+s.LteCellID)
+	}
+	if s.NrCellID != "" {
+		parts = append(parts, "NR: "+s.NrCellID)
+	}
+	return &discordgo.MessageEmbedField{
+		Name:   emoji.Cell + " Serving cell",
+		Value:  strings.Join(parts, " · "),
+		Inline: false,
+	}
+}
+
+func tacField(s *ModemStatus) *discordgo.MessageEmbedField {
+	parts := []string{}
+	if s.LteTAC != "" || s.LteCellID != "" {
+		parts = append(parts, fmt.Sprintf("LTE: %s (cell %s)", ifEmpty(s.LteTAC, "—"), ifEmpty(s.LteCellID, "—")))
+	}
+	if s.NrTAC != "" || s.NrCellID != "" {
+		parts = append(parts, fmt.Sprintf("NR: %s (cell %s)", ifEmpty(s.NrTAC, "—"), ifEmpty(s.NrCellID, "—")))
+	}
+	return &discordgo.MessageEmbedField{
+		Name:   emoji.TAC + " TAC / Cell ID",
+		Value:  strings.Join(parts, " · "),
+		Inline: false,
 	}
 }
 
