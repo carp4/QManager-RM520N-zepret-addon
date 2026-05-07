@@ -1,228 +1,688 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import {
-  Card, CardContent, CardDescription, CardHeader, CardTitle,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
-  CheckCircle2Icon, XCircleIcon, MinusCircleIcon,
-  SendIcon, Loader2Icon, ExternalLinkIcon,
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+  FieldSet,
+} from "@/components/ui/field";
+import {
+  CheckCircle2Icon,
+  XCircleIcon,
+  MinusCircleIcon,
+  SendIcon,
+  Loader2,
+  ExternalLinkIcon,
+  EyeIcon,
+  EyeOffIcon,
+  RefreshCcwIcon,
+  AlertCircle,
+  TriangleAlertIcon,
+  ChevronRightIcon,
+  CheckIcon,
 } from "lucide-react";
 import { SaveButton, useSaveFlash } from "@/components/ui/save-button";
 import { useDiscordBot } from "@/hooks/use-discord-bot";
-import type { DiscordBotSavePayload } from "@/types/discord-bot";
+import type {
+  DiscordBotSavePayload,
+  DiscordBotSettings,
+} from "@/types/discord-bot";
+
+// Discord snowflake: 17–20 numeric digits.
+const DISCORD_ID_REGEX = /^\d{17,20}$/;
+
+// localStorage key — bound to the bot's app_id and the user's Discord ID.
+// A successful test DM proves the user completed the OAuth install step.
+// Changing the token (new app_id) or User ID invalidates the prior verification.
+const verifyStorageKey = (appId: string, ownerId: string) =>
+  `qm-discord-dm-verified:${appId}:${ownerId}`;
+
+// --- Onboarding stepper -----------------------------------------------------
+type StepState = "done" | "active" | "pending";
+
+function StepperPill({ n, label, state }: { n: number; label: string; state: StepState }) {
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs whitespace-nowrap",
+        state === "done" &&
+          "border-success/30 bg-success/15 text-success",
+        state === "active" &&
+          "border-warning/30 bg-warning/15 text-warning",
+        state === "pending" &&
+          "border-muted-foreground/30 bg-muted/50 text-muted-foreground",
+      )}
+    >
+      <span
+        className={cn(
+          "flex size-4 items-center justify-center rounded-full text-[10px] font-medium tabular-nums",
+          state === "done" && "bg-success/25",
+          state === "active" && "bg-warning/25",
+          state === "pending" && "bg-muted-foreground/20",
+        )}
+      >
+        {state === "done" ? <CheckIcon className="size-3" /> : n}
+      </span>
+      {label}
+    </div>
+  );
+}
+
+interface OnboardingStepperProps {
+  tokenSet: boolean;
+  ownerIdSet: boolean;
+  online: boolean;
+  authorized: boolean;
+}
+
+function OnboardingStepper({ tokenSet, ownerIdSet, online, authorized }: OnboardingStepperProps) {
+  const steps = [
+    { n: 1, label: "Token", done: tokenSet },
+    { n: 2, label: "User ID", done: ownerIdSet },
+    { n: 3, label: "Online", done: online },
+    { n: 4, label: "Authorized", done: authorized },
+  ];
+
+  // First not-done step becomes the "active" one.
+  const firstPendingIndex = steps.findIndex((s) => !s.done);
+
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap" role="list" aria-label="Setup progress">
+      {steps.map((s, i) => {
+        const state: StepState = s.done
+          ? "done"
+          : i === firstPendingIndex
+            ? "active"
+            : "pending";
+        return (
+          <div key={s.n} className="flex items-center gap-1.5" role="listitem">
+            <StepperPill n={s.n} label={s.label} state={state} />
+            {i < steps.length - 1 && (
+              <ChevronRightIcon className="size-3 text-muted-foreground/60" aria-hidden />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 export function DiscordBotCard() {
   const {
-    settings, status, isLoading, isSaving, isSendingTest,
-    error, saveSettings, sendTestDm, enable, disable, refresh,
+    settings,
+    status,
+    isLoading,
+    isSaving,
+    isSendingTest,
+    error,
+    saveSettings,
+    sendTestDm,
+    refresh,
   } = useDiscordBot();
 
   const { saved, markSaved } = useSaveFlash();
 
-  const [token, setToken] = useState("");
+  // --- Local form state (synced from server data during render) -------------
+  const [prevSettings, setPrevSettings] = useState<DiscordBotSettings | null>(
+    null,
+  );
+  const [token, setToken] = useState(""); // ephemeral — never pre-filled
+  const [showToken, setShowToken] = useState(false);
   const [ownerID, setOwnerID] = useState("");
-  const [threshold, setThreshold] = useState(5);
+  const [threshold, setThreshold] = useState("5");
   const [enabled, setEnabled] = useState(false);
+  const [authorized, setAuthorized] = useState(false);
 
-  // Sync local state when settings load
-  if (settings && ownerID === "" && settings.owner_discord_id) {
+  if (settings && settings !== prevSettings) {
+    setPrevSettings(settings);
     setOwnerID(settings.owner_discord_id);
-    setThreshold(settings.threshold_minutes);
+    setThreshold(String(settings.threshold_minutes));
     setEnabled(settings.enabled);
   }
 
-  const handleSave = async () => {
+  // Re-read authorization flag whenever the (app_id, owner_id) pair changes.
+  // Changing either invalidates the prior "user has installed bot in account"
+  // proof — the user must re-test to re-confirm reachability.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const appId = status?.app_id;
+    const ownerId = settings?.owner_discord_id;
+    if (!appId || !ownerId) {
+      setAuthorized(false);
+      return;
+    }
+    setAuthorized(
+      window.localStorage.getItem(verifyStorageKey(appId, ownerId)) === "true",
+    );
+  }, [status?.app_id, settings?.owner_discord_id]);
+
+  // --- Validation ------------------------------------------------------------
+  const ownerIDError =
+    ownerID && !DISCORD_ID_REGEX.test(ownerID)
+      ? "Discord User ID is 17–20 digits — copy it from Discord with Developer Mode on"
+      : null;
+
+  const thresholdNum = Number(threshold);
+  const thresholdError =
+    threshold &&
+    (isNaN(thresholdNum) ||
+      !Number.isInteger(thresholdNum) ||
+      thresholdNum < 1 ||
+      thresholdNum > 60)
+      ? "Duration must be 1–60 minutes"
+      : null;
+
+  const tokenRequiredError =
+    enabled && !settings?.token_set && !token.trim()
+      ? "Bot token is required when the bot is enabled"
+      : null;
+
+  const ownerIDRequiredError =
+    enabled && !ownerID ? "Discord User ID is required when the bot is enabled" : null;
+
+  const hasValidationErrors = !!(
+    ownerIDError ||
+    thresholdError ||
+    tokenRequiredError ||
+    ownerIDRequiredError
+  );
+
+  // --- Dirty check -----------------------------------------------------------
+  const isDirty = settings
+    ? enabled !== settings.enabled ||
+      ownerID !== settings.owner_discord_id ||
+      threshold !== String(settings.threshold_minutes) ||
+      token.trim().length > 0
+    : false;
+
+  const canSave = !hasValidationErrors && isDirty && !isSaving && !isSendingTest;
+
+  const canSendTest =
+    !!status?.connected &&
+    !!settings?.enabled &&
+    !!settings?.token_set &&
+    !!settings?.owner_discord_id &&
+    !isSaving &&
+    !isSendingTest;
+
+  // --- Handlers --------------------------------------------------------------
+  const handleSave = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!canSave) return;
+
     const payload: DiscordBotSavePayload = {
       action: "save_settings",
       enabled,
       owner_discord_id: ownerID,
-      threshold_minutes: threshold,
+      threshold_minutes: thresholdNum,
     };
     if (token.trim()) payload.bot_token = token.trim();
+
     const ok = await saveSettings(payload);
-    if (ok) { setToken(""); markSaved(); }
+    if (ok) {
+      setToken("");
+      markSaved();
+      toast.success("Discord bot settings saved");
+    } else {
+      toast.error(error || "Failed to save Discord bot settings");
+    }
   };
 
+  const handleSendTest = async () => {
+    const ok = await sendTestDm();
+    if (ok) {
+      // A successful DM proves the user has authorized the bot in their account.
+      if (typeof window !== "undefined" && status?.app_id && settings?.owner_discord_id) {
+        window.localStorage.setItem(
+          verifyStorageKey(status.app_id, settings.owner_discord_id),
+          "true",
+        );
+        setAuthorized(true);
+      }
+      toast.success("Test DM sent — bot is authorized");
+    } else {
+      toast.error(
+        "Failed to send test DM — make sure you've added the bot to your Discord account",
+      );
+    }
+  };
+
+  // --- Status badge ----------------------------------------------------------
+  // Four states (in order of "more configured" → "fully working"):
+  //   1. Not installed    — bot binary missing
+  //   2. Disconnected     — bot installed but gateway connection failed (token invalid/etc)
+  //   3. Awaiting auth    — gateway connected but user hasn't added the bot via OAuth yet
+  //                         (we can't DM them; proven only by a successful test DM)
+  //   4. Authorized       — gateway connected AND user has been reached at least once
   const statusBadge = () => {
     if (!status?.installed) {
       return (
-        <Badge variant="outline" className="bg-muted/50 text-muted-foreground border-muted-foreground/30">
+        <Badge
+          variant="outline"
+          className="bg-muted/50 text-muted-foreground hover:bg-muted/60 border-muted-foreground/30"
+        >
           <MinusCircleIcon className="size-3" /> Not installed
         </Badge>
       );
     }
-    if (status.connected) {
+    if (!status.connected) {
       return (
-        <Badge variant="outline" className="bg-success/15 text-success border-success/30">
-          <CheckCircle2Icon className="size-3" /> Connected
-          {status.latency_ms > 0 && <span className="ml-1 opacity-60">{status.latency_ms}ms</span>}
+        <Badge
+          variant="outline"
+          className="bg-destructive/15 text-destructive hover:bg-destructive/20 border-destructive/30"
+        >
+          <XCircleIcon className="size-3" />
+          {status.error === "invalid_token" ? "Invalid token" : "Disconnected"}
+        </Badge>
+      );
+    }
+    if (!authorized) {
+      return (
+        <Badge
+          variant="outline"
+          className="bg-warning/15 text-warning hover:bg-warning/20 border-warning/30"
+        >
+          <TriangleAlertIcon className="size-3" /> Awaiting authorization
         </Badge>
       );
     }
     return (
-      <Badge variant="outline" className="bg-destructive/15 text-destructive border-destructive/30">
-        <XCircleIcon className="size-3" />
-        {status.error === "invalid_token" ? "Invalid token" : "Disconnected"}
+      <Badge
+        variant="outline"
+        className="bg-success/15 text-success hover:bg-success/20 border-success/30"
+      >
+        <CheckCircle2Icon className="size-3" /> Authorized
+        {status.latency_ms > 0 && (
+          <span className="ml-1 text-success/70">{status.latency_ms}ms</span>
+        )}
       </Badge>
     );
   };
 
+  // Setup progress flags (for the stepper + setup-help logic)
+  const tokenSet = !!settings?.token_set;
+  const ownerIdSet = !!settings?.owner_discord_id && DISCORD_ID_REGEX.test(settings.owner_discord_id);
+  const online = !!status?.connected;
+  const fullyOnboarded = tokenSet && ownerIdSet && online && authorized;
+
+  // --- Loading skeleton ------------------------------------------------------
   if (isLoading) {
     return (
-      <Card>
+      <Card className="@container/card">
         <CardHeader>
-          <CardTitle>Discord Bot</CardTitle>
-          <CardDescription>Personal Discord bot for modem queries and alerts</CardDescription>
+          <CardTitle>Bot Settings</CardTitle>
+          <CardDescription>
+            Token, recipient, and alert threshold.
+          </CardDescription>
         </CardHeader>
-        <CardContent className="flex items-center gap-2 text-muted-foreground">
-          <Loader2Icon className="size-4 animate-spin" /> Loading...
+        <CardContent>
+          <div className="grid gap-4">
+            <Skeleton className="h-8 w-56" />
+            <Skeleton className="h-10 w-full max-w-sm" />
+            <Skeleton className="h-10 w-full max-w-sm" />
+            <Skeleton className="h-10 w-full max-w-sm" />
+            <div className="flex gap-2">
+              <Skeleton className="h-9 w-24" />
+              <Skeleton className="h-9 w-32" />
+            </div>
+          </div>
         </CardContent>
       </Card>
     );
   }
 
-  return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle>Discord Bot</CardTitle>
-            <CardDescription>Personal Discord bot for modem queries and alerts via DMs</CardDescription>
-          </div>
-          {statusBadge()}
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        {error && (
-          <p className="text-sm text-destructive">{error}</p>
-        )}
+  // --- Error state (initial fetch failed) -----------------------------------
+  if (!isLoading && error && !settings) {
+    return (
+      <Card className="@container/card">
+        <CardHeader>
+          <CardTitle>Bot Settings</CardTitle>
+          <CardDescription>
+            Token, recipient, and alert threshold.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Alert variant="destructive">
+            <AlertCircle className="size-4" />
+            <AlertTitle>Failed to load settings</AlertTitle>
+            <AlertDescription className="flex items-center justify-between gap-3">
+              <span>{error}</span>
+              <Button variant="outline" size="sm" onClick={() => refresh()}>
+                <RefreshCcwIcon className="size-3.5" />
+                Retry
+              </Button>
+            </AlertDescription>
+          </Alert>
+        </CardContent>
+      </Card>
+    );
+  }
 
-        {/* Setup guide — shown when not installed or token not set */}
-        {(!status?.installed || !settings?.token_set) && (
-          <div className="rounded-lg border bg-muted/30 p-4 space-y-2 text-sm">
-            <p className="font-medium">Setup steps:</p>
-            <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
-              <li>Go to <a href="https://discord.com/developers/applications" target="_blank" rel="noreferrer" className="underline text-foreground">discord.com/developers</a> → New Application → Bot → copy token</li>
-              <li>Paste your bot token below</li>
-              <li>Enable Developer Mode in Discord (Settings → Advanced), right-click your avatar → Copy User ID</li>
-              <li>Paste your User ID below, save settings</li>
+  // --- Render ---------------------------------------------------------------
+  const oauthUrl = status?.app_id
+    ? `https://discord.com/oauth2/authorize?client_id=${status.app_id}&scope=applications.commands&integration_type=1`
+    : null;
+
+  return (
+    <Card className="@container/card">
+      <CardHeader>
+        <div className="flex items-center justify-between gap-4">
+          <div className="min-w-0">
+            <CardTitle>Bot Settings</CardTitle>
+            <CardDescription>
+              Token, recipient, and alert threshold.
+            </CardDescription>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {statusBadge()}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => refresh()}
+              aria-label="Refresh status"
+              title="Refresh status"
+            >
+              <RefreshCcwIcon className="size-4" />
+            </Button>
+          </div>
+        </div>
+        {/* Onboarding stepper — hidden once everything's done */}
+        {!fullyOnboarded && (
+          <div className="mt-3">
+            <OnboardingStepper
+              tokenSet={tokenSet}
+              ownerIdSet={ownerIdSet}
+              online={online}
+              authorized={authorized}
+            />
+          </div>
+        )}
+      </CardHeader>
+      <CardContent>
+        {/* First-time setup help — flat typography, no nested-card chrome */}
+        {(!status?.installed || !tokenSet) && (
+          <details className="mb-6 group">
+            <summary className="cursor-pointer text-sm font-medium select-none list-none flex items-center gap-1.5 [&::-webkit-details-marker]:hidden">
+              <ChevronRightIcon className="size-3.5 transition-transform group-open:rotate-90" />
+              First-time setup — how to get a bot token
+            </summary>
+            <ol className="mt-2 ml-5 list-decimal list-outside space-y-1.5 text-sm text-muted-foreground marker:text-muted-foreground/60">
               <li>
-                Use this OAuth2 URL to add the bot to your account (no server needed):
-                {status?.app_id ? (
-                  <div className="mt-1">
-                    <a
-                      href={`https://discord.com/oauth2/authorize?client_id=${status.app_id}&scope=applications.commands&integration_type=1`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-xs underline text-foreground break-all"
-                    >
-                      {`https://discord.com/oauth2/authorize?client_id=${status.app_id}&scope=applications.commands&integration_type=1`}
-                    </a>
-                  </div>
-                ) : (
-                  <div className="mt-1 text-xs italic">
-                    Save your token first — the install URL appears here once the bot connects.
-                  </div>
-                )}
+                Go to{" "}
+                <a
+                  href="https://discord.com/developers/applications"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-info underline underline-offset-2 hover:text-info/80"
+                >
+                  discord.com/developers
+                </a>{" "}
+                → New Application → Bot → copy token.
+              </li>
+              <li>Paste the token in the field below.</li>
+              <li>
+                In Discord, enable Developer Mode (Settings → Advanced), then
+                right-click your avatar → Copy User ID.
+              </li>
+              <li>Paste your User ID below and save.</li>
+              <li>
+                Once the bot connects, click{" "}
+                <span className="font-medium text-foreground">
+                  Add Bot to Account
+                </span>{" "}
+                to authorize it for direct messages — then send a test DM to
+                confirm.
               </li>
             </ol>
-          </div>
+          </details>
         )}
 
-        <div className="space-y-4">
-          <div className="flex items-center gap-3">
-            <Switch
-              id="discord-enabled"
-              checked={enabled}
-              onCheckedChange={setEnabled}
-            />
-            <Label htmlFor="discord-enabled">Enable Discord Bot</Label>
-          </div>
+        {/* Awaiting-authorization callout — connected but no test DM has succeeded */}
+        {tokenSet && online && !authorized && oauthUrl && (
+          <Alert className="mb-6 border-warning/30 bg-warning/5 [&>svg]:text-warning">
+            <TriangleAlertIcon className="size-4" />
+            <AlertTitle className="text-warning">
+              One more step — authorize the bot
+            </AlertTitle>
+            <AlertDescription>
+              <p className="mb-3">
+                The bot is online but hasn&apos;t been added to your Discord
+                account yet. Add it via OAuth, then send a test DM to confirm
+                it can reach you.
+              </p>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() =>
+                    window.open(oauthUrl, "_blank", "noopener,noreferrer")
+                  }
+                >
+                  <ExternalLinkIcon className="size-4" />
+                  Add Bot to Account
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={!canSendTest}
+                  onClick={handleSendTest}
+                >
+                  {isSendingTest ? (
+                    <>
+                      <Loader2 className="size-4 animate-spin" />
+                      Sending&hellip;
+                    </>
+                  ) : (
+                    <>
+                      <SendIcon className="size-4" />
+                      Send Test DM
+                    </>
+                  )}
+                </Button>
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
 
-          <div className="space-y-2">
-            <Label htmlFor="discord-token">
-              Bot Token {settings?.token_set && <span className="text-xs text-muted-foreground">(set — leave blank to keep)</span>}
-            </Label>
-            <Input
-              id="discord-token"
-              type="password"
-              placeholder={settings?.token_set ? "••••••••" : "Paste your bot token"}
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              autoComplete="off"
-            />
-          </div>
+        <form className="grid gap-4" onSubmit={handleSave}>
+          <FieldSet>
+            <FieldGroup>
+              {/* Enable toggle */}
+              <Field orientation="horizontal" className="w-fit">
+                <FieldLabel htmlFor="discord-enabled">
+                  Enable Discord Bot
+                </FieldLabel>
+                <Switch
+                  id="discord-enabled"
+                  checked={enabled}
+                  onCheckedChange={setEnabled}
+                />
+              </Field>
 
-          <div className="space-y-2">
-            <Label htmlFor="discord-owner-id">Your Discord User ID</Label>
-            <Input
-              id="discord-owner-id"
-              placeholder="e.g. 123456789012345678"
-              value={ownerID}
-              onChange={(e) => setOwnerID(e.target.value)}
-            />
-          </div>
+              {/* Bot Token */}
+              <Field>
+                <FieldLabel htmlFor="discord-token">
+                  Bot Token
+                  {settings?.token_set && (
+                    <span className="ml-1 text-xs font-normal text-muted-foreground">
+                      (set — leave blank to keep)
+                    </span>
+                  )}
+                </FieldLabel>
+                <div className="relative max-w-sm">
+                  <Input
+                    id="discord-token"
+                    type={showToken ? "text" : "password"}
+                    placeholder={
+                      settings?.token_set ? "••••••••" : "Paste your bot token"
+                    }
+                    className="pr-10"
+                    value={token}
+                    onChange={(e) => setToken(e.target.value)}
+                    autoComplete="off"
+                    spellCheck={false}
+                    aria-invalid={!!tokenRequiredError}
+                    aria-describedby={
+                      tokenRequiredError
+                        ? "discord-token-error"
+                        : "discord-token-desc"
+                    }
+                  />
+                  <button
+                    type="button"
+                    aria-label={showToken ? "Hide token" : "Show token"}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                    onClick={() => setShowToken((v) => !v)}
+                  >
+                    {showToken ? (
+                      <EyeOffIcon className="size-4" />
+                    ) : (
+                      <EyeIcon className="size-4" />
+                    )}
+                  </button>
+                </div>
+                {tokenRequiredError ? (
+                  <FieldError id="discord-token-error">
+                    {tokenRequiredError}
+                  </FieldError>
+                ) : (
+                  <FieldDescription id="discord-token-desc">
+                    Created in the Discord Developer Portal. Stored locally
+                    on this device.
+                  </FieldDescription>
+                )}
+              </Field>
 
-          <div className="space-y-2">
-            <Label htmlFor="discord-threshold">Alert threshold (minutes)</Label>
-            <Input
-              id="discord-threshold"
-              type="number"
-              min={1}
-              max={60}
-              value={threshold}
-              onChange={(e) => setThreshold(Number(e.target.value))}
-            />
-            <p className="text-xs text-muted-foreground">
-              Sends a DM if internet is down for longer than this duration.
-            </p>
-          </div>
-        </div>
+              {/* Discord User ID */}
+              <Field>
+                <FieldLabel htmlFor="discord-owner-id">
+                  Your Discord User ID
+                </FieldLabel>
+                <Input
+                  id="discord-owner-id"
+                  inputMode="numeric"
+                  placeholder="e.g. 123456789012345678"
+                  className="max-w-sm font-mono"
+                  value={ownerID}
+                  onChange={(e) => setOwnerID(e.target.value.trim())}
+                  autoComplete="off"
+                  spellCheck={false}
+                  aria-invalid={!!(ownerIDError || ownerIDRequiredError)}
+                  aria-describedby={
+                    ownerIDError || ownerIDRequiredError
+                      ? "discord-owner-id-error"
+                      : "discord-owner-id-desc"
+                  }
+                />
+                {ownerIDError || ownerIDRequiredError ? (
+                  <FieldError id="discord-owner-id-error">
+                    {ownerIDError || ownerIDRequiredError}
+                  </FieldError>
+                ) : (
+                  <FieldDescription id="discord-owner-id-desc">
+                    The Discord account that will receive DMs from the bot.
+                  </FieldDescription>
+                )}
+              </Field>
 
-        <Separator />
+              {/* Threshold */}
+              <Field>
+                <FieldLabel htmlFor="discord-threshold">
+                  Alert After (minutes)
+                </FieldLabel>
+                <Input
+                  id="discord-threshold"
+                  type="number"
+                  min={1}
+                  max={60}
+                  step={1}
+                  className="max-w-sm"
+                  value={threshold}
+                  onChange={(e) => setThreshold(e.target.value)}
+                  aria-invalid={!!thresholdError}
+                  aria-describedby={
+                    thresholdError
+                      ? "discord-threshold-error"
+                      : "discord-threshold-desc"
+                  }
+                />
+                {thresholdError ? (
+                  <FieldError id="discord-threshold-error">
+                    {thresholdError}
+                  </FieldError>
+                ) : (
+                  <FieldDescription id="discord-threshold-desc">
+                    How long the connection must be down before an alert is
+                    sent. Prevents alerts for brief, transient outages.
+                  </FieldDescription>
+                )}
+              </Field>
+            </FieldGroup>
+          </FieldSet>
 
-        <div className="flex items-center gap-3 flex-wrap">
-          <SaveButton onClick={handleSave} isSaving={isSaving} saved={saved} />
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={!status?.connected || isSendingTest}
-            onClick={sendTestDm}
-          >
-            {isSendingTest ? (
-              <><Loader2Icon className="size-4 animate-spin mr-2" /> Sending...</>
-            ) : (
-              <><SendIcon className="size-4 mr-2" /> Send Test DM</>
+          <Separator className="my-2" />
+
+          <div className="grid gap-1.5">
+            <div className="flex items-center gap-2 flex-wrap">
+              <SaveButton
+                type="submit"
+                isSaving={isSaving}
+                saved={saved}
+                disabled={!canSave}
+              />
+              {/* Send Test DM and Add Bot live in the awaiting-auth callout
+                  while the user is mid-onboarding — hide here to avoid
+                  duplicate CTAs. Once authorized, they live here as
+                  routine actions. */}
+              {authorized && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={!canSendTest}
+                  onClick={handleSendTest}
+                >
+                  {isSendingTest ? (
+                    <>
+                      <Loader2 className="size-4 animate-spin" />
+                      Sending&hellip;
+                    </>
+                  ) : (
+                    <>
+                      <SendIcon className="size-4" />
+                      Send Test DM
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
+            {isDirty && enabled && authorized && (
+              <p className="text-xs text-muted-foreground">
+                Save your changes — test DMs use the saved configuration.
+              </p>
             )}
-          </Button>
-          {status?.app_id && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                window.open(
-                  `https://discord.com/oauth2/authorize?client_id=${status.app_id}&scope=applications.commands&integration_type=1`,
-                  "_blank",
-                  "noopener,noreferrer",
-                )
-              }
-            >
-              <ExternalLinkIcon className="size-4 mr-2" /> Add Bot to Account
-            </Button>
-          )}
-          {status?.connected && (
-            <Button variant="outline" size="sm" onClick={() => (enabled ? disable() : enable())}>
-              {enabled ? "Stop Bot" : "Start Bot"}
-            </Button>
-          )}
-        </div>
+          </div>
+        </form>
       </CardContent>
     </Card>
   );
