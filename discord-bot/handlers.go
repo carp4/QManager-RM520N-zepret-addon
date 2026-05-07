@@ -40,19 +40,27 @@ func buildSignalEmbed(s *ModemStatus) *discordgo.MessageEmbed {
 		"mimo3": "MIMO 3 (RX2)", "mimo4": "MIMO 4 (RX3)",
 	}
 	var fields []*discordgo.MessageEmbedField
+	pairCount := 0
 	for _, port := range ports {
 		ant, ok := s.SignalPerAntenna[port]
 		if !ok {
 			continue
 		}
 		portEmoji := perPortEmoji(ant.RSRP)
+		// Trailing "\n​" adds a blank line below for vertical breathing.
 		fields = append(fields, &discordgo.MessageEmbedField{
 			Name: fmt.Sprintf("%s %s", portEmoji, labels[port]),
-			Value: fmt.Sprintf("RSRP %s dBm  SINR %s dB\nRSRQ %s dB",
+			Value: fmt.Sprintf("RSRP %s dBm  SINR %s dB\nRSRQ %s dB\n​",
 				ifEmpty(ant.RSRP, "—"), ifEmpty(ant.SINR, "—"), ifEmpty(ant.RSRQ, "—"),
 			),
 			Inline: true,
 		})
+		pairCount++
+		// After every 2 antennas, insert an invisible inline spacer so Discord
+		// renders 2 content columns + 1 empty column per row (wider gutters).
+		if pairCount%2 == 0 {
+			fields = append(fields, spacerField())
+		}
 	}
 
 	if note := provenanceNote(s); note != "" {
@@ -71,6 +79,7 @@ func buildSignalEmbed(s *ModemStatus) *discordgo.MessageEmbed {
 		Timestamp:   time.Unix(s.CacheTime, 0).Format(time.RFC3339),
 	}
 }
+
 
 func qualityEmojiForBucket(b string) string {
 	switch b {

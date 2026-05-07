@@ -665,3 +665,50 @@ func TestEmbedForSource_EventsReturnsNil(t *testing.T) {
 		t.Errorf("embedForSource(\"events\") should return nil; events refresh handled separately. Got: %+v", embed)
 	}
 }
+
+func TestBuildSignalEmbed_TwoAntennasPerRowWithSpacer(t *testing.T) {
+	s := makeStatus("true", "true", "5G-NSA")
+	s.SignalPerAntenna = map[string]AntennaSignal{
+		"main":      {RSRP: "-90", SINR: "10", RSRQ: "-10"},
+		"diversity": {RSRP: "-92", SINR: "9", RSRQ: "-11"},
+		"mimo3":     {RSRP: "-95", SINR: "8", RSRQ: "-12"},
+		"mimo4":     {RSRP: "-97", SINR: "7", RSRQ: "-13"},
+	}
+	embed := buildSignalEmbed(s)
+
+	spacerCount := 0
+	for _, f := range embed.Fields {
+		if f.Name == "​" && f.Value == "​" {
+			spacerCount++
+		}
+	}
+	if spacerCount != 2 {
+		t.Errorf("expected 2 spacer fields between antenna pairs, got %d", spacerCount)
+	}
+
+	if len(embed.Fields) < 6 {
+		t.Fatalf("expected at least 6 fields (4 antennas + 2 spacers), got %d", len(embed.Fields))
+	}
+	if embed.Fields[2].Name != "​" {
+		t.Errorf("expected spacer at index 2, got name=%q", embed.Fields[2].Name)
+	}
+	if embed.Fields[5].Name != "​" {
+		t.Errorf("expected spacer at index 5, got name=%q", embed.Fields[5].Name)
+	}
+}
+
+func TestBuildSignalEmbed_AntennaValuesHaveTrailingBlankLine(t *testing.T) {
+	s := makeStatus("true", "true", "5G-NSA")
+	s.SignalPerAntenna = map[string]AntennaSignal{
+		"main": {RSRP: "-90", SINR: "10", RSRQ: "-10"},
+	}
+	embed := buildSignalEmbed(s)
+
+	if len(embed.Fields) == 0 {
+		t.Fatal("no fields in signal embed")
+	}
+	val := embed.Fields[0].Value
+	if !strings.HasSuffix(val, "\n​") {
+		t.Errorf("expected antenna value to end with newline+zero-width-space for vertical breathing; got %q", val)
+	}
+}
