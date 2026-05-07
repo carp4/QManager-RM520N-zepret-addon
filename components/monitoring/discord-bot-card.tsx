@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
@@ -151,6 +151,11 @@ export function DiscordBotCard() {
   const [threshold, setThreshold] = useState("5");
   const [enabled, setEnabled] = useState(false);
   const [authorized, setAuthorized] = useState(false);
+  // Tracks when the user clicked "Add Bot to Account". When the QManager tab
+  // regains focus after this, we auto-fire a test DM to verify reachability —
+  // since OAuth has no callback into us, the only proof is a delivered DM.
+  const oauthClickedAtRef = useRef<number | null>(null);
+  const [autoVerifying, setAutoVerifying] = useState(false);
 
   if (settings && settings !== prevSettings) {
     setPrevSettings(settings);
@@ -247,17 +252,22 @@ export function DiscordBotCard() {
     }
   };
 
+  // Persist the "user has authorized the bot in their account" proof.
+  // Only call after a successful DM round-trip — that's the only reliable signal.
+  const markAuthorized = useCallback(() => {
+    if (typeof window === "undefined") return;
+    if (!status?.app_id || !settings?.owner_discord_id) return;
+    window.localStorage.setItem(
+      verifyStorageKey(status.app_id, settings.owner_discord_id),
+      "true",
+    );
+    setAuthorized(true);
+  }, [status?.app_id, settings?.owner_discord_id]);
+
   const handleSendTest = async () => {
     const ok = await sendTestDm();
     if (ok) {
-      // A successful DM proves the user has authorized the bot in their account.
-      if (typeof window !== "undefined" && status?.app_id && settings?.owner_discord_id) {
-        window.localStorage.setItem(
-          verifyStorageKey(status.app_id, settings.owner_discord_id),
-          "true",
-        );
-        setAuthorized(true);
-      }
+      markAuthorized();
       toast.success("Test DM sent — bot is authorized");
     } else {
       toast.error(
@@ -265,6 +275,49 @@ export function DiscordBotCard() {
       );
     }
   };
+
+  const oauthUrl = status?.app_id
+    ? `https://discord.com/oauth2/authorize?client_id=${status.app_id}&scope=applications.commands&integration_type=1`
+    : null;
+
+  // Open the OAuth install URL and arm the focus listener.
+  // We can't detect when the user finishes Discord's OAuth flow (no callback),
+  // so we rely on the QManager tab regaining focus as a proxy for "user came back".
+  const handleAddBot = () => {
+    if (!oauthUrl) return;
+    oauthClickedAtRef.current = Date.now();
+    window.open(oauthUrl, "_blank", "noopener,noreferrer");
+  };
+
+  // When the user returns from Discord's OAuth flow, fire a test DM
+  // automatically — eliminates the manual "Send Test DM" step that's easy
+  // to miss. A 1.5s grace period filters out the immediate focus shuffle
+  // that happens around window.open itself; a 2s post-focus delay gives
+  // Discord time to register the install before we test.
+  useEffect(() => {
+    const handleFocus = async () => {
+      const clickedAt = oauthClickedAtRef.current;
+      if (clickedAt === null) return;
+      if (Date.now() - clickedAt < 1500) return;
+      oauthClickedAtRef.current = null;
+
+      setAutoVerifying(true);
+      await new Promise((r) => setTimeout(r, 2000));
+      const ok = await sendTestDm();
+      if (ok) {
+        markAuthorized();
+        toast.success("Bot authorized — test DM delivered");
+      } else {
+        toast.error(
+          "Couldn't verify — finish authorization in Discord, then click Send Test DM",
+        );
+      }
+      setAutoVerifying(false);
+    };
+
+    window.addEventListener("focus", handleFocus);
+    return () => window.removeEventListener("focus", handleFocus);
+  }, [sendTestDm, markAuthorized]);
 
   // --- Status badge ----------------------------------------------------------
   // Four states (in order of "more configured" → "fully working"):
@@ -378,10 +431,6 @@ export function DiscordBotCard() {
   }
 
   // --- Render ---------------------------------------------------------------
-  const oauthUrl = status?.app_id
-    ? `https://discord.com/oauth2/authorize?client_id=${status.app_id}&scope=applications.commands&integration_type=1`
-    : null;
-
   return (
     <Card className="@container/card">
       <CardHeader>
@@ -461,46 +510,59 @@ export function DiscordBotCard() {
           <Alert className="mb-6 border-warning/30 bg-warning/5 [&>svg]:text-warning">
             <TriangleAlertIcon className="size-4" />
             <AlertTitle className="text-warning">
-              One more step — authorize the bot
+              {autoVerifying
+                ? "Verifying authorization…"
+                : "Almost there — authorize the bot"}
             </AlertTitle>
             <AlertDescription>
-              <p className="mb-3">
-                The bot is online but hasn&apos;t been added to your Discord
-                account yet. Add it via OAuth, then send a test DM to confirm
-                it can reach you.
-              </p>
-              <div className="flex items-center gap-2 flex-wrap">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() =>
-                    window.open(oauthUrl, "_blank", "noopener,noreferrer")
-                  }
-                >
-                  <ExternalLinkIcon className="size-4" />
-                  Add Bot to Account
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={!canSendTest}
-                  onClick={handleSendTest}
-                >
-                  {isSendingTest ? (
-                    <>
-                      <Loader2 className="size-4 animate-spin" />
-                      Sending&hellip;
-                    </>
-                  ) : (
-                    <>
-                      <SendIcon className="size-4" />
-                      Send Test DM
-                    </>
-                  )}
-                </Button>
-              </div>
+              {autoVerifying ? (
+                <p className="flex items-center gap-2">
+                  <Loader2 className="size-4 animate-spin" />
+                  Sending a test DM to confirm reachability…
+                </p>
+              ) : (
+                <>
+                  <p className="mb-3">
+                    Click{" "}
+                    <span className="font-medium text-foreground">
+                      Add Bot to Account
+                    </span>{" "}
+                    to install the bot in your Discord account. When you
+                    return to this tab, we&apos;ll automatically send a test
+                    DM to confirm it can reach you.
+                  </p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={handleAddBot}
+                    >
+                      <ExternalLinkIcon className="size-4" />
+                      Add Bot to Account
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      disabled={!canSendTest}
+                      onClick={handleSendTest}
+                    >
+                      {isSendingTest ? (
+                        <>
+                          <Loader2 className="size-4 animate-spin" />
+                          Sending&hellip;
+                        </>
+                      ) : (
+                        <>
+                          <SendIcon className="size-4" />
+                          Send Test DM manually
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </>
+              )}
             </AlertDescription>
           </Alert>
         )}
