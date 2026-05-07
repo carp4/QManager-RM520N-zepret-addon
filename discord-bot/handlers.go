@@ -226,7 +226,8 @@ func ccField(cc CarrierComponent) *discordgo.MessageEmbedField {
 		arfcnLabel = "ARFCN"
 	}
 	name := fmt.Sprintf("%s %s · %s %s", ccEmoji(cc.Type, cc.Technology), cc.Type, cc.Technology, cc.Band)
-	value := fmt.Sprintf("PCI %s\n%s %s\n%s MHz\nRSRP %s / SINR %s",
+	// Trailing "\n​" adds a blank line below for vertical breathing between rows.
+	value := fmt.Sprintf("PCI %s\n%s %s\n%s MHz\nRSRP %s / SINR %s\n​",
 		ifEmpty(cc.PCI, "—"),
 		arfcnLabel, ifEmpty(cc.EARFCN, "—"),
 		ifEmpty(cc.BandwidthMHz, "—"),

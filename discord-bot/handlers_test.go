@@ -712,3 +712,18 @@ func TestBuildSignalEmbed_AntennaValuesHaveTrailingBlankLine(t *testing.T) {
 		t.Errorf("expected antenna value to end with newline+zero-width-space for vertical breathing; got %q", val)
 	}
 }
+
+func TestCcField_ValueHasTrailingBlankLine(t *testing.T) {
+	cc := CarrierComponent{
+		Type: "PCC", Technology: "LTE", Band: "B3",
+		PCI: "295", EARFCN: "1350", BandwidthMHz: "15",
+		RSRP: "-93", SINR: "27.0",
+	}
+	f := ccField(cc)
+	if f == nil {
+		t.Fatal("ccField returned nil")
+	}
+	if !strings.HasSuffix(f.Value, "\n​") {
+		t.Errorf("expected carrier value to end with newline+zero-width-space; got %q", f.Value)
+	}
+}
