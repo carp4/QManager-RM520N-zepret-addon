@@ -65,8 +65,10 @@ func (ns *notifyState) downtimeDuration() string {
 }
 
 // RunNotifier polls the poller cache and sends DM notifications on connectivity changes.
-// Blocks until ctx is cancelled (via stopCh close).
-func RunNotifier(s *discordgo.Session, dmChannelID string, cfg *Config, stopCh <-chan struct{}) {
+// Blocks until stopCh is closed. dmCh may be empty at startup (50007 cold path) —
+// notifier tries openDMChannel as a fallback before each send and silently skips
+// if the channel is still unavailable.
+func RunNotifier(s *discordgo.Session, dmCh *dmChannelHolder, cfg *Config, stopCh <-chan struct{}) {
 	ns := &notifyState{}
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
@@ -90,17 +92,37 @@ func RunNotifier(s *discordgo.Session, dmChannelID string, cfg *Config, stopCh <
 			}
 
 			action := ns.update(status.ConnInternetAvailable, cfg.ThresholdMinutes, 10)
+			if action == notifyNone {
+				continue
+			}
+
+			ch := dmCh.get()
+			if ch == "" {
+				// Fallback: attempt to resolve the channel — may succeed if the
+				// owner has since authorized the bot after startup.
+				id, err := openDMChannel(s, cfg.OwnerDiscordID)
+				if err != nil {
+					log.Printf("notify: no DM channel available, skipping")
+					continue
+				}
+				dmCh.set(id)
+				if err := saveDMChannelID(dmChannelPath, id); err != nil {
+					log.Printf("warning: failed to persist DM channel: %v", err)
+				}
+				ch = id
+			}
+
 			switch action {
 			case notifyDown:
 				ts := time.Unix(ns.downtimeStart, 0).Format("15:04")
 				msg := fmt.Sprintf("🔴 **Connection lost** — internet down (threshold exceeded).\nStarted at %s", ts)
-				if _, err := s.ChannelMessageSend(dmChannelID, msg); err != nil {
+				if _, err := s.ChannelMessageSend(ch, msg); err != nil {
 					log.Printf("notify: failed to send down DM: %v", err)
 				}
 			case notifyUp:
 				dur := ns.downtimeDuration()
 				msg := fmt.Sprintf("🟢 **Connection restored** after %s.", dur)
-				if _, err := s.ChannelMessageSend(dmChannelID, msg); err != nil {
+				if _, err := s.ChannelMessageSend(ch, msg); err != nil {
 					log.Printf("notify: failed to send up DM: %v", err)
 				}
 			}

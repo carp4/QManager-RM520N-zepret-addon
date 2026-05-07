@@ -5,11 +5,32 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
 )
+
+// dmChannelHolder is a thread-safe store for the owner DM channel ID.
+// Multiple goroutines (notifier, test watcher, MessageCreate handler) read
+// and write it, so accesses are protected by a mutex.
+type dmChannelHolder struct {
+	mu sync.Mutex
+	id string
+}
+
+func (h *dmChannelHolder) get() string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.id
+}
+
+func (h *dmChannelHolder) set(id string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.id = id
+}
 
 func main() {
 	cfg, err := loadConfig(configPath)
@@ -51,22 +72,58 @@ func main() {
 		log.Printf("warning: failed to register slash commands: %v", err)
 	}
 
-	dmChannelID, err := openDMChannel(s, cfg.OwnerDiscordID)
-	if err != nil {
-		log.Printf("warning: failed to open DM channel with owner: %v", err)
+	dmCh := &dmChannelHolder{}
+
+	// Try the on-disk cache first. UserChannelCreate is unreliable for user-installed
+	// bots without a shared guild (Discord error 50007). ChannelMessageSend against a
+	// known channel ID is not subject to that gate, so a previously-captured ID is
+	// sufficient — no need to call UserChannelCreate again.
+	cachedID, _ := loadDMChannelID(dmChannelPath)
+	if cachedID != "" {
+		log.Printf("loaded cached DM channel: %s", cachedID)
+		dmCh.set(cachedID)
+	} else {
+		// Cold path — no cache, try to resolve fresh.
+		id, err := openDMChannel(s, cfg.OwnerDiscordID)
+		if err != nil {
+			log.Printf("warning: failed to open DM channel with owner: %v", err)
+			// Continue with empty — MessageCreate handler or test watcher will
+			// capture the channel ID once the owner sends any DM to the bot.
+		} else {
+			dmCh.set(id)
+			if err := saveDMChannelID(dmChannelPath, id); err != nil {
+				log.Printf("warning: failed to persist DM channel: %v", err)
+			}
+		}
 	}
 
+	// Capture owner DM channel ID from inbound messages — self-healing path after
+	// token rotation. No MESSAGE_CONTENT intent needed; we only read channel ID.
+	s.AddHandler(func(s *discordgo.Session, m *discordgo.MessageCreate) {
+		if m.GuildID != "" {
+			return // guild message, not a DM
+		}
+		if m.Author == nil || m.Author.ID != cfg.OwnerDiscordID {
+			return
+		}
+		if m.ChannelID != dmCh.get() {
+			dmCh.set(m.ChannelID)
+			if err := saveDMChannelID(dmChannelPath, m.ChannelID); err != nil {
+				log.Printf("warning: failed to persist DM channel: %v", err)
+			}
+			log.Printf("captured DM channel from inbound message: %s", m.ChannelID)
+		}
+	})
+
 	stopNotifier := make(chan struct{})
-	if dmChannelID != "" {
-		go RunNotifier(s, dmChannelID, cfg, stopNotifier)
-	}
+	go RunNotifier(s, dmCh, cfg, stopNotifier)
 
 	// Test DM trigger watcher — CGI test.sh creates /tmp/qmanager_discord_test.
 	// Always spawn this, even if the initial openDMChannel failed: the user may
 	// authorize the bot via OAuth *after* startup, in which case dmChannelID
 	// will resolve cleanly on the first trigger after they're authorized.
 	stopTestWatcher := make(chan struct{})
-	go runTestDMWatcher(s, cfg.OwnerDiscordID, stopTestWatcher)
+	go runTestDMWatcher(s, cfg.OwnerDiscordID, dmCh, stopTestWatcher)
 
 	// Periodic status update
 	go func() {
@@ -109,10 +166,9 @@ func writeTestResult(success bool, errMsg string) {
 }
 
 // runTestDMWatcher polls for the trigger file written by test.sh. On each
-// trigger it lazily resolves the DM channel (handling the post-OAuth case
-// where openDMChannel failed at startup) and writes a result file the CGI
-// can wait on.
-func runTestDMWatcher(s *discordgo.Session, ownerID string, stopCh <-chan struct{}) {
+// trigger it uses the cached DM channel if available, falling back to
+// openDMChannel, and writes a result file the CGI can wait on.
+func runTestDMWatcher(s *discordgo.Session, ownerID string, dmCh *dmChannelHolder, stopCh <-chan struct{}) {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 	for {
@@ -125,12 +181,21 @@ func runTestDMWatcher(s *discordgo.Session, ownerID string, stopCh <-chan struct
 			}
 			os.Remove(testDMTriggerPath)
 
-			ch, err := openDMChannel(s, ownerID)
-			if err != nil {
-				log.Printf("test DM: openDMChannel failed: %v", err)
-				writeTestResult(false, "Bot can't reach you — finish authorizing the bot in your Discord account, then try again.")
-				continue
+			ch := dmCh.get()
+			if ch == "" {
+				var err error
+				ch, err = openDMChannel(s, ownerID)
+				if err != nil {
+					log.Printf("test DM: openDMChannel failed: %v", err)
+					writeTestResult(false, "Bot can't reach you — finish authorizing the bot in your Discord account, then try again.")
+					continue
+				}
+				dmCh.set(ch)
+				if err := saveDMChannelID(dmChannelPath, ch); err != nil {
+					log.Printf("warning: failed to persist DM channel: %v", err)
+				}
 			}
+
 			if _, err := s.ChannelMessageSend(ch, "✅ Test DM from QManager — your Discord bot is working."); err != nil {
 				log.Printf("test DM send failed: %v", err)
 				writeTestResult(false, "Discord rejected the message — make sure you've added the bot via the OAuth link.")

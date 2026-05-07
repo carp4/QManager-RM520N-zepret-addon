@@ -110,6 +110,7 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
         svc_stop qmanager_discord
         svc_disable qmanager_discord
         rm -f "$CONFIG"
+        rm -f /etc/qmanager/discord_dm_channel
         rm -f "$RELOAD_FLAG"
         rm -f /tmp/qmanager_discord_test
         # Clear the daemon's status cache so post-reset GET /status.sh
