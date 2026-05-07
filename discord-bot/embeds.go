@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
@@ -202,6 +203,81 @@ func ccEmoji(ccType, tech string) string {
 	default:
 		return "⚪"
 	}
+}
+
+// navOrder defines which cross-jump buttons appear (in order) for each source.
+// The current source is omitted from its own action row.
+var navOrder = []string{"signal", "bands", "status"}
+
+// buildActionRow returns the ActionsRow for a query embed.
+//   - signal/bands/status: 4 buttons → Refresh, 2 cross-jumps (omitting self), Copy raw
+//   - events: 1 button → Refresh only
+//   - device/sim/watchcat: 2 buttons → Refresh, Copy raw
+func buildActionRow(source string) discordgo.MessageComponent {
+	btns := []discordgo.MessageComponent{
+		discordgo.Button{Label: "Refresh", Style: discordgo.SecondaryButton, Emoji: &discordgo.ComponentEmoji{Name: "↻"}, CustomID: "qm:refresh:" + source},
+	}
+	switch source {
+	case "signal", "bands", "status":
+		for _, target := range navOrder {
+			if target == source {
+				continue
+			}
+			btns = append(btns, discordgo.Button{
+				Label:    capitalize(target),
+				Style:    discordgo.SecondaryButton,
+				Emoji:    &discordgo.ComponentEmoji{Name: navEmojiFor(target)},
+				CustomID: "qm:nav:" + target,
+			})
+		}
+		btns = append(btns, discordgo.Button{Label: "Copy raw", Style: discordgo.SecondaryButton, Emoji: &discordgo.ComponentEmoji{Name: "🧾"}, CustomID: "qm:raw:" + source})
+	case "events":
+		// Refresh only — no nav, no raw (events log is its own raw view).
+	default:
+		// device, sim, watchcat → Refresh + Copy raw
+		btns = append(btns, discordgo.Button{Label: "Copy raw", Style: discordgo.SecondaryButton, Emoji: &discordgo.ComponentEmoji{Name: "🧾"}, CustomID: "qm:raw:" + source})
+	}
+	return discordgo.ActionsRow{Components: btns}
+}
+
+func disabledActionRow(source string) discordgo.MessageComponent {
+	row := buildActionRow(source).(discordgo.ActionsRow)
+	disabled := make([]discordgo.MessageComponent, 0, len(row.Components))
+	for _, c := range row.Components {
+		btn := c.(discordgo.Button)
+		btn.Disabled = true
+		disabled = append(disabled, btn)
+	}
+	return discordgo.ActionsRow{Components: disabled}
+}
+
+func navEmojiFor(target string) string {
+	switch target {
+	case "signal":
+		return "📡"
+	case "bands":
+		return "📊"
+	case "status":
+		return "📋"
+	}
+	return "•"
+}
+
+func capitalize(s string) string {
+	if s == "" {
+		return ""
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
+}
+
+// parseCustomID parses "qm:<action>:<source>" custom IDs from button clicks.
+// Returns (action, source, ok=true) on match, ("", "", false) otherwise.
+func parseCustomID(id string) (string, string, bool) {
+	parts := strings.Split(id, ":")
+	if len(parts) != 3 || parts[0] != "qm" {
+		return "", "", false
+	}
+	return parts[1], parts[2], true
 }
 
 // authorBlock returns the per-embed author line (e.g. "📡 QManager • RM520N-GL").

@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/bwmarrin/discordgo"
 )
 
 func TestEmbedColor(t *testing.T) {
@@ -139,4 +141,116 @@ func TestCcEmoji(t *testing.T) {
 			t.Errorf("ccEmoji(%s,%s)=%q, want %q", c.ccType, c.tech, got, c.want)
 		}
 	}
+}
+
+func TestBuildActionRow_Bands(t *testing.T) {
+	row := buildActionRow("bands")
+	ar, ok := row.(discordgo.ActionsRow)
+	if !ok {
+		t.Fatalf("not ActionsRow: %T", row)
+	}
+	if len(ar.Components) != 4 {
+		t.Fatalf("want 4 buttons for bands, got %d", len(ar.Components))
+	}
+	ids := buttonIDs(ar)
+	wantIDs := []string{"qm:refresh:bands", "qm:nav:signal", "qm:nav:status", "qm:raw:bands"}
+	for i, want := range wantIDs {
+		if ids[i] != want {
+			t.Errorf("button[%d] id=%q, want %q", i, ids[i], want)
+		}
+	}
+}
+
+func TestBuildActionRow_Signal(t *testing.T) {
+	row := buildActionRow("signal")
+	ar := row.(discordgo.ActionsRow)
+	ids := buttonIDs(ar)
+	wantIDs := []string{"qm:refresh:signal", "qm:nav:bands", "qm:nav:status", "qm:raw:signal"}
+	for i, want := range wantIDs {
+		if ids[i] != want {
+			t.Errorf("button[%d] id=%q, want %q", i, ids[i], want)
+		}
+	}
+}
+
+func TestBuildActionRow_Status(t *testing.T) {
+	row := buildActionRow("status")
+	ar := row.(discordgo.ActionsRow)
+	ids := buttonIDs(ar)
+	wantIDs := []string{"qm:refresh:status", "qm:nav:signal", "qm:nav:bands", "qm:raw:status"}
+	for i, want := range wantIDs {
+		if ids[i] != want {
+			t.Errorf("button[%d] id=%q, want %q", i, ids[i], want)
+		}
+	}
+}
+
+func TestBuildActionRow_Events(t *testing.T) {
+	row := buildActionRow("events")
+	ar := row.(discordgo.ActionsRow)
+	if len(ar.Components) != 1 {
+		t.Errorf("events should have 1 button (refresh only), got %d", len(ar.Components))
+	}
+	if buttonIDs(ar)[0] != "qm:refresh:events" {
+		t.Errorf("events button id=%q", buttonIDs(ar)[0])
+	}
+}
+
+func TestBuildActionRow_DeviceSimWatchcat(t *testing.T) {
+	for _, src := range []string{"device", "sim", "watchcat"} {
+		row := buildActionRow(src)
+		ar := row.(discordgo.ActionsRow)
+		if len(ar.Components) != 2 {
+			t.Errorf("%s should have 2 buttons (refresh + raw), got %d", src, len(ar.Components))
+		}
+		ids := buttonIDs(ar)
+		if ids[0] != "qm:refresh:"+src || ids[1] != "qm:raw:"+src {
+			t.Errorf("%s buttons=%v", src, ids)
+		}
+	}
+}
+
+func TestDisabledActionRow(t *testing.T) {
+	row := disabledActionRow("bands")
+	ar := row.(discordgo.ActionsRow)
+	for i, c := range ar.Components {
+		btn, _ := c.(discordgo.Button)
+		if !btn.Disabled {
+			t.Errorf("button[%d] not disabled", i)
+		}
+	}
+}
+
+func TestParseCustomID(t *testing.T) {
+	cases := []struct {
+		in     string
+		action string
+		source string
+		ok     bool
+	}{
+		{"qm:refresh:bands", "refresh", "bands", true},
+		{"qm:nav:signal", "nav", "signal", true},
+		{"qm:raw:status", "raw", "status", true},
+		{"qm:bogus", "", "", false},
+		{"", "", "", false},
+		{"reboot_confirm", "", "", false},
+	}
+	for _, c := range cases {
+		action, source, ok := parseCustomID(c.in)
+		if action != c.action || source != c.source || ok != c.ok {
+			t.Errorf("parseCustomID(%q): got (%q,%q,%v), want (%q,%q,%v)",
+				c.in, action, source, ok, c.action, c.source, c.ok)
+		}
+	}
+}
+
+// buttonIDs is a test helper that pulls custom IDs out of an ActionsRow in order.
+func buttonIDs(ar discordgo.ActionsRow) []string {
+	out := make([]string, 0, len(ar.Components))
+	for _, c := range ar.Components {
+		if btn, ok := c.(discordgo.Button); ok {
+			out = append(out, btn.CustomID)
+		}
+	}
+	return out
 }
