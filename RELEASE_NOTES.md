@@ -1,3 +1,11 @@
+# 🚀 QManager RM520N BETA vNext (Unreleased)
+
+## 🛠️ Improvements
+
+- Removed wget dependency from installer, OTA updater, and runtime CGIs — QManager now uses curl exclusively. This makes installs reliable on Quectel x5x/x6x firmwares that lack wget, and removes the ~5 MB Entware wget footprint that previous fallbacks would have required.
+
+---
+
 # 🚀 QManager RM520N BETA v0.1.7
 
 A comprehensive reliability release for the modem poller — new visibility into cycle health and daemon liveness, plus a batch of hardening fixes that eliminate misleading data, prevent silent failures, and trim polling overhead across the board.
