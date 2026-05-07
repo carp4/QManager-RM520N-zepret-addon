@@ -11,12 +11,6 @@ import (
 )
 
 const (
-	colorGreen  = 0x22c55e
-	colorYellow = 0xf59e0b
-	colorRed    = 0xef4444
-	colorBlue   = 0x3b82f6
-	colorGray   = 0x6b7280
-
 	statusCachePath = "/tmp/qmanager_status.json"
 	eventsCachePath = "/tmp/qmanager_events.json"
 )
