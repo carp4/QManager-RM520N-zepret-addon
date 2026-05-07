@@ -91,8 +91,13 @@ section "bash -n syntax check"
 
 # File list. Extension-less daemons in /usr/bin/, library .sh in /usr/lib/qmanager/,
 # CGI handlers in /www/cgi-bin/quecmanager/, and the harnesses themselves.
+# /usr/bin/ may contain compiled binaries (e.g. qmanager_discord) alongside
+# shell scripts — only emit files whose first two bytes are '#!' (shebang).
 list_scripts() {
-    ls "$REPO_ROOT/scripts/usr/bin/"* 2>/dev/null || true
+    for f in "$REPO_ROOT/scripts/usr/bin/"*; do
+        [ -f "$f" ] || continue
+        head -c 2 "$f" 2>/dev/null | grep -q '^#!' && printf '%s\n' "$f"
+    done
     ls "$REPO_ROOT/scripts/usr/lib/qmanager/"*.sh 2>/dev/null || true
     find "$REPO_ROOT/scripts/www/cgi-bin/quecmanager" -type f -name '*.sh' 2>/dev/null || true
     ls "$REPO_ROOT/scripts/test/"*.sh 2>/dev/null || true
