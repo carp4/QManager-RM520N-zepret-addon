@@ -269,6 +269,42 @@ func TestReadStatus_NewPollerFields(t *testing.T) {
 	}
 }
 
+func TestReadEventCounts(t *testing.T) {
+	f, err := os.CreateTemp("", "events*.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(f.Name())
+
+	lines := []string{
+		`{"timestamp":1000,"type":"conn","message":"down","severity":"critical"}`,
+		`{"timestamp":2000,"type":"conn","message":"warn1","severity":"warning"}`,
+		`{"timestamp":3000,"type":"conn","message":"warn2","severity":"warning"}`,
+		`{"timestamp":4000,"type":"conn","message":"info1","severity":"info"}`,
+		`{"timestamp":5000,"type":"conn","message":"info2","severity":"info"}`,
+		`{"timestamp":6000,"type":"conn","message":"info3","severity":"info"}`,
+	}
+	for _, l := range lines {
+		f.WriteString(l + "\n")
+	}
+	f.Close()
+
+	crit, warn, info, total, err := readEventCounts(f.Name())
+	if err != nil {
+		t.Fatalf("readEventCounts error: %v", err)
+	}
+	if crit != 1 || warn != 2 || info != 3 || total != 6 {
+		t.Errorf("got crit=%d warn=%d info=%d total=%d", crit, warn, info, total)
+	}
+}
+
+func TestReadEventCounts_MissingFile(t *testing.T) {
+	_, _, _, _, err := readEventCounts("/tmp/nonexistent_qmanager_events.json")
+	if err == nil {
+		t.Error("expected error for missing file")
+	}
+}
+
 func TestReadEvents_ReturnsLast5(t *testing.T) {
 	f, _ := os.CreateTemp("", "events*.json")
 	defer os.Remove(f.Name())

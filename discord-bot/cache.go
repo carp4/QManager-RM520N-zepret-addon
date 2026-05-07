@@ -421,6 +421,42 @@ func uptimeStr(secs *int64) string {
 	return fmt.Sprintf("%dm", m)
 }
 
+const maxEventScan = 1000
+
+// readEventCounts scans the NDJSON events file and returns severity counts plus total.
+// total is capped at maxEventScan to bound disk reads.
+func readEventCounts(path string) (crit, warn, info, total int, err error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return 0, 0, 0, 0, err
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		if total >= maxEventScan {
+			break
+		}
+		line := sc.Bytes()
+		if len(line) == 0 {
+			continue
+		}
+		var ev Event
+		if json.Unmarshal(line, &ev) != nil {
+			continue
+		}
+		total++
+		switch ev.Severity {
+		case "critical":
+			crit++
+		case "warning":
+			warn++
+		case "info":
+			info++
+		}
+	}
+	return crit, warn, info, total, sc.Err()
+}
+
 // readEvents returns the last 5 events from the NDJSON events file.
 func readEvents(path string) ([]Event, error) {
 	f, err := os.Open(path)
