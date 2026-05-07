@@ -598,6 +598,11 @@ RCEOF
         # Ensure jq is in standard PATH (lighttpd CGI won't see /opt/bin)
         [ -x /opt/bin/jq ] && ln -sf /opt/bin/jq /usr/bin/jq 2>/dev/null || true
 
+        # Same for curl — Entware-installed curl lands in /opt/bin/, but
+        # CGI scripts and BusyBox shells don't have /opt/bin on PATH.
+        [ -x /opt/bin/curl ] && ! command -v curl >/dev/null 2>&1 && \
+            ln -sf /opt/bin/curl /usr/bin/curl 2>/dev/null || true
+
         # coreutils-timeout
         if command -v timeout >/dev/null 2>&1; then
             info "timeout is already installed"
