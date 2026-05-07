@@ -261,6 +261,13 @@ export function DiscordBotCard() {
       setToken("");
       markSaved();
       toast.success("Discord bot settings saved");
+      // The daemon takes a moment to connect after being enabled — saveSettings
+      // refetches status immediately, but the gateway handshake hasn't landed
+      // yet, so the badge stays "Disconnected" until a follow-up poll.
+      if (payload.enabled) {
+        setTimeout(() => refresh(), 1500);
+        setTimeout(() => refresh(), 4000);
+      }
     } else {
       toast.error(error || "Failed to save Discord bot settings");
     }
@@ -279,13 +286,14 @@ export function DiscordBotCard() {
   }, [status?.app_id, settings?.owner_discord_id]);
 
   const handleSendTest = async () => {
-    const ok = await sendTestDm();
-    if (ok) {
+    const result = await sendTestDm();
+    if (result.success) {
       markAuthorized();
       toast.success("Test DM sent — bot is authorized");
     } else {
       toast.error(
-        "Failed to send test DM — make sure you've added the bot to your Discord account",
+        result.error ||
+          "Failed to send test DM — make sure you've added the bot to your Discord account",
       );
     }
   };
@@ -317,13 +325,14 @@ export function DiscordBotCard() {
 
       setAutoVerifying(true);
       await new Promise((r) => setTimeout(r, 2000));
-      const ok = await sendTestDm();
-      if (ok) {
+      const result = await sendTestDm();
+      if (result.success) {
         markAuthorized();
         toast.success("Bot authorized — test DM delivered");
       } else {
         toast.error(
-          "Couldn't verify — finish authorization in Discord, then click Send Test DM",
+          result.error ||
+            "Couldn't verify — finish authorization in Discord, then click Send Test DM",
         );
       }
       setAutoVerifying(false);
@@ -760,7 +769,10 @@ export function DiscordBotCard() {
           </div>
         </form>
 
-        {(tokenSet || ownerIdSet) && (
+        {/* Use server-saved settings.enabled, not the local `enabled` form state —
+            unsaved local toggles haven't actually stopped the daemon yet. Mirrors
+            the email-alerts uninstall gate (msmtpInstalled && !isEnabled). */}
+        {(tokenSet || ownerIdSet) && !settings?.enabled && (
           <>
             <Separator className="mt-6" />
             <div className="flex items-center justify-between gap-3 flex-wrap pt-6">

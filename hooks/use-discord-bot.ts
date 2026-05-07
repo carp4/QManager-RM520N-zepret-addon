@@ -20,7 +20,7 @@ export interface UseDiscordBotReturn {
   isSendingTest: boolean;
   error: string | null;
   saveSettings: (payload: DiscordBotSavePayload) => Promise<boolean>;
-  sendTestDm: () => Promise<boolean>;
+  sendTestDm: () => Promise<{ success: boolean; error?: string }>;
   enable: () => Promise<boolean>;
   disable: () => Promise<boolean>;
   resetBot: () => Promise<boolean>;
@@ -88,14 +88,17 @@ export function useDiscordBot(): UseDiscordBotReturn {
     }
   }, [fetchAll]);
 
-  const sendTestDm = useCallback(async (): Promise<boolean> => {
+  const sendTestDm = useCallback(async (): Promise<{ success: boolean; error?: string }> => {
     setIsSendingTest(true);
     try {
       const resp = await authFetch(CGI_TEST, { method: "POST" });
       const json = await resp.json();
-      return json.success;
-    } catch { return false; }
-    finally { if (mountedRef.current) setIsSendingTest(false); }
+      return { success: !!json.success, error: json.error };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : "Network error" };
+    } finally {
+      if (mountedRef.current) setIsSendingTest(false);
+    }
   }, []);
 
   const enable = useCallback(async (): Promise<boolean> => {
