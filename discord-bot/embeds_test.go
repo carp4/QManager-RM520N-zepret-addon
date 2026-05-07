@@ -267,3 +267,19 @@ func TestExpiredEmbedField(t *testing.T) {
 		t.Error("expired field must be non-inline (full width)")
 	}
 }
+
+func TestSpacerField_IsInvisibleInline(t *testing.T) {
+	f := spacerField()
+	if f == nil {
+		t.Fatal("spacerField returned nil")
+	}
+	if !f.Inline {
+		t.Error("spacer must be Inline=true so it occupies a column slot")
+	}
+	if f.Name != "​" {
+		t.Errorf("spacer Name = %q, want zero-width space", f.Name)
+	}
+	if f.Value != "​" {
+		t.Errorf("spacer Value = %q, want zero-width space", f.Value)
+	}
+}

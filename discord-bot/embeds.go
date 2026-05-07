@@ -207,7 +207,7 @@ var navOrder = []string{"signal", "bands", "status"}
 //   - device/sim/watchcat: 2 buttons → Refresh, Copy raw
 func buildActionRow(source string) discordgo.MessageComponent {
 	btns := []discordgo.MessageComponent{
-		discordgo.Button{Label: "Refresh", Style: discordgo.SecondaryButton, Emoji: &discordgo.ComponentEmoji{Name: "↻"}, CustomID: "qm:refresh:" + source},
+		discordgo.Button{Label: "Refresh", Style: discordgo.SecondaryButton, Emoji: &discordgo.ComponentEmoji{Name: "🔄"}, CustomID: "qm:refresh:" + source},
 	}
 	switch source {
 	case "signal", "bands", "status":
@@ -253,6 +253,19 @@ func navEmojiFor(target string) string {
 		return "📋"
 	}
 	return "•"
+}
+
+// spacerField returns an invisible inline field used to widen column gutters in
+// embeds. Discord packs up to 3 inline fields per row; pairing 2 content fields
+// with a trailing spacer renders them at ~33% width each but visually grouped
+// as a 2-column layout with breathing room on the right. The U+200B (zero-width
+// space) glyph is required — Discord rejects empty strings for Name/Value.
+func spacerField() *discordgo.MessageEmbedField {
+	return &discordgo.MessageEmbedField{
+		Name:   "​",
+		Value:  "​",
+		Inline: true,
+	}
 }
 
 func capitalize(s string) string {
