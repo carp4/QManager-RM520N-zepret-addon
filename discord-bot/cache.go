@@ -48,25 +48,25 @@ type ModemStatus struct {
 	NrTAC     string
 
 	// Device
-	Uptime           string
-	ConnUptime       string
-	CpuTemp          string
-	CpuUsage         string
-	MemUsedMB        string
-	MemTotalMB       string
-	Model            string
-	Manufacturer     string
-	Firmware         string
-	BuildDate        string
-	IMEI             string
-	IMSI             string
-	ICCID            string
-	PhoneNumber      string
-	LteCategory      string
-	MIMO             string
-	SupportedLteBands  string
-	SupportedNsaBands  string
-	SupportedSaBands   string
+	Uptime            string
+	ConnUptime        string
+	CpuTemp           string
+	CpuUsage          string
+	MemUsedMB         string
+	MemTotalMB        string
+	Model             string
+	Manufacturer      string
+	Firmware          string
+	BuildDate         string
+	IMEI              string
+	IMSI              string
+	ICCID             string
+	PhoneNumber       string
+	LteCategory       string
+	MIMO              string
+	SupportedLteBands string
+	SupportedNsaBands string
+	SupportedSaBands  string
 
 	// Traffic
 	RxRate string

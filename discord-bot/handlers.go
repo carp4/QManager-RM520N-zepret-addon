@@ -19,7 +19,6 @@ const (
 	eventsCachePath = "/tmp/qmanager_events.json"
 )
 
-
 func buildSignalEmbed(s *ModemStatus) *discordgo.MessageEmbed {
 	bucket := signalQualityBucket(s.SignalPerAntenna)
 	primary := "LTE primary"
@@ -851,9 +850,11 @@ func handleNetworkMode(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 }
 
-// embedForSource is the router: given a source string from a custom ID,
-// returns a freshly-built embed of that type. Unknown sources return nil.
-// /sim, /device, /watchcat builders come from later tasks.
+// embedForSource routes a source string from a custom ID to a freshly-built
+// embed of that type. Unknown sources return nil. Note: "events" is NOT
+// routed here because buildEventsEmbed needs different inputs (events list
+// + severity counts) than *ModemStatus alone — see handleRefreshOrNav for
+// the events-specific branch.
 func embedForSource(source string, s *ModemStatus) *discordgo.MessageEmbed {
 	switch source {
 	case "signal":
@@ -971,7 +972,7 @@ func handleRefreshOrNav(s *discordgo.Session, i *discordgo.InteractionCreate, so
 		return
 	}
 	ms, err := readStatus(statusCachePath)
-	if err != nil {
+	if err != nil && source != "events" {
 		failTitle := capitalize(source)
 		if failTitle == "" {
 			failTitle = "Refresh"
@@ -988,7 +989,17 @@ func handleRefreshOrNav(s *discordgo.Session, i *discordgo.InteractionCreate, so
 		})
 		return
 	}
-	embed := embedForSource(source, ms)
+	var embed *discordgo.MessageEmbed
+	if source == "events" {
+		events, _ := readEvents(eventsCachePath)
+		if events == nil {
+			events = []Event{}
+		}
+		crit, warn, info, total, _ := readEventCounts(eventsCachePath)
+		embed = buildEventsEmbed(events, crit, warn, info, total)
+	} else {
+		embed = embedForSource(source, ms)
+	}
 	if embed == nil {
 		log.Printf("handleRefreshOrNav: unknown source %q", source)
 		failEmbed := &discordgo.MessageEmbed{

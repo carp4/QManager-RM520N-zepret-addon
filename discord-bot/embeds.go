@@ -12,12 +12,11 @@ import (
 
 // Color palette (semantic).
 const (
-	colorGreen  = 0x22c55e
-	colorYellow = 0xf59e0b
-	colorRed    = 0xef4444
-	colorBlue   = 0x3b82f6
-	colorGray   = 0x6b7280
-	colorAmber  = 0xf59e0b
+	colorGreen = 0x22c55e
+	colorRed   = 0xef4444
+	colorBlue  = 0x3b82f6
+	colorGray  = 0x6b7280
+	colorAmber = 0xf59e0b
 )
 
 // staleSeconds at the embed layer: cache older than this triggers gray sidebar
@@ -41,11 +40,7 @@ var emoji = struct {
 	Device     string
 	Cells24h   string
 	SCC        string
-	Refresh    string
-	Raw        string
-	NavSignal  string
 	NavBands   string
-	NavStatus  string
 	Expired    string
 	Ok         string
 	Warn       string
@@ -68,11 +63,7 @@ var emoji = struct {
 	Device:     "🌡",
 	Cells24h:   "🛰",
 	SCC:        "🛰️",
-	Refresh:    "↻",
-	Raw:        "🧾",
-	NavSignal:  "📡",
 	NavBands:   "📊",
-	NavStatus:  "📋",
 	Expired:    "⌛",
 	Ok:         "🟢",
 	Warn:       "🟡",

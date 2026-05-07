@@ -369,7 +369,6 @@ func TestBuildBandsEmbed_ServingCellField(t *testing.T) {
 	}
 }
 
-
 func TestParseBandOption_StripsBPrefix(t *testing.T) {
 	// "B3:B28" -> "3:28" (strip B prefix for LTE AT command)
 	got := parseBandOption("B3:B28")
@@ -429,8 +428,8 @@ func TestEmbedForSource_Unknown(t *testing.T) {
 func TestRawSliceFor(t *testing.T) {
 	rawJSON := []byte(`{"network":{"type":"5G"},"lte":{"band":"B3"},"nr":{"band":"n78"},"connectivity":{"latency_ms":15},"device":{"model":"RM520"},"watchcat":{"state":"idle"},"signal_per_antenna":{"nr_rsrp":[1]},"traffic":{"rx_bytes_per_sec":100}}`)
 	cases := []struct {
-		source string
-		mustHave []string
+		source      string
+		mustHave    []string
 		mustNotHave []string
 	}{
 		{"bands", []string{`"network"`, `"lte"`, `"nr"`}, []string{`"watchcat"`, `"device"`}},
@@ -587,5 +586,16 @@ func TestBuildWatchcatEmbed_NeverRecovered(t *testing.T) {
 				t.Errorf("expected Never for empty last recovery, got %q", f.Value)
 			}
 		}
+	}
+}
+
+func TestEmbedForSource_EventsReturnsNil(t *testing.T) {
+	// Events refresh deliberately bypasses embedForSource because
+	// buildEventsEmbed needs different inputs. Verify it returns nil
+	// so handleRefreshOrNav's events branch is the only path that
+	// builds the events embed.
+	embed := embedForSource("events", makeStatus("true", "true", "LTE"))
+	if embed != nil {
+		t.Errorf("embedForSource(\"events\") should return nil; events refresh handled separately. Got: %+v", embed)
 	}
 }
