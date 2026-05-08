@@ -101,6 +101,14 @@ The interactive installer fetches the latest release, verifies the SHA-256 check
 >   bash /tmp/qmanager-installer.sh
 > ```
 >
+> **If you have `wget` but not `curl`**, just use `wget` to fetch the installer — the installer's preflight will install `curl` from Entware automatically (Entware must already be bootstrapped) so future OTA updates work:
+>
+> ```sh
+> wget -O /tmp/qmanager-installer.sh \
+>   https://github.com/dr-dolomite/QManager-RM520N/raw/refs/heads/main/qmanager-installer.sh && \
+>   bash /tmp/qmanager-installer.sh
+> ```
+>
 > The QManager installer creates a `/usr/bin/curl` symlink during install, so subsequent commands and OTA updates pick up `curl` from the standard PATH without manual export.
 
 ### Upgrading

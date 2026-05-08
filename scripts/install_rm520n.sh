@@ -275,9 +275,27 @@ preflight() {
         die "This script must be run as root"
     fi
 
-    # Hard requirement: curl with TLS. We removed all wget fallbacks intentionally.
+    # Hard requirement: curl with TLS. If missing but Entware is already
+    # bootstrapped, self-heal by installing curl via opkg so users who fetched
+    # this script with wget can still complete the install.
     if ! command -v curl >/dev/null 2>&1; then
-        die "curl is required but not found in PATH. Aborting."
+        if [ -x /opt/bin/opkg ]; then
+            warn "curl not found — installing from Entware"
+            /opt/bin/opkg update >/dev/null 2>&1 || true
+            if /opt/bin/opkg install curl >/dev/null 2>&1; then
+                [ -x /opt/bin/curl ] && ln -sf /opt/bin/curl /usr/bin/curl 2>/dev/null
+                hash -r 2>/dev/null || true
+                if command -v curl >/dev/null 2>&1; then
+                    info "curl installed from Entware"
+                else
+                    die "curl install via Entware succeeded but curl still not on PATH. Aborting."
+                fi
+            else
+                die "curl is required but not found, and 'opkg install curl' failed. Aborting."
+            fi
+        else
+            die "curl is required but not found, and Entware is not installed. Install curl first (e.g. via Entware) and re-run."
+        fi
     fi
 
     if [ "$DO_FORCE" = "1" ]; then
