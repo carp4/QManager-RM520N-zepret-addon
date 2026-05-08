@@ -256,8 +256,9 @@ hist="$work/run/hist"
     HISTORY_SIZE=10
     export PATH CARRIER_FILE PING_TARGET_1 PING_TARGET_2 PING_INTERVAL \
            FAIL_THRESHOLD RECOVER_THRESHOLD HISTORY_SIZE
-    sed -e "s|/tmp/qmanager_ping.json|$cache|g" \
-        -e "s|/tmp/qmanager_ping.json.tmp|$cache.tmp|g" \
+    # Order matters: match the longer .json.tmp before the .json prefix it shares.
+    sed -e "s|/tmp/qmanager_ping.json.tmp|$cache.tmp|g" \
+        -e "s|/tmp/qmanager_ping.json|$cache|g" \
         -e "s|/tmp/qmanager_ping_history|$hist|g" \
         -e "s|/tmp/qmanager_recovery_active|$work/run/no_recovery|g" \
         -e "s|/tmp/qmanager_ping.pid|$work/run/pid|g" \
