@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { authFetch } from "@/lib/auth-fetch";
 import type { ModemSubsysData } from "@/types/modem-subsys";
 
-const POLL_INTERVAL = 5000;
+const POLL_INTERVAL = 1000;
 const FETCH_ENDPOINT = "/cgi-bin/quecmanager/system/modem-subsys.sh";
 
 export interface UseModemSubsysReturn {
@@ -21,8 +21,13 @@ export function useModemSubsys(): UseModemSubsysReturn {
 
   const mountedRef = useRef(true);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const inFlightRef = useRef(false);
 
   const fetchData = useCallback(async () => {
+    // Skip when a prior request is still in-flight — prevents request pile-up
+    // at 1Hz polling if the device is briefly slow.
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
     try {
       const response = await authFetch(FETCH_ENDPOINT);
 
@@ -45,6 +50,8 @@ export function useModemSubsys(): UseModemSubsysReturn {
       );
       // Retain stale data so the card doesn't blank out on transient failure.
       setIsLoading(false);
+    } finally {
+      inFlightRef.current = false;
     }
   }, []);
 

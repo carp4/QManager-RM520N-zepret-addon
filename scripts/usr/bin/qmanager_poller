@@ -217,6 +217,29 @@ memory_used_mb=0
 memory_total_mb=0
 uptime_seconds=0
 
+# System health (modem subsystem + cpu/storage telemetry consumed by the
+# System Health card and any other UI that wants near-realtime device stats).
+# Populated by update_system_health(); read directly from sysfs/cpufreq/df.
+sh_state="unknown"
+sh_state_raw=""
+sh_crash_count="null"
+sh_coredump_present="false"
+sh_last_crash_at="null"
+sh_total_logged_crashes=0
+sh_load_1m="null"
+sh_core_count="null"
+sh_freq_khz="null"
+sh_max_freq_khz="null"
+sh_storage_total_kb="null"
+sh_storage_used_kb="null"
+sh_storage_avail_kb="null"
+
+# sysfs/sys paths (mirrored from modem-subsys.sh — single source of truth)
+SH_SUBSYS_BASE="/sys/devices/platform/4080000.qcom,mss/subsys0"
+SH_RAMDUMP_DIR="/sys/devices/platform/4080000.qcom,mss/ramdump/ramdump_modem"
+SH_CRASH_LOG="/etc/qmanager/modem_crashes.json"
+SH_CPUFREQ_BASE="/sys/devices/system/cpu/cpu0/cpufreq"
+
 # Per-antenna signal data (Tier 1.5 — JSON array strings)
 sig_lte_rsrp="[null,null,null,null]"
 sig_lte_rsrq="[null,null,null,null]"
@@ -402,6 +425,108 @@ update_proc_metrics() {
     total_tx_bytes=$tx_bytes
 
     cpu_usage="${cpu_usage:-0}"
+}
+
+# --- System Health -----------------------------------------------------------
+# Collects modem-subsystem state (sysfs) plus CPU/storage telemetry that the
+# System Health card consumes. Output flows into the top-level system_health
+# block of /tmp/qmanager_status.json so the CGI is a thin cache reader.
+#
+# Cheap reads only — no AT commands, no forks beyond awk/grep/df. Safe to run
+# every Tier 1 cycle.
+update_system_health() {
+    # --- subsys state + state_raw -------------------------------------------
+    sh_state_raw=""
+    if [ -r "${SH_SUBSYS_BASE}/state" ]; then
+        sh_state_raw=$(cat "${SH_SUBSYS_BASE}/state")
+    fi
+    if [ -z "$sh_state_raw" ]; then
+        sh_state="unknown"
+    else
+        case "$(printf '%s' "$sh_state_raw" | tr '[:upper:]' '[:lower:]')" in
+            online)  sh_state="online"  ;;
+            offline) sh_state="offline" ;;
+            crashed) sh_state="crashed" ;;
+            *)       sh_state="unknown" ;;
+        esac
+    fi
+
+    # --- crash_count (sysfs counter) ----------------------------------------
+    sh_crash_count="null"
+    if [ -r "${SH_SUBSYS_BASE}/crash_count" ]; then
+        local _cc
+        _cc=$(cat "${SH_SUBSYS_BASE}/crash_count")
+        case "$_cc" in
+            *[!0-9]*) sh_crash_count="null" ;;
+            "")       sh_crash_count="null" ;;
+            *)        sh_crash_count="$_cc" ;;
+        esac
+    fi
+
+    # --- coredump_present ---------------------------------------------------
+    # Match modem-subsys.sh CGI: exclude sysfs metadata pseudo-files.
+    sh_coredump_present="false"
+    if [ -d "$SH_RAMDUMP_DIR" ]; then
+        local _dump
+        _dump=$(find "$SH_RAMDUMP_DIR" -maxdepth 1 -type f -size +0 \
+            ! -name dev ! -name name ! -name power \
+            ! -name subsystem ! -name uevent \
+            ! -name waiting_for_supplier \
+            2>/dev/null | head -1)
+        [ -n "$_dump" ] && sh_coredump_present="true"
+    fi
+
+    # --- crash log summary (last_crash_at + total_logged_crashes) ------------
+    sh_last_crash_at="null"
+    sh_total_logged_crashes=0
+    if [ -f "$SH_CRASH_LOG" ] && [ -s "$SH_CRASH_LOG" ]; then
+        sh_total_logged_crashes=$(jq 'length' "$SH_CRASH_LOG" 2>/dev/null) || sh_total_logged_crashes=0
+        sh_last_crash_at=$(jq 'if length > 0 then last.ts else null end' "$SH_CRASH_LOG" 2>/dev/null) || sh_last_crash_at="null"
+    fi
+
+    # --- load_1m (1-minute load average) ------------------------------------
+    sh_load_1m="null"
+    if [ -r /proc/loadavg ]; then
+        sh_load_1m=$(awk '{print $1}' /proc/loadavg)
+    fi
+
+    # --- core_count (cache after first read — value never changes at runtime)
+    if [ "$sh_core_count" = "null" ]; then
+        if command -v nproc >/dev/null 2>&1; then
+            sh_core_count=$(nproc)
+        elif [ -r /proc/cpuinfo ]; then
+            sh_core_count=$(grep -c '^processor' /proc/cpuinfo)
+        fi
+    fi
+
+    # --- cpu frequency (current + max from cpufreq) -------------------------
+    sh_freq_khz="null"
+    if [ -r "${SH_CPUFREQ_BASE}/scaling_cur_freq" ]; then
+        sh_freq_khz=$(cat "${SH_CPUFREQ_BASE}/scaling_cur_freq")
+    fi
+    sh_max_freq_khz="null"
+    if [ -r "${SH_CPUFREQ_BASE}/scaling_max_freq" ]; then
+        sh_max_freq_khz=$(cat "${SH_CPUFREQ_BASE}/scaling_max_freq")
+    fi
+
+    # --- storage (/usrdata partition) ---------------------------------------
+    sh_storage_total_kb="null"
+    sh_storage_used_kb="null"
+    sh_storage_avail_kb="null"
+    local _df_out
+    _df_out=$(df -P /usrdata 2>/dev/null)
+    if [ $? -eq 0 ] && [ -n "$_df_out" ]; then
+        local _df_line
+        _df_line=$(printf '%s\n' "$_df_out" | awk 'NR==2{print}')
+        if [ -n "$_df_line" ]; then
+            sh_storage_total_kb=$(printf '%s\n' "$_df_line" | awk '{print $2}')
+            sh_storage_used_kb=$(printf '%s\n' "$_df_line"  | awk '{print $3}')
+            sh_storage_avail_kb=$(printf '%s\n' "$_df_line" | awk '{print $4}')
+            [ -z "$sh_storage_total_kb" ] && sh_storage_total_kb="null"
+            [ -z "$sh_storage_used_kb"  ] && sh_storage_used_kb="null"
+            [ -z "$sh_storage_avail_kb" ] && sh_storage_avail_kb="null"
+        fi
+    fi
 }
 
 # --- Connection Uptime -------------------------------------------------------
@@ -1368,6 +1493,19 @@ write_cache() {
         --argjson ss_detected "${sim_swap_detected:-false}" \
         --arg ss_profile_id "$sim_swap_profile_id" \
         --arg ss_profile_name "$sim_swap_profile_name" \
+        --arg     sh_state          "$sh_state" \
+        --arg     sh_state_raw      "$sh_state_raw" \
+        --argjson sh_crash_count    "${sh_crash_count:-null}" \
+        --argjson sh_coredump       "${sh_coredump_present:-false}" \
+        --argjson sh_last_crash_at  "${sh_last_crash_at:-null}" \
+        --argjson sh_total_crashes  "${sh_total_logged_crashes:-0}" \
+        --argjson sh_load_1m        "${sh_load_1m:-null}" \
+        --argjson sh_core_count     "${sh_core_count:-null}" \
+        --argjson sh_freq_khz       "${sh_freq_khz:-null}" \
+        --argjson sh_max_freq_khz   "${sh_max_freq_khz:-null}" \
+        --argjson sh_st_total_kb    "${sh_storage_total_kb:-null}" \
+        --argjson sh_st_used_kb     "${sh_storage_used_kb:-null}" \
+        --argjson sh_st_avail_kb    "${sh_storage_avail_kb:-null}" \
         '{
             timestamp: $timestamp,
             system_state: $system_state,
@@ -1463,6 +1601,36 @@ write_cache() {
                 detected: $ss_detected,
                 matching_profile_id: $ss_profile_id,
                 matching_profile_name: $ss_profile_name
+            },
+            system_health: {
+                state:                $sh_state,
+                state_raw:            (if $sh_state_raw == "" then null else $sh_state_raw end),
+                crash_count:          $sh_crash_count,
+                coredump_present:     $sh_coredump,
+                last_crash_at:        $sh_last_crash_at,
+                total_logged_crashes: $sh_total_crashes,
+                cpu: {
+                    load_1m:      $sh_load_1m,
+                    core_count:   $sh_core_count,
+                    usage_pct:    $cpu,
+                    freq_khz:     $sh_freq_khz,
+                    max_freq_khz: $sh_max_freq_khz
+                },
+                memory: (
+                    if $mem_total > 0 then
+                        { total_kb: ($mem_total * 1024),
+                          used_kb:  ($mem_used * 1024),
+                          available_kb: (($mem_total - $mem_used) * 1024) }
+                    else null end
+                ),
+                storage: (
+                    if $sh_st_total_kb == null then null else
+                        { mount: "/usrdata",
+                          total_kb: $sh_st_total_kb,
+                          used_kb:  $sh_st_used_kb,
+                          available_kb: $sh_st_avail_kb }
+                    end
+                )
             }
         }' > "$CACHE_TMP"
 
@@ -1493,6 +1661,7 @@ poll_cycle() {
     # --- Ping-based checks FIRST (no modem dependency) ---
     # These must run before AT commands in case qcmd blocks on serial I/O.
     update_proc_metrics
+    update_system_health
     read_ping_data
     check_email_alert
     check_sms_alert
@@ -1588,6 +1757,7 @@ main() {
 
     collect_boot_data
     update_proc_metrics
+    update_system_health
     email_alerts_init
     sms_alerts_init
     restore_event_state

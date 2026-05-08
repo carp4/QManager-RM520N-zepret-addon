@@ -107,7 +107,7 @@ export default function ModemSubsystemCard() {
         <CardHeader>
           <CardTitle>System Health</CardTitle>
           <CardDescription>
-            Live modem firmware health and host system telemetry.
+            Subsystem state and host resource usage.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -130,21 +130,18 @@ export default function ModemSubsystemCard() {
               <Skeleton className="h-5 w-28" />
               <Skeleton className="h-5 w-24" />
             </div>
+            {/* CPU Frequency */}
+            <Separator />
+            <div className="flex items-center justify-between">
+              <Skeleton className="h-5 w-28" />
+              <Skeleton className="h-5 w-16" />
+            </div>
             {/* CPU Load */}
             <Separator />
             <div className="flex flex-col gap-1.5">
               <div className="flex items-center justify-between">
                 <Skeleton className="h-5 w-20" />
                 <Skeleton className="h-5 w-12" />
-              </div>
-              <Skeleton className="h-1 w-full" />
-            </div>
-            {/* CPU Frequency */}
-            <Separator />
-            <div className="flex flex-col gap-1.5">
-              <div className="flex items-center justify-between">
-                <Skeleton className="h-5 w-28" />
-                <Skeleton className="h-5 w-16" />
               </div>
               <Skeleton className="h-1 w-full" />
             </div>
@@ -179,7 +176,7 @@ export default function ModemSubsystemCard() {
         <CardHeader>
           <CardTitle>System Health</CardTitle>
           <CardDescription>
-            Live modem firmware health and host system telemetry.
+            Subsystem state and host resource usage.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
@@ -198,10 +195,9 @@ export default function ModemSubsystemCard() {
   // --- Derived metric values ---
   const cpuLoad = data?.cpu?.load_1m ?? null;
   const coreCount = data?.cpu?.core_count ?? null;
-  const resolvedCoreCount = cpuLoad !== null ? (coreCount ?? 4) : null;
+  const cpuUsagePct = data?.cpu?.usage_pct ?? null;
 
   const freqKhz = data?.cpu?.freq_khz ?? null;
-  const maxFreqKhz = data?.cpu?.max_freq_khz ?? null;
 
   const memTotalKb = data?.memory?.total_kb ?? 0;
   const memUsedKb = data?.memory?.used_kb ?? 0;
@@ -217,7 +213,7 @@ export default function ModemSubsystemCard() {
       <CardHeader>
         <CardTitle>System Health</CardTitle>
         <CardDescription>
-          Live modem firmware health and host system telemetry.
+          Subsystem state and host resource usage.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -261,10 +257,19 @@ export default function ModemSubsystemCard() {
             <p className="font-semibold text-muted-foreground text-sm">
               Last crashed
             </p>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm font-medium tabular-nums">
               {data?.last_crash_at != null
                 ? formatRelativeTime(data.last_crash_at)
                 : "Never"}
+            </p>
+          </motion.div>
+
+          {/* ── CPU Frequency ──────────────────────────────────────── */}
+          <Separator />
+          <motion.div variants={itemVariants} className="flex items-center justify-between">
+            <p className="font-semibold text-muted-foreground text-sm">CPU Frequency</p>
+            <p className="text-sm font-medium tabular-nums">
+              {freqKhz !== null ? `${(freqKhz / 1_000_000).toFixed(1)} GHz` : "—"}
             </p>
           </motion.div>
 
@@ -273,36 +278,23 @@ export default function ModemSubsystemCard() {
           <motion.div variants={itemVariants} className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between">
               <p className="font-semibold text-muted-foreground text-sm">CPU Load</p>
-              <p className="text-sm font-medium tabular-nums">
-                {cpuLoad !== null ? cpuLoad.toFixed(2) : "—"}
+              <p
+                className="text-sm font-medium tabular-nums"
+                title={
+                  cpuLoad !== null && coreCount !== null
+                    ? `1-minute load average: ${cpuLoad.toFixed(2)} on ${coreCount} core${coreCount === 1 ? "" : "s"}`
+                    : undefined
+                }
+              >
+                {cpuUsagePct !== null ? `${Math.round(cpuUsagePct)}%` : "—"}
               </p>
             </div>
-            {cpuLoad !== null && resolvedCoreCount !== null && (
+            {cpuUsagePct !== null && (
               <MetricBar
-                value={cpuLoad}
-                max={resolvedCoreCount}
-                warnAt={resolvedCoreCount * 0.75}
-                dangerAt={resolvedCoreCount * 1.0}
-              />
-            )}
-          </motion.div>
-
-          {/* ── CPU Frequency ──────────────────────────────────────── */}
-          <Separator />
-          <motion.div variants={itemVariants} className="flex flex-col gap-1.5">
-            <div className="flex items-center justify-between">
-              <p className="font-semibold text-muted-foreground text-sm">CPU Frequency</p>
-              <p className="text-sm font-medium tabular-nums">
-                {freqKhz !== null ? `${(freqKhz / 1_000_000).toFixed(1)} GHz` : "—"}
-              </p>
-            </div>
-            {freqKhz !== null && maxFreqKhz !== null && (
-              <MetricBar
-                value={freqKhz}
-                max={maxFreqKhz}
-                warnAt={Infinity}
-                dangerAt={Infinity}
-                colorOverride="primary"
+                value={cpuUsagePct}
+                max={100}
+                warnAt={75}
+                dangerAt={90}
               />
             )}
           </motion.div>
@@ -314,7 +306,7 @@ export default function ModemSubsystemCard() {
               <p className="font-semibold text-muted-foreground text-sm">Memory</p>
               <p className="text-sm font-medium tabular-nums">
                 {data?.memory != null
-                  ? `${Math.round(memUsedKb / 1024)} MB (${Math.round((memUsedKb / memTotalKb) * 100)}%)`
+                  ? `${Math.round(memUsedKb / 1024)} / ${Math.round(memTotalKb / 1024)} MB`
                   : "—"}
               </p>
             </div>
@@ -332,9 +324,11 @@ export default function ModemSubsystemCard() {
           <Separator />
           <motion.div variants={itemVariants} className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between">
-              <p className="font-semibold text-muted-foreground text-sm">
+              <p
+                className="font-semibold text-muted-foreground text-sm"
+                title="/usrdata partition"
+              >
                 Storage
-                <span className="text-xs text-muted-foreground ml-1">/usrdata</span>
               </p>
               <p className="text-sm font-medium tabular-nums">
                 {data?.storage != null

@@ -30,6 +30,8 @@ export interface ModemSubsysData {
     load_1m: number | null;
     /** Number of logical CPU cores */
     core_count: number | null;
+    /** Instantaneous CPU utilization percent (0-100) computed from /proc/stat delta; null on first poll or when sample window is unavailable */
+    usage_pct: number | null;
     /** Current CPU frequency in kHz from scaling_cur_freq */
     freq_khz: number | null;
     /** Maximum CPU frequency in kHz from scaling_max_freq */
