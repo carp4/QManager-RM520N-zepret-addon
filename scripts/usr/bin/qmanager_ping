@@ -62,7 +62,6 @@ CARRIER_FILE="${CARRIER_FILE:-/sys/class/net/rmnet_data0/carrier}"
 streak_success=0
 streak_fail=0
 reachable="true"
-prev_reachable="true"
 target_index=0
 target_count=2
 history_count=0     # tracked in shell — avoids wc -l fork every cycle
@@ -91,7 +90,7 @@ carrier_is_up() {
 do_real_internet_probe() {
     local target="$1"
     local raw _rc code tsec
-    # -fsS: fail on HTTP errors, silent except errors, show errors only.
+    # -fsS: silent + show errors; -f rejects 4xx/5xx (204 passes cleanly).
     # -m2: 2-second total timeout (probe budget).
     # -o /dev/null: discard body — we only need code + timing.
     # -w "%{http_code} %{time_total}": write code + time-in-seconds.
@@ -199,7 +198,6 @@ main() {
             streak_fail=0
             qlog_debug "PROBE OK: ${target} rtt=${rtt}ms (streak_success=${streak_success})"
             if [ "$reachable" = "false" ] && [ "$streak_success" -ge "$RECOVER_THRESHOLD" ]; then
-                prev_reachable="$reachable"
                 reachable="true"
                 qlog_state_change "reachable" "false" "true"
             fi
@@ -211,7 +209,6 @@ main() {
             streak_success=0
             qlog_debug "PROBE FAIL: ${target:-<carrier_down>} (streak_fail=${streak_fail})"
             if [ "$reachable" = "true" ] && [ "$streak_fail" -ge "$FAIL_THRESHOLD" ]; then
-                prev_reachable="$reachable"
                 reachable="false"
                 qlog_state_change "reachable" "true" "false"
                 qlog_warn "Internet unreachable after ${FAIL_THRESHOLD} consecutive probe failures"
