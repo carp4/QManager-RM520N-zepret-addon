@@ -15,6 +15,7 @@ A reliability and polish release. Fresh installs now ship with SSH pre-configure
 
 ## 🛠️ Improvements
 
+- **Support tip link and QR code fixed.** The Support page now uses the corrected tip link target and the QR code points to the right destination, so both tap/click and scan flows work reliably.
 - **curl-only HTTP transport.** Removed wget from the installer, OTA updater, and runtime CGIs — QManager now uses curl exclusively. This makes installs reliable on Quectel x5x/x6x firmwares that lack wget, and avoids pulling the ~5 MB Entware wget package that previous fallbacks would have required.
 - **Documented fallback for modems without curl.** Quectel x5x/x6x firmwares (RM502/RM520/RM521) often ship without `curl` in their base image. The README's Quick Install section now shows a one-line `opkg install curl` fallback that uses the absolute `/opt/bin/curl` path to bypass the BusyBox shell's default `PATH` (which excludes `/opt/bin`). The installer also creates a `/usr/bin/curl` symlink during install so subsequent commands and OTA updates work without manual `PATH` exports.
 - **Alerts no longer block the poller.** Email and SMS notifications dispatch in the background, so a slow SMTP server, a stuck registration retry, or a 30-second TCP timeout can't pause data collection any more. Status reflects this within a couple of cycles either way.
@@ -43,7 +44,7 @@ curl -fsSL -o /tmp/qmanager-installer.sh \
   bash /tmp/qmanager-installer.sh
 ```
 
-## 💙 Tips
+## 💙 Thank You!
 
 Bug reports and feature requests welcome on [GitHub Issues](https://github.com/dr-dolomite/QManager-RM520N/issues).
 
