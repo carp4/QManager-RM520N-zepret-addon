@@ -110,38 +110,29 @@ get_target() {
 }
 
 # --- Write slim JSON cache atomically ----------------------------------------
-# Only writes: timestamp, targets, interval, last_rtt, reachability, streaks.
-# Stats (avg/min/max/jitter/loss) and history array are computed by the poller.
+# Renders the 8-scalar schema with printf — no fork, no 322 KB jq binary load.
+# Output is consumed by qmanager_poller (read_ping_data) and qmanager_watchcat.
+# Field names and types are exactly as before.
 write_cache() {
-    local rtt="$1"      # "34.2" or "null"
-
-    local timestamp
+    local rtt="$1"          # numeric like "34.2", or the literal string "null"
+    local timestamp during_recovery
     timestamp=$(date +%s)
-
-    local during_recovery="false"
+    during_recovery="false"
     [ -f "$RECOVERY_FLAG" ] && during_recovery="true"
 
-    jq -n \
-        --argjson timestamp "$timestamp" \
-        --arg target1 "$PING_TARGET_1" \
-        --arg target2 "$PING_TARGET_2" \
-        --argjson interval "$PING_INTERVAL" \
-        --argjson last_rtt "$rtt" \
-        --argjson reachable "$reachable" \
-        --argjson streak_s "$streak_success" \
-        --argjson streak_f "$streak_fail" \
-        --argjson during_rec "$during_recovery" \
-        '{
-            timestamp: $timestamp,
-            targets: [$target1, $target2],
-            interval_sec: $interval,
-            last_rtt_ms: $last_rtt,
-            reachable: $reachable,
-            streak_success: $streak_s,
-            streak_fail: $streak_f,
-            during_recovery: $during_rec
-        }' > "$CACHE_TMP"
-
+    # Targets and interval are bare config values; we don't escape them because
+    # they are operator-controlled (env file) and never contain JSON metachars
+    # in any supported configuration. If you change PING_TARGET_* to accept
+    # arbitrary user input from a CGI, switch to jq here.
+    printf '{"timestamp":%d,"targets":["%s","%s"],"interval_sec":%d,"last_rtt_ms":%s,"reachable":%s,"streak_success":%d,"streak_fail":%d,"during_recovery":%s}\n' \
+        "$timestamp" \
+        "$PING_TARGET_1" "$PING_TARGET_2" \
+        "$PING_INTERVAL" \
+        "$rtt" \
+        "$reachable" \
+        "$streak_success" "$streak_fail" \
+        "$during_recovery" \
+        > "$CACHE_TMP"
     mv "$CACHE_TMP" "$CACHE_FILE"
 }
 

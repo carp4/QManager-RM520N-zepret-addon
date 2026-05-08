@@ -72,5 +72,82 @@ case "$result" in
 esac
 
 # ---------------------------------------------------------------------------
+section "write_cache — printf JSON parses with identical scalar fields"
+
+# Source the function. write_cache reads several globals that the loop
+# normally maintains; we set them explicitly here.
+extract_fn write_cache "$DAEMON" "$work/wc_fn.sh"
+
+result_file="$work/cache.json"
+(
+    set +eu
+    CACHE_FILE="$result_file"
+    CACHE_TMP="$result_file.tmp"
+    PING_TARGET_1="http://www.gstatic.com/generate_204"
+    PING_TARGET_2="http://cp.cloudflare.com/"
+    PING_INTERVAL=5
+    RECOVERY_FLAG="$work/__no_such_flag__"
+    streak_success=12
+    streak_fail=0
+    reachable="true"
+    . "$work/wc_fn.sh"
+    write_cache "185.0"
+)
+
+# Validate it parses
+if ! jq -e . "$result_file" >/dev/null 2>&1; then
+    bad "write_cache did not produce valid JSON"
+    cat "$result_file"
+else
+    ok "write_cache produced valid JSON"
+fi
+
+# Validate scalars and types
+check_field() {
+    local field="$1" expected="$2" got
+    got=$(jq -r "$field" "$result_file" 2>/dev/null)
+    if [ "$got" = "$expected" ]; then
+        ok "$field == $expected"
+    else
+        bad "$field expected '$expected' got '$got'"
+    fi
+}
+
+check_field '.targets[0]' 'http://www.gstatic.com/generate_204'
+check_field '.targets[1]' 'http://cp.cloudflare.com/'
+check_field '.interval_sec' '5'
+check_field '.last_rtt_ms' '185.0'
+check_field '.reachable' 'true'
+check_field '.streak_success' '12'
+check_field '.streak_fail' '0'
+check_field '.during_recovery' 'false'
+
+# during_recovery flips when RECOVERY_FLAG file exists
+recovery_file="$work/recovery_flag"
+touch "$recovery_file"
+(
+    set +eu
+    CACHE_FILE="$result_file"
+    CACHE_TMP="$result_file.tmp"
+    PING_TARGET_1="x"; PING_TARGET_2="y"; PING_INTERVAL=5
+    RECOVERY_FLAG="$recovery_file"
+    streak_success=1; streak_fail=0; reachable="true"
+    . "$work/wc_fn.sh"
+    write_cache "null"
+)
+if [ "$(jq -r '.during_recovery' "$result_file")" = "true" ]; then
+    ok "during_recovery=true when recovery flag file exists"
+else
+    bad "during_recovery did not flip with recovery flag"
+fi
+
+# null RTT must be JSON null (not the string "null")
+if [ "$(jq -r '.last_rtt_ms | type' "$result_file")" = "null" ]; then
+    ok "last_rtt_ms=null is JSON null type, not string"
+else
+    bad "last_rtt_ms type wrong: $(jq -r '.last_rtt_ms | type' "$result_file")"
+fi
+
+# ---------------------------------------------------------------------------
 printf '\nResult: %d pass, %d fail\n' "$pass_count" "$fail_count"
 exit "$fail"
