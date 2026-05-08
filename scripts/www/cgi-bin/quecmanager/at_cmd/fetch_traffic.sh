@@ -40,8 +40,10 @@ mtime=$(stat -c %Y "$CACHE_FILE" 2>/dev/null || echo 0)
 age=$((now - mtime))
 
 if [ "$age" -gt "$STALE_SECONDS" ]; then
-    # Inject stale=true into the existing payload
-    jq --argjson stale true '. + { stale: $stale }' < "$CACHE_FILE"
+    # Inject stale=true into the existing payload; fall back to raw cache
+    # if jq is missing or fails to parse, so the response is never empty.
+    jq --argjson stale true '. + { stale: $stale }' < "$CACHE_FILE" \
+        || cat "$CACHE_FILE"
 else
     cat "$CACHE_FILE"
 fi
