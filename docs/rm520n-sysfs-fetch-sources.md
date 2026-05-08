@@ -72,7 +72,9 @@ eth0:         rx 1380668          tx 8481799          ← RGMII to host
 | `system_debug` | `reset` | Debug behavior on crash. Static. |
 | `quec_state` | `Terminated` | **Quectel-added attribute, semantics unclear.** Reads `Terminated` while `state=ONLINE` — do NOT trust this field as a health signal until we figure out what it represents. May be referring to a one-shot init process that genuinely terminated, not modem firmware state. |
 
-**Recommendation:** Add a "Modem Subsystem" telemetry line to System Settings or the watchdog dashboard:
+**Status: implemented.** The poller's `update_system_health()` function (Tier 1, every ~2s) reads `subsys0/{state,crash_count}` and the `ramdump_modem/` directory and emits a `system_health` block in `/tmp/qmanager_status.json`. The "System Health" card in System Settings consumes this via `GET /cgi-bin/quecmanager/system/modem-subsys.sh`, which is a thin `jq` reader over the cache. See `docs/BACKEND.md` § `qmanager_poller` and `docs/API-REFERENCE.md` § `/system/modem-subsys.sh`.
+
+Original recommendation (now satisfied):
 - `state` for live up/down
 - `crash_count` delta to detect silent recoveries (modem rebooted itself but cellular came back too fast for `AT+CEREG` polling to notice)
 - `ramdump_modem/` directory presence as a "core dump available" indicator
@@ -299,7 +301,7 @@ Lowest-risk, highest-leverage migration for the poller:
 
 1. Move `AT+QTEMP` → read `/sys/class/thermal/`. Drop one AT call per poll, gain ~40 sensors of granularity.
 2. Move `AT+QGDCNT` → read `/proc/net/dev`. Drop one AT call per poll, gain per-interface granularity.
-3. Add a new "Modem Subsystem" health indicator using `subsys0/state` + `subsys0/crash_count`. Costs nothing; catches silent modem reboots that AT polling misses.
+3. Add a new "Modem Subsystem" health indicator using `subsys0/state` + `subsys0/crash_count`. Costs nothing; catches silent modem reboots that AT polling misses. **(Done — shipped as the "System Health" card; collected by the poller's `update_system_health()` and exposed via `/system/modem-subsys.sh`.)**
 
 Both AT removals free up `/tmp/qmanager_at.lock` for the genuinely modem-firmware-bound queries (signal, cell, registration), where AT serialization actually matters.
 

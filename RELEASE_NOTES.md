@@ -1,6 +1,6 @@
-# 🚀 QManager RM520N BETA v0.1.7
+# 🚀 QManager RM520N BETA v0.1.7 Draft
 
-A reliability and polish release. Fresh installs now ship with SSH pre-configured, the poller gains a cycle-budget watchdog and ping-daemon liveness tracking, modems that boot with the radio off recover automatically, and HTTP transport is now curl-only throughout. A brand-new Discord Bot lets you check and control your modem from your phone, and antenna alignment recordings now survive page reloads and reboots.
+A reliability and polish release. Fresh installs now ship with SSH pre-configured, the poller gains a cycle-budget watchdog and ping-daemon liveness tracking, modems that boot with the radio off recover automatically, and HTTP transport is now curl-only throughout. A brand-new Discord Bot lets you check and control your modem from your phone, antenna alignment recordings now survive page reloads and reboots, and a new live System Health card surfaces CPU, memory, storage, and modem-subsystem telemetry at a glance.
 
 > One-click OTA from **System Settings → Software Update** if you're on v0.1.5 or newer. SSH/ADB is not required.
 
@@ -12,6 +12,7 @@ A reliability and polish release. Fresh installs now ship with SSH pre-configure
 - **Ping-daemon liveness event.** When the ping daemon goes silent for 60+ seconds the poller now surfaces a `ping_daemon_stale` event in the activity feed instead of failing silently. Also auto-recovers when the daemon resumes.
 - **Brand-new Discord Bot.** QManager now ships with a personal Discord bot that puts modem status and control directly in your pocket. Use `/status`, `/signal`, `/bands`, `/device`, `/sim`, `/events`, and `/watchcat` to check your modem from anywhere, and `/lock-band` and `/network-mode` to reconfigure it — all from a Discord DM, no VPN required. The Bot card in Settings walks you through a four-step setup (Token → User ID → Online → Authorized), surfaces an **Awaiting Authorization** badge when the bot is running but hasn't been added to your account yet, and confirms end-to-end delivery with a test DM.
 - **Antenna alignment recordings now persist across reloads and modem reboots.** Recorded angles and positions are saved locally in your browser, so you can move the modem to a new spot, reboot it, and still see your prior reference values when you come back. Each recorded slot also has a small trash icon to clear it individually without resetting the whole comparison.
+- **Live System Health card.** A new card under System Settings shows the modem subsystem state, crash count, last-crashed time, CPU frequency and live utilization, memory, and `/usrdata` storage in one place — refreshing every two seconds without adding any extra load on the device. CPU and memory render as familiar percent-of-capacity gauges (matching what Activity Monitor and Task Manager show), so high load on a single-core modem is now obvious at a glance. All telemetry is sourced from the existing background poller's shared cache, so the card is essentially free to keep open.
 
 ## 🛠️ Improvements
 

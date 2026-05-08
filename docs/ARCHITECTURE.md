@@ -57,12 +57,12 @@ The backend uses a tiered polling system to balance data freshness against modem
 
 | Tier | Interval | Data Collected | Source |
 |------|----------|---------------|--------|
-| **Tier 1 (Hot)** | 2s | Serving cell (RSRP/RSRQ/SINR/RSSI), traffic stats, uptime | `AT+QENG="servingcell"`, `/proc/net/dev` |
+| **Tier 1 (Hot)** | 2s | Serving cell (RSRP/RSRQ/SINR/RSSI), traffic stats, uptime, system health | `AT+QENG="servingcell"`, `/proc/net/dev`, sysfs |
 | **Tier 1.5 (Signal)** | 10s | Per-antenna signal, signal history, ping history | `AT+QRSRP`, `AT+QRSRQ`, `AT+QSINR` |
 | **Tier 2 (Warm)** | 30s | Temperature, carrier, SIM slot, CA info, MIMO, APN | `AT+QTEMP`, `AT+COPS`, `AT+QCAINFO` |
 | **Boot (Once)** | Startup | Firmware, IMEI, IMSI, ICCID, capabilities, supported bands | `AT+CGMM`, `AT+CGSN`, etc. |
 
-All tiers write to a single cache file: `/tmp/qmanager_status.json`
+All tiers write to a single cache file: `/tmp/qmanager_status.json`. Tier 1 also runs `update_system_health()` — a no-AT, sysfs-only collector that emits the top-level `system_health` block (modem subsystem state, crash counters, CPU, memory, storage). The `/system/modem-subsys.sh` CGI is a thin reader over this block; no live computation happens at request time.
 
 ### Frontend Polling
 

@@ -461,6 +461,22 @@ Main data collection daemon. Sources `qlog.sh`, `parse_at.sh`, `events.sh`, `ema
 
 Network interface for traffic stats is auto-detected: `rmnet_ipa0` on RM520N-GL (presence of `/etc/quectel-project-version`), `wwan0` on other platforms.
 
+**System Health collection (`update_system_health()`):** Runs every Tier 1 cycle. Cheap reads only — no AT commands, no extra forks beyond `awk`/`grep`/`df`. Emits a top-level `system_health` block in the cache so the `system/modem-subsys.sh` CGI can serve it as a thin reader. Sources:
+
+| Field | Source |
+|-------|--------|
+| `state`, `state_raw`, `crash_count` | `/sys/devices/platform/4080000.qcom,mss/subsys0/{state,crash_count}` |
+| `coredump_present` | Non-empty file under `/sys/devices/platform/4080000.qcom,mss/ramdump/ramdump_modem/` (sysfs metadata pseudo-files excluded) |
+| `last_crash_at`, `total_logged_crashes` | `/etc/qmanager/modem_crashes.json` (NDJSON-style array; last entry's `ts` and `length`) |
+| `cpu.load_1m` | `/proc/loadavg` (first column) |
+| `cpu.core_count` | `nproc` (cached after first read — value never changes at runtime) |
+| `cpu.usage_pct` | `/proc/stat` delta computed in `update_proc_metrics()` (the same value the rest of the cache uses) |
+| `cpu.freq_khz`, `cpu.max_freq_khz` | `/sys/devices/system/cpu/cpu0/cpufreq/{scaling_cur_freq,scaling_max_freq}` |
+| `memory.{total_kb, used_kb, available_kb}` | Derived from `device.memory_total_mb` / `device.memory_used_mb` (× 1024) |
+| `storage.{mount, total_kb, used_kb, available_kb}` | `df -P /usrdata` |
+
+The CGI reader (`/cgi-bin/quecmanager/system/modem-subsys.sh`) is now a thin `jq` extractor: it reshapes `system_health` into the historical response schema, falls back to an all-null shape if the cache is missing or older than 30s, and never re-implements live computation. Per-request cost dropped from ~80–120ms to ~15–25ms.
+
 #### `qmanager_ping`
 
 **Location:** `/usr/bin/qmanager_ping`
