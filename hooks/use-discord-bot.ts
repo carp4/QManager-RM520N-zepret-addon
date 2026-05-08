@@ -25,7 +25,10 @@ export interface UseDiscordBotReturn {
   disable: () => Promise<boolean>;
   resetBot: () => Promise<boolean>;
   isResetting: boolean;
-  refresh: () => void;
+  // Pass silent=true for background polling so the skeleton doesn't flash on
+  // every poll. Default (no arg) mimics an explicit user action and shows the
+  // loading state.
+  refresh: (silent?: boolean) => void;
 }
 
 export function useDiscordBot(): UseDiscordBotReturn {

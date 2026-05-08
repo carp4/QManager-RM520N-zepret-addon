@@ -110,9 +110,12 @@ interface OnboardingStepperProps {
 }
 
 function OnboardingStepper({ tokenSet, ownerIdSet, online, authorized }: OnboardingStepperProps) {
+  // Order matches the form below: User ID first (easy — copy from Discord
+  // with Developer Mode), then Token (harder — requires Developer Portal app),
+  // then Online (gateway connect), then Authorized (DM channel captured).
   const steps = [
-    { n: 1, label: "Token", done: tokenSet },
-    { n: 2, label: "User ID", done: ownerIdSet },
+    { n: 1, label: "User ID", done: ownerIdSet },
+    { n: 2, label: "Token", done: tokenSet },
     { n: 3, label: "Online", done: online },
     { n: 4, label: "Authorized", done: authorized },
   ];
@@ -174,6 +177,10 @@ export function DiscordBotCard() {
   );
   const [token, setToken] = useState(""); // ephemeral — never pre-filled
   const [showToken, setShowToken] = useState(false);
+  // When the token is already saved server-side, the field collapses to a
+  // "Saved · Replace" affordance. Clicking Replace flips this to true and
+  // re-renders the input. Cleared on successful save and on reset.
+  const [replaceTokenMode, setReplaceTokenMode] = useState(false);
   const [ownerID, setOwnerID] = useState("");
   const [threshold, setThreshold] = useState("5");
   const [enabled, setEnabled] = useState(false);
@@ -190,6 +197,12 @@ export function DiscordBotCard() {
   // the only proof.
   const oauthClickedAtRef = useRef<number | null>(null);
   const [autoVerifying, setAutoVerifying] = useState(false);
+  // Post-save initialization buffer. The Discord gateway handshake takes ~10s
+  // on a typical cellular link, so we hold the UI in a "Connecting…" state for
+  // that window instead of trusting a possibly-stale status.json from before
+  // the daemon's svc_restart. While true: badge shows "Connecting…", auth
+  // alert and Send Test stay hidden, status polls every 1s.
+  const [isInitializing, setIsInitializing] = useState(false);
 
   if (settings && settings !== prevSettings) {
     setPrevSettings(settings);
@@ -229,6 +242,14 @@ export function DiscordBotCard() {
     ownerIDRequiredError
   );
 
+  // Whether the Enable switch may be flipped on. Token + valid User ID must
+  // be in hand before enabling makes sense — otherwise the daemon would
+  // svc_restart and immediately exit on missing creds. Toggling OFF is always
+  // allowed (so a user can disable a configured bot).
+  const tokenAvailable = !!settings?.token_set || token.trim().length > 0;
+  const ownerIDValid = !!ownerID && !ownerIDError;
+  const prereqsMet = tokenAvailable && ownerIDValid;
+
   // --- Dirty check -----------------------------------------------------------
   const isDirty = settings
     ? enabled !== settings.enabled ||
@@ -263,14 +284,17 @@ export function DiscordBotCard() {
     const ok = await saveSettings(payload);
     if (ok) {
       setToken("");
+      setReplaceTokenMode(false);
+      setShowToken(false);
       markSaved();
       toast.success("Discord bot settings saved");
-      // The daemon takes a moment to connect after being enabled — saveSettings
-      // refetches status immediately, but the gateway handshake hasn't landed
-      // yet, so the badge stays "Disconnected" until a follow-up poll.
+      // The daemon takes ~10s to complete the Discord gateway handshake after
+      // svc_restart — and the status.json on disk may still hold connected:true
+      // from the previous session for the first second or two. Drive the UI
+      // into a deliberate "Connecting…" state and let the polling effect
+      // refresh status until the new daemon is actually up.
       if (payload.enabled) {
-        setTimeout(() => refresh(), 1500);
-        setTimeout(() => refresh(), 4000);
+        setIsInitializing(true);
       }
     } else {
       toast.error(error || "Failed to save Discord bot settings");
@@ -352,14 +376,43 @@ export function DiscordBotCard() {
     return () => window.removeEventListener("focus", handleFocus);
   }, [sendTestDm, markAuthorized]);
 
+  // --- Post-save initialization buffer --------------------------------------
+  // While isInitializing, poll status every 1s so the badge tracks the
+  // gateway handshake. Hold for at least 10s — that's the typical Discord
+  // gateway connect time on cellular, and it absorbs any stale connected:true
+  // left in status.json from before svc_restart. Buttons that depend on
+  // status.connected (Send Test, Add Bot in the auth alert) stay correctly
+  // gated by status; the buffer just prevents premature interaction with the
+  // "Awaiting authorization" UI flashing in from stale data.
+  useEffect(() => {
+    if (!isInitializing) return;
+    const interval = setInterval(() => refresh(true), 1000);
+    const timeout = setTimeout(() => setIsInitializing(false), 10000);
+    return () => {
+      clearInterval(interval);
+      clearTimeout(timeout);
+    };
+  }, [isInitializing, refresh]);
+
   // --- Status badge ----------------------------------------------------------
-  // Four states (in order of "more configured" → "fully working"):
+  // Five states (in order of "more configured" → "fully working"):
+  //   0. Connecting       — post-save buffer; gateway handshake in progress
   //   1. Not installed    — bot binary missing
   //   2. Disconnected     — bot installed but gateway connection failed (token invalid/etc)
   //   3. Awaiting auth    — gateway connected but user hasn't added the bot via OAuth yet
   //                         (we can't DM them; proven only by a successful test DM)
   //   4. Authorized       — gateway connected AND user has been reached at least once
   const statusBadge = () => {
+    if (isInitializing) {
+      return (
+        <Badge
+          variant="outline"
+          className="bg-info/15 text-info hover:bg-info/20 border-info/30"
+        >
+          <Loader2 className="size-3 animate-spin" /> Connecting…
+        </Badge>
+      );
+    }
     if (!status?.installed) {
       return (
         <Badge
@@ -552,8 +605,24 @@ export function DiscordBotCard() {
           </Collapsible>
         )}
 
+        {/* Post-save initialization callout — Discord gateway handshake takes
+            ~10s on cellular. Holds the user's attention so they don't click
+            "Add Bot to Account" against a not-yet-ready bot. */}
+        {isInitializing && (
+          <Alert className="mb-6 border-info/30 bg-info/5 [&>svg]:text-info">
+            <Loader2 className="size-4 animate-spin" />
+            <AlertTitle className="text-info">
+              Connecting to Discord…
+            </AlertTitle>
+            <AlertDescription>
+              The bot is starting up — this usually takes about 10 seconds.
+              Authorization options will appear once the gateway is ready.
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* Awaiting-authorization callout — connected but no test DM has succeeded */}
-        {tokenSet && online && !authorized && oauthUrl && (
+        {!isInitializing && tokenSet && online && !authorized && oauthUrl && (
           <Alert className="mb-6 border-warning/30 bg-warning/5 [&>svg]:text-warning">
             <TriangleAlertIcon className="size-4" />
             <AlertTitle className="text-warning">
@@ -617,92 +686,29 @@ export function DiscordBotCard() {
         <form className="grid gap-4" onSubmit={handleSave}>
           <FieldSet>
             <FieldGroup>
-              {/* Enable toggle */}
-              <Field orientation="horizontal" className="w-fit">
-                <FieldLabel htmlFor="discord-enabled">
-                  Enable Discord Bot
-                </FieldLabel>
-                <Switch
-                  id="discord-enabled"
-                  checked={enabled}
-                  onCheckedChange={setEnabled}
-                />
-              </Field>
-
-              {/* Bot Token */}
-              <Field>
-                <FieldLabel htmlFor="discord-token">
-                  Bot Token
-                  {settings?.token_set && (
-                    <span className="ml-1 text-xs font-normal text-muted-foreground">
-                      (set — leave blank to keep)
-                    </span>
-                  )}
-                </FieldLabel>
-                <div className="relative max-w-sm">
-                  <Input
-                    id="discord-token"
-                    name="discord-bot-token"
-                    // Use a real password input so masking works in every
-                    // browser (the previous CSS `text-security` trick was
-                    // WebKit-only — Firefox would leak the token in
-                    // plaintext). `autoComplete="new-password"` tells
-                    // browsers/managers this isn't a saved-password field
-                    // to auto-fill from.
-                    type={showToken ? "text" : "password"}
-                    placeholder={
-                      settings?.token_set ? "••••••••" : "Paste your bot token"
-                    }
-                    // Suppress the Edge/IE native reveal button so it doesn't
-                    // duplicate our show/hide toggle.
-                    className="pr-11 [&::-ms-reveal]:hidden [&::-ms-clear]:hidden"
-                    value={token}
-                    onChange={(e) => setToken(e.target.value)}
-                    autoComplete="new-password"
-                    autoCorrect="off"
-                    autoCapitalize="off"
-                    spellCheck={false}
-                    data-1p-ignore=""
-                    data-lpignore="true"
-                    data-form-type="other"
-                    aria-invalid={!!tokenRequiredError}
-                    aria-describedby={
-                      tokenRequiredError
-                        ? "discord-token-error"
-                        : "discord-token-desc"
-                    }
+              {/* Enable toggle — gated until both creds are in hand. Toggling
+                  OFF an enabled bot is always allowed. */}
+              <div>
+                <Field orientation="horizontal" className="w-fit">
+                  <FieldLabel htmlFor="discord-enabled">
+                    Enable Discord Bot
+                  </FieldLabel>
+                  <Switch
+                    id="discord-enabled"
+                    checked={enabled}
+                    onCheckedChange={setEnabled}
+                    disabled={!enabled && !prereqsMet}
                   />
-                  <button
-                    type="button"
-                    aria-label={showToken ? "Hide token" : "Show token"}
-                    aria-pressed={showToken}
-                    // p-1.5 around a size-4 (16px) icon yields a ~28px hit
-                    // area — meets WCAG 2.5.8 AA minimum (24px). The
-                    // negative margin keeps the icon visually flush with
-                    // the input's right edge.
-                    className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1.5 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
-                    onClick={() => setShowToken((v) => !v)}
-                  >
-                    {showToken ? (
-                      <EyeOffIcon className="size-4" />
-                    ) : (
-                      <EyeIcon className="size-4" />
-                    )}
-                  </button>
-                </div>
-                {tokenRequiredError ? (
-                  <FieldError id="discord-token-error">
-                    {tokenRequiredError}
-                  </FieldError>
-                ) : (
-                  <FieldDescription id="discord-token-desc">
-                    Created in the Discord Developer Portal. Stored locally
-                    on this device.
-                  </FieldDescription>
+                </Field>
+                {!enabled && !prereqsMet && (
+                  <p className="text-xs text-muted-foreground mt-1.5">
+                    Fill in your Discord User ID and Bot Token below first.
+                  </p>
                 )}
-              </Field>
+              </div>
 
-              {/* Discord User ID */}
+              {/* Discord User ID — first because it's easy to obtain (Discord
+                  Developer Mode → Copy User ID). Token comes after. */}
               <Field>
                 <FieldLabel htmlFor="discord-owner-id">
                   Your Discord User ID
@@ -730,6 +736,118 @@ export function DiscordBotCard() {
                 ) : (
                   <FieldDescription id="discord-owner-id-desc">
                     The Discord account that will receive DMs from the bot.
+                  </FieldDescription>
+                )}
+              </Field>
+
+              {/* Bot Token — collapses to a "Saved" chip + Replace button once
+                  the server has it. Replace re-renders the input so the user
+                  can paste a new token; Cancel discards the edit and keeps the
+                  saved one. */}
+              <Field>
+                <FieldLabel htmlFor="discord-token">Bot Token</FieldLabel>
+                {settings?.token_set && !replaceTokenMode ? (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge
+                      variant="outline"
+                      className="bg-success/15 text-success hover:bg-success/20 border-success/30"
+                    >
+                      <CheckCircle2Icon className="size-3" />
+                      Saved
+                    </Badge>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setReplaceTokenMode(true);
+                        setToken("");
+                        setShowToken(false);
+                      }}
+                    >
+                      Replace
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="relative max-w-sm">
+                      <Input
+                        id="discord-token"
+                        name="discord-bot-token"
+                        // Use a real password input so masking works in every
+                        // browser (the previous CSS `text-security` trick was
+                        // WebKit-only — Firefox would leak the token in
+                        // plaintext). `autoComplete="new-password"` tells
+                        // browsers/managers this isn't a saved-password field
+                        // to auto-fill from.
+                        type={showToken ? "text" : "password"}
+                        placeholder={
+                          replaceTokenMode
+                            ? "Paste new bot token"
+                            : "Paste your bot token"
+                        }
+                        // Suppress the Edge/IE native reveal button so it doesn't
+                        // duplicate our show/hide toggle.
+                        className="pr-11 [&::-ms-reveal]:hidden [&::-ms-clear]:hidden"
+                        value={token}
+                        onChange={(e) => setToken(e.target.value)}
+                        autoComplete="new-password"
+                        autoCorrect="off"
+                        autoCapitalize="off"
+                        spellCheck={false}
+                        data-1p-ignore=""
+                        data-lpignore="true"
+                        data-form-type="other"
+                        aria-invalid={!!tokenRequiredError}
+                        aria-describedby={
+                          tokenRequiredError
+                            ? "discord-token-error"
+                            : "discord-token-desc"
+                        }
+                      />
+                      <button
+                        type="button"
+                        aria-label={showToken ? "Hide token" : "Show token"}
+                        aria-pressed={showToken}
+                        // p-1.5 around a size-4 (16px) icon yields a ~28px hit
+                        // area — meets WCAG 2.5.8 AA minimum (24px). The
+                        // negative margin keeps the icon visually flush with
+                        // the input's right edge.
+                        className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1.5 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                        onClick={() => setShowToken((v) => !v)}
+                      >
+                        {showToken ? (
+                          <EyeOffIcon className="size-4" />
+                        ) : (
+                          <EyeIcon className="size-4" />
+                        )}
+                      </button>
+                    </div>
+                    {replaceTokenMode && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="self-start mt-1 text-muted-foreground hover:text-foreground"
+                        onClick={() => {
+                          setReplaceTokenMode(false);
+                          setToken("");
+                          setShowToken(false);
+                        }}
+                      >
+                        Cancel — keep saved token
+                      </Button>
+                    )}
+                  </>
+                )}
+                {tokenRequiredError ? (
+                  <FieldError id="discord-token-error">
+                    {tokenRequiredError}
+                  </FieldError>
+                ) : (
+                  <FieldDescription id="discord-token-desc">
+                    Created in the Discord Developer Portal. Stored locally
+                    on this device.
                   </FieldDescription>
                 )}
               </Field>
@@ -876,6 +994,7 @@ export function DiscordBotCard() {
                           // Reset all local form state
                           setToken("");
                           setShowToken(false);
+                          setReplaceTokenMode(false);
                           setOwnerID("");
                           setThreshold("5");
                           setEnabled(false);
