@@ -78,11 +78,9 @@ read_counters() {
 # write_cache <iface_or_empty> <rx> <tx> <rx_per_sec> <tx_per_sec>
 write_cache() {
     local iface="$1" rx="$2" tx="$3" rxps="$4" txps="$5"
-    local ts iface_arg
+    local ts
     ts=$(date +%s)
     if [ -z "$iface" ]; then
-        iface_arg="null"
-        # jq null-arg pattern
         jq -n \
             --argjson ts "$ts" \
             --argjson trx "$rx" --argjson ttx "$tx" \
@@ -121,8 +119,8 @@ while :; do
     fi
 
     set -- $(read_counters "$iface")
-    rx="$1"
-    tx="$2"
+    rx="${1:-0}"
+    tx="${2:-0}"
     now_ts=$(date +%s)
 
     rxps=0
