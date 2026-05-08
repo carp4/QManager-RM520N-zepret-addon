@@ -149,5 +149,76 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+section "do_real_internet_probe — success and failure paths"
+
+extract_fn do_real_internet_probe "$DAEMON" "$work/probe_fn.sh"
+
+# Stub curl: writes "<code> <time_total>" to stdout based on $STUB_BODY/$STUB_EXIT.
+mkdir -p "$work/bin"
+
+cat > "$work/bin/curl" <<'STUB'
+#!/bin/sh
+# Stub returns the canned response captured in $STUB_BODY (default: 204 0.180000).
+# Use no-colon form so empty STUB_BODY="" emits nothing (not the default).
+[ -n "$STUB_BODY" ] && echo "$STUB_BODY" || echo "204 0.180000"
+exit "${STUB_EXIT:-0}"
+STUB
+chmod +x "$work/bin/curl"
+
+# Case 1: 204 + 180ms → success, RTT="180.0"
+result=$(
+    set +eu
+    PATH="$work/bin:$PATH"
+    STUB_BODY="204 0.180000"
+    STUB_EXIT=0
+    export STUB_BODY STUB_EXIT
+    . "$work/probe_fn.sh"
+    do_real_internet_probe "http://example/204"
+    echo "exit=$?"
+)
+echo "$result" | grep -q '^180\.0$' && ok "200ms 204 → emits '180.0'" || bad "204 RTT extraction wrong: $result"
+echo "$result" | grep -q '^exit=0$' && ok "204 → returns 0" || bad "204 did not return 0: $result"
+
+# Case 2: HTTP 200 (captive-portal style) → failure
+result=$(
+    set +eu
+    PATH="$work/bin:$PATH"
+    STUB_BODY="200 0.040000"
+    STUB_EXIT=0
+    export STUB_BODY STUB_EXIT
+    . "$work/probe_fn.sh"
+    do_real_internet_probe "http://portal/login"
+    echo "exit=$?"
+)
+echo "$result" | grep -q '^exit=1$' && ok "200 (captive portal) → returns 1" || bad "200 did not return 1: $result"
+echo "$result" | grep -qE '^[0-9]' && bad "200 emitted RTT (should be silent on failure)" || ok "200 → no RTT on stdout"
+
+# Case 3: curl exit non-zero (DNS fail, timeout) → failure
+result=$(
+    set +eu
+    PATH="$work/bin:$PATH"
+    STUB_BODY=""
+    STUB_EXIT=28
+    export STUB_BODY STUB_EXIT
+    . "$work/probe_fn.sh"
+    do_real_internet_probe "http://timeout/204"
+    echo "exit=$?"
+)
+echo "$result" | grep -q '^exit=1$' && ok "curl timeout → returns 1" || bad "timeout did not return 1: $result"
+
+# Case 4: 204 + tiny time → emits "0.1" (rounded)
+result=$(
+    set +eu
+    PATH="$work/bin:$PATH"
+    STUB_BODY="204 0.000123"
+    STUB_EXIT=0
+    export STUB_BODY STUB_EXIT
+    . "$work/probe_fn.sh"
+    do_real_internet_probe "http://example/204"
+    echo "exit=$?"
+)
+echo "$result" | grep -q '^0\.1$' && ok "0.000123s → emits '0.1' (rounded)" || bad "tiny RTT formatting wrong: $result"
+
+# ---------------------------------------------------------------------------
 printf '\nResult: %d pass, %d fail\n' "$pass_count" "$fail_count"
 exit "$fail"

@@ -99,6 +99,35 @@ do_ping() {
     echo "$rtt"
 }
 
+# --- HTTP /generate_204 probe — validates "real internet, not portal" -------
+# Returns: 0 = success (RTT in ms written to stdout), 1 = failure (silent).
+#
+# Why HTTP 204: a captive portal cannot fake a 204 + empty body. Portals
+# intercept HTTP and serve their own login page (200 + HTML), which fails
+# the explicit code check below. ICMP, TCP-SYN, and DNS all pass through
+# portals — only an HTTP content check actually proves real internet.
+do_real_internet_probe() {
+    local target="$1"
+    local raw _rc code tsec
+    # -fsS: fail on HTTP errors, silent except errors, show errors only.
+    # -m2: 2-second total timeout (probe budget).
+    # -o /dev/null: discard body — we only need code + timing.
+    # -w "%{http_code} %{time_total}": write code + time-in-seconds.
+    # Capture output and exit code separately — $(set -- $(curl ...)) loses
+    # curl's exit code because set always exits 0.
+    raw=$(curl -fsS -m2 -o /dev/null \
+        -w '%{http_code} %{time_total}' "$target" 2>/dev/null)
+    _rc=$?
+    [ "$_rc" -eq 0 ] || return 1
+    set -- $raw
+    code="${1:-000}"
+    tsec="${2:-0}"
+    [ "$code" = "204" ] || return 1
+    # tsec is float seconds (e.g. "0.184321"). Convert to ms with one
+    # decimal — matches the precision the previous ICMP path emitted.
+    awk -v t="$tsec" 'BEGIN{ printf "%.1f\n", t * 1000 }'
+}
+
 # --- Select next ping target (alternates between targets) --------------------
 get_target() {
     if [ "$target_index" -eq 0 ]; then
