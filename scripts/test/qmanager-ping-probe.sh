@@ -60,6 +60,7 @@ case "$result" in
 esac
 
 result=$(
+    exec 2>/dev/null
     set +eu
     CARRIER_FILE="$work/does_not_exist"
     . "$work/carrier_fn.sh"
