@@ -9,7 +9,7 @@ const EthernetStatusComponent = () => {
           Monitor the host ethernet link and configure its negotiated speed.
         </p>
       </div>
-      <div className="grid grid-cols-1 grid-flow-row gap-4">
+      <div className="grid grid-cols-1 @3xl/main:grid-cols-2 grid-flow-row gap-4">
         <EthernetStatusCard />
       </div>
     </div>

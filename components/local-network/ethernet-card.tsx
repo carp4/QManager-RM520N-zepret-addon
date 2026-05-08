@@ -123,6 +123,56 @@ const EthernetStatusCard = () => {
   // ---------------------------------------------------------------------------
   const handleSpeedChange = async (value: string) => {
     setIsSaving(true);
+    // Optimistic update so the dropdown shows the requested value during PHY bounce.
+    setStatus((prev) => prev ? { ...prev, speed_limit: value } : prev);
+
+    const MAX_POLLS = 6;
+    const POLL_INTERVAL_MS = 1500;
+
+    // Polls until the link comes back up at the requested speed, or gives up.
+    // Returns true if confirmed, false if exhausted.
+    const confirmSpeedChange = async (requestedValue: string, windowSec: number): Promise<boolean> => {
+      await new Promise((resolve) => setTimeout(resolve, windowSec * 1000));
+
+      for (let i = 0; i < MAX_POLLS; i++) {
+        if (!mountedRef.current) return false;
+        try {
+          const pollResp = await authFetch(CGI_ENDPOINT);
+          if (pollResp.ok) {
+            const pollData = await pollResp.json();
+            if (!mountedRef.current) return false;
+            if (
+              pollData.success === true &&
+              pollData.speed_limit === requestedValue &&
+              pollData.link_status === "up" &&
+              pollData.speed &&
+              pollData.speed !== "Unknown"
+            ) {
+              setStatus({
+                link_status: pollData.link_status,
+                speed: pollData.speed,
+                duplex: pollData.duplex,
+                auto_negotiation: pollData.auto_negotiation,
+                speed_limit: pollData.speed_limit,
+                supports_2500: pollData.supports_2500,
+              });
+              setError(null);
+              hasDataRef.current = true;
+              return true;
+            }
+          }
+        } catch {
+          // PHY may still be renegotiating; retry.
+        }
+        if (i < MAX_POLLS - 1) {
+          await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+        }
+      }
+
+      // Exhausted — re-sync to whatever the modem currently reports.
+      if (mountedRef.current) await fetchStatus(true);
+      return false;
+    };
 
     try {
       const resp = await authFetch(CGI_ENDPOINT, {
@@ -141,65 +191,27 @@ const EthernetStatusCard = () => {
         toast.success("Link speed updated");
 
         // Backend reports how long the PHY link bounce takes. Fall back to
-        // 5 s if the field is missing (older builds / non-ethtool paths).
+        // 8 s if the field is missing (older builds / non-ethtool paths).
         const windowSec =
           typeof data.disconnect_window_seconds === "number"
             ? data.disconnect_window_seconds
-            : 5;
+            : 8;
 
-        // Wait for the quiet period, then poll silently until we see a
-        // definitive status (link up + known speed) or the timeout elapses.
-        // Some 2.5G negotiations take longer than 5 s; keep retrying rather
-        // than latching onto a momentary "Unknown" reading.
-        await new Promise((resolve) => setTimeout(resolve, windowSec * 1000));
-
-        const MAX_POLLS = 6;
-        const POLL_INTERVAL_MS = 1500;
-        for (let i = 0; i < MAX_POLLS; i++) {
-          if (!mountedRef.current) return;
-          try {
-            const pollResp = await authFetch(CGI_ENDPOINT);
-            if (pollResp.ok) {
-              const pollData = await pollResp.json();
-              if (!mountedRef.current) return;
-              if (
-                pollData.success &&
-                pollData.link_status === "up" &&
-                pollData.speed &&
-                pollData.speed !== "Unknown"
-              ) {
-                setStatus({
-                  link_status: pollData.link_status,
-                  speed: pollData.speed,
-                  duplex: pollData.duplex,
-                  auto_negotiation: pollData.auto_negotiation,
-                  speed_limit: pollData.speed_limit,
-                  supports_2500: pollData.supports_2500,
-                });
-                setError(null);
-                hasDataRef.current = true;
-                return;
-              }
-            }
-          } catch {
-            // Swallow — PHY may still be renegotiating; retry.
-          }
-          if (i < MAX_POLLS - 1) {
-            await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
-          }
-        }
-
-        // Poll loop exhausted — fall back to a normal refetch so the card
-        // reflects whatever state we can observe (may show "Unknown").
-        if (mountedRef.current) {
-          await fetchStatus(true);
-        }
+        await confirmSpeedChange(value, windowSec);
       } else {
         toast.error(data.detail || "Failed to set link speed");
       }
     } catch {
+      // Network error during POST likely means the PHY bounced mid-request.
+      // Confirm silently rather than showing a false-negative error.
       if (mountedRef.current) {
-        toast.error("Failed to set link speed");
+        const confirmed = await confirmSpeedChange(value, 8);
+        if (confirmed) {
+          markSaved();
+          toast.success("Link speed updated");
+        } else {
+          toast.error("Couldn't confirm new speed — check the link");
+        }
       }
     } finally {
       if (mountedRef.current) {
@@ -261,9 +273,10 @@ const EthernetStatusCard = () => {
     return duplex.charAt(0).toUpperCase() + duplex.slice(1);
   };
 
-  const formatAutoNeg = (autoNeg: string) => {
-    if (!autoNeg || autoNeg === "Unknown") return "N/A";
-    return autoNeg === "on" ? "Active" : "Inactive";
+  // Reflects user intent: "auto" speed_limit means autoneg is on, fixed value means manual.
+  const formatNegotiationMode = (speedLimit?: string) => {
+    if (!speedLimit) return "N/A";
+    return speedLimit === "auto" ? "Automatic" : "Manual";
   };
 
   // ---------------------------------------------------------------------------
@@ -364,7 +377,7 @@ const EthernetStatusCard = () => {
               className="size-16 @xs/card:size-24 bg-primary/15 rounded-full p-3 @xs/card:p-4 flex items-center justify-center"
             >
               <img
-                src="/device-icon.png"
+                src="/device-icon.svg"
                 alt="Device"
                 className="size-full drop-shadow-md object-contain"
                 loading="lazy"
@@ -462,7 +475,7 @@ const EthernetStatusCard = () => {
                 Auto-Negotiation
               </p>
               <p className="font-semibold @sm/card:text-base text-sm">
-                {formatAutoNeg(status?.auto_negotiation ?? "")}
+                {formatNegotiationMode(status?.speed_limit)}
               </p>
             </div>
             <Separator />
