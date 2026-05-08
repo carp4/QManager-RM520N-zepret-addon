@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { authFetch } from "@/lib/auth-fetch";
 import type { ModemSubsysData } from "@/types/modem-subsys";
 
-const POLL_INTERVAL = 1000;
+const POLL_INTERVAL = 2000;
 const FETCH_ENDPOINT = "/cgi-bin/quecmanager/system/modem-subsys.sh";
 
 export interface UseModemSubsysReturn {
