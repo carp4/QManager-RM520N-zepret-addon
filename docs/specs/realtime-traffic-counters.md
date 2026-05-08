@@ -90,7 +90,7 @@ If a delta computes negative (because the modem SSR re-created the interface and
 
 ### 2. `qmanager-traffic.service`
 
-- **Path:** `scripts/lib/systemd/system/qmanager-traffic.service`
+- **Path:** `scripts/etc/systemd/system/qmanager-traffic.service` (the installer copies `$SRC_SCRIPTS/etc/systemd/system/qmanager*.service` to `/lib/systemd/system/` on the target).
 - **Type:** `simple`, `Restart=always`, `RestartSec=2`, `User=root`.
 - **Boot persistence:** direct symlink into `/lib/systemd/system/multi-user.target.wants/` via the existing `svc_enable` helper in `platform.sh`. `systemctl enable` does not work on this platform per CLAUDE.md.
 
@@ -104,7 +104,7 @@ If a delta computes negative (because the modem SSR re-created the interface and
 ### 4. `useTrafficStream` hook
 
 - **Path:** `hooks/use-traffic-stream.ts`
-- **Modeled on** `hooks/use-modem-status.ts`: `setInterval` polling, `mountedRef` guard, visibility-pause when `document.hidden`.
+- **Modeled on** `hooks/use-modem-status.ts`: `setInterval` polling, `mountedRef` guard, staleness detection. (No visibility-pause — match the existing hook pattern; doubling read frequency without pause is acceptable on this platform.)
 - **Default `pollInterval`:** 1000 ms. Configurable via opts.
 - **Return:** `{data: TrafficStream | null, isLoading, isStale, error}`.
 - **Type** added to `types/modem-status.ts`:
@@ -123,7 +123,7 @@ If a delta computes negative (because the modem SSR re-created the interface and
 ### 5. UI — `device-metrics.tsx` + `home-component.tsx`
 
 - New prop `trafficStream: TrafficStream | null` on `DeviceMetricsComponent`.
-- New helper `formatBytes(value)` exported from `types/modem-status.ts` — formats cumulative totals as B / KB / MB / GB / TB with 2 decimal places. Sibling to existing `formatBytesPerSec`.
+- Reuse the existing `formatBytes(bytes)` exported from `types/modem-status.ts:565` (formats as `B`/`KB`/`MB`/`GB`). No new helper needed.
 - New "Data Used" row inserted above "Live Traffic":
   ```tsx
   <Separator />
