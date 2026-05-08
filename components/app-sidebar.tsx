@@ -19,6 +19,7 @@ import {
   TerminalIcon,
   DownloadIcon,
   TerminalSquareIcon,
+  EthernetPort,
 } from "lucide-react";
 
 import QManagerLogo from "@/public/qmanager-logo.svg";
@@ -193,14 +194,15 @@ const data = {
   ],
   localNetwork: [
     {
+      title: "Ethernet Status",
+      url: "/local-network/ethernet",
+      icon: EthernetPort,
+    },
+    {
       title: "Settings",
       url: "/local-network/ip-passthrough",
       icon: Settings2,
       items: [
-        {
-          title: "Ethernet Status",
-          url: "/local-network/ethernet",
-        },
         {
           title: "TTL & MTU Settings",
           url: "/local-network/ttl-settings",
