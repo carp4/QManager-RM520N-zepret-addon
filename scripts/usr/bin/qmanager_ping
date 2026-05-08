@@ -49,6 +49,11 @@ HISTORY_FILE="/tmp/qmanager_ping_history"
 RECOVERY_FLAG="/tmp/qmanager_recovery_active"
 PID_FILE="/tmp/qmanager_ping.pid"
 
+# --- Carrier state ----------------------------------------------------------
+# Path to the WAN interface's carrier sysfs file. Override via env to point
+# at a different netdev (e.g. eth0 in dev environments).
+CARRIER_FILE="${CARRIER_FILE:-/sys/class/net/rmnet_data0/carrier}"
+
 # --- State Variables ---------------------------------------------------------
 streak_success=0
 streak_fail=0
@@ -61,6 +66,16 @@ history_count=0     # tracked in shell — avoids wc -l fork every cycle
 # =============================================================================
 # HELPERS
 # =============================================================================
+
+# --- Check WAN-side link carrier (free, no fork) ----------------------------
+# Returns: 0 = link up, 1 = link down or sysfs unreadable.
+# Used as an early-exit gate before the network probe — when carrier is 0 the
+# probe will fail anyway, so we skip it and write reachable=false directly.
+carrier_is_up() {
+    local c=
+    read -r c < "$CARRIER_FILE" 2>/dev/null || return 1
+    [ "$c" = "1" ]
+}
 
 # --- Execute a single ping against a target ----------------------------------
 # Returns: 0 = success (RTT written to stdout), 1 = failure
