@@ -1,0 +1,156 @@
+#!/bin/sh
+# =============================================================================
+# qmanager_traffic — QManager Live Traffic Counter Daemon
+# =============================================================================
+# Reads /proc/net/dev every 1 s for the active cellular rmnet interface and
+# writes a slim JSON snapshot to /tmp/qmanager_traffic.json. Decoupled from
+# qmanager_poller so the dashboard can render speed at 1 Hz without waiting on
+# the AT-bound 2 s tier.
+#
+# Active-interface selection (per tick):
+#   1. Prefer $NETWORK_IFACE (rmnet_ipa0 on RM520N-GL).
+#   2. If operstate != up, try rmnet_data0.
+#   3. If neither up, emit iface=null with zeroed counters.
+#
+# Counter-reset handling: a negative delta (modem SSR re-created the iface)
+# causes one zero tick and reseeds the baseline.
+#
+# Install location: /usr/bin/qmanager_traffic
+# Dependencies: awk, cat, date, mv, jq
+# =============================================================================
+
+# --- Logging -----------------------------------------------------------------
+. /usr/lib/qmanager/qlog.sh 2>/dev/null || {
+    qlog_init() { :; }
+    qlog_debug() { :; }
+    qlog_info() { :; }
+    qlog_warn() { :; }
+    qlog_error() { :; }
+}
+qlog_init "traffic"
+
+# --- Configuration -----------------------------------------------------------
+INTERVAL=1
+PRIMARY_IFACE="${NETWORK_IFACE:-rmnet_ipa0}"
+FALLBACK_IFACE="rmnet_data0"
+CACHE_FILE="/tmp/qmanager_traffic.json"
+CACHE_TMP="/tmp/qmanager_traffic.json.tmp"
+
+# Platform gate: on non-Quectel hosts (e.g. dev OpenWRT), default the fallback
+# off so we don't churn looking for non-existent rmnets.
+if [ ! -f /etc/quectel-project-version ]; then
+    PRIMARY_IFACE="${NETWORK_IFACE:-wwan0}"
+    FALLBACK_IFACE=""
+fi
+
+# --- State -------------------------------------------------------------------
+prev_iface=""
+prev_rx=0
+prev_tx=0
+prev_ts=0
+
+# --- Helpers -----------------------------------------------------------------
+
+# pick_iface — echo the iface to read this tick, or empty if none up
+pick_iface() {
+    if [ -r "/sys/class/net/$PRIMARY_IFACE/operstate" ]; then
+        if [ "$(cat "/sys/class/net/$PRIMARY_IFACE/operstate" 2>/dev/null)" = "up" ]; then
+            echo "$PRIMARY_IFACE"
+            return
+        fi
+    fi
+    if [ -n "$FALLBACK_IFACE" ] && [ -r "/sys/class/net/$FALLBACK_IFACE/operstate" ]; then
+        if [ "$(cat "/sys/class/net/$FALLBACK_IFACE/operstate" 2>/dev/null)" = "up" ]; then
+            echo "$FALLBACK_IFACE"
+            return
+        fi
+    fi
+    echo ""
+}
+
+# read_counters <iface> — echo "rx tx" or "0 0" on miss
+read_counters() {
+    local iface="$1"
+    awk -v ifn="${iface}:" '$1 == ifn { print $2, $10; found=1; exit }
+                            END { if (!found) print "0 0" }' /proc/net/dev 2>/dev/null
+}
+
+# write_cache <iface_or_empty> <rx> <tx> <rx_per_sec> <tx_per_sec>
+write_cache() {
+    local iface="$1" rx="$2" tx="$3" rxps="$4" txps="$5"
+    local ts iface_arg
+    ts=$(date +%s)
+    if [ -z "$iface" ]; then
+        iface_arg="null"
+        # jq null-arg pattern
+        jq -n \
+            --argjson ts "$ts" \
+            --argjson trx "$rx" --argjson ttx "$tx" \
+            --argjson rxps "$rxps" --argjson txps "$txps" \
+            '{ ts: $ts, iface: null,
+               total_rx_bytes: $trx, total_tx_bytes: $ttx,
+               rx_bytes_per_sec: $rxps, tx_bytes_per_sec: $txps }' \
+            > "$CACHE_TMP" && mv "$CACHE_TMP" "$CACHE_FILE"
+    else
+        jq -n \
+            --argjson ts "$ts" \
+            --arg iface "$iface" \
+            --argjson trx "$rx" --argjson ttx "$tx" \
+            --argjson rxps "$rxps" --argjson txps "$txps" \
+            '{ ts: $ts, iface: $iface,
+               total_rx_bytes: $trx, total_tx_bytes: $ttx,
+               rx_bytes_per_sec: $rxps, tx_bytes_per_sec: $txps }' \
+            > "$CACHE_TMP" && mv "$CACHE_TMP" "$CACHE_FILE"
+    fi
+}
+
+# --- Main loop ---------------------------------------------------------------
+qlog_info "traffic daemon started (primary=$PRIMARY_IFACE fallback=${FALLBACK_IFACE:-none} interval=${INTERVAL}s)"
+
+while :; do
+    iface=$(pick_iface)
+
+    if [ -z "$iface" ]; then
+        write_cache "" 0 0 0 0
+        prev_iface=""
+        prev_rx=0
+        prev_tx=0
+        prev_ts=0
+        sleep "$INTERVAL"
+        continue
+    fi
+
+    set -- $(read_counters "$iface")
+    rx="$1"
+    tx="$2"
+    now_ts=$(date +%s)
+
+    rxps=0
+    txps=0
+
+    # Compute deltas only when iface is unchanged AND we have a prior baseline.
+    # On iface change or first run, just seed the baseline.
+    if [ "$iface" = "$prev_iface" ] && [ "$prev_ts" -gt 0 ]; then
+        elapsed=$((now_ts - prev_ts))
+        [ "$elapsed" -lt 1 ] && elapsed=1
+
+        d_rx=$((rx - prev_rx))
+        d_tx=$((tx - prev_tx))
+
+        # Negative delta = counter reset (SSR / iface bounce). Emit 0 this tick.
+        [ "$d_rx" -lt 0 ] && d_rx=0
+        [ "$d_tx" -lt 0 ] && d_tx=0
+
+        rxps=$((d_rx / elapsed))
+        txps=$((d_tx / elapsed))
+    fi
+
+    write_cache "$iface" "$rx" "$tx" "$rxps" "$txps"
+
+    prev_iface="$iface"
+    prev_rx="$rx"
+    prev_tx="$tx"
+    prev_ts="$now_ts"
+
+    sleep "$INTERVAL"
+done
