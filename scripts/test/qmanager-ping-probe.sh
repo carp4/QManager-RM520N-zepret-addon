@@ -158,9 +158,10 @@ mkdir -p "$work/bin"
 
 cat > "$work/bin/curl" <<'STUB'
 #!/bin/sh
-# Stub returns the canned response captured in $STUB_BODY (default: 204 0.180000).
-# Use no-colon form so empty STUB_BODY="" emits nothing (not the default).
-[ -n "$STUB_BODY" ] && echo "$STUB_BODY" || echo "204 0.180000"
+# Stub emits $STUB_BODY when non-empty; otherwise emits nothing (silent).
+# Plain ${STUB_BODY:-default} would substitute the default on empty as well as
+# unset, masking the curl-failure case where curl produces no output at all.
+[ -n "$STUB_BODY" ] && echo "$STUB_BODY"
 exit "${STUB_EXIT:-0}"
 STUB
 chmod +x "$work/bin/curl"
@@ -205,6 +206,7 @@ result=$(
     echo "exit=$?"
 )
 echo "$result" | grep -q '^exit=1$' && ok "curl timeout → returns 1" || bad "timeout did not return 1: $result"
+echo "$result" | grep -qE '^[0-9]' && bad "curl-fail path emitted RTT (should be silent)" || ok "curl timeout → no RTT on stdout"
 
 # Case 4: 204 + tiny time → emits "0.1" (rounded)
 result=$(
