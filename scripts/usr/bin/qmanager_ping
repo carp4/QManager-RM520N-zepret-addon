@@ -34,13 +34,17 @@ qlog_init "ping"
 
 # --- Configuration -----------------------------------------------------------
 # Defaults — overridable via UCI (/etc/config/qmanager) when implemented
-PING_TARGET_1="${PING_TARGET_1:-google.com}"
-PING_TARGET_2="${PING_TARGET_2:-cloudflare.com}"
+# Targets are HTTP URLs that return 204 No Content on real internet.
+# They MUST be plain http:// (not https://) — captive portals transparently
+# intercept HTTP, which is precisely what this probe is designed to detect.
+# Additional validated 204 endpoints: http://clients3.google.com/generate_204,
+# http://detectportal.firefox.com/success.txt (returns "success" not 204).
+PING_TARGET_1="${PING_TARGET_1:-http://www.gstatic.com/generate_204}"
+PING_TARGET_2="${PING_TARGET_2:-http://cp.cloudflare.com/}"
 PING_INTERVAL="${PING_INTERVAL:-5}"
 FAIL_THRESHOLD="${FAIL_THRESHOLD:-3}"
 RECOVER_THRESHOLD="${RECOVER_THRESHOLD:-2}"
 HISTORY_SIZE="${HISTORY_SIZE:-60}"
-PING_TIMEOUT=2          # BusyBox ping -W timeout in seconds
 
 # --- File Paths --------------------------------------------------------------
 CACHE_FILE="/tmp/qmanager_ping.json"
@@ -75,28 +79,6 @@ carrier_is_up() {
     local c=
     read -r c < "$CARRIER_FILE" 2>/dev/null || return 1
     [ "$c" = "1" ]
-}
-
-# --- Execute a single ping against a target ----------------------------------
-# Returns: 0 = success (RTT written to stdout), 1 = failure
-do_ping() {
-    local target="$1"
-    local result
-
-    result=$(ping -c1 -W"$PING_TIMEOUT" "$target" 2>/dev/null)
-    [ $? -ne 0 ] && return 1
-
-    # Pure shell RTT extraction: "...time=34.2 ms..." → "34.2"
-    # No grep/cut forks needed.
-    local rtt="${result##*time=}"
-    rtt="${rtt%% *}"
-
-    # Validate: must be non-empty and numeric (digits + dot only)
-    case "$rtt" in
-        ''|*[!0-9.]*) return 1 ;;
-    esac
-
-    echo "$rtt"
 }
 
 # --- HTTP /generate_204 probe — validates "real internet, not portal" -------
@@ -187,9 +169,9 @@ main() {
 
     qlog_info "========================================"
     qlog_info "QManager Ping Daemon starting (PID $$)"
-    qlog_info "Targets: ${PING_TARGET_1}, ${PING_TARGET_2}"
+    qlog_info "Targets (HTTP 204): ${PING_TARGET_1}, ${PING_TARGET_2}"
     qlog_info "Interval: ${PING_INTERVAL}s, Fail threshold: ${FAIL_THRESHOLD}, Recover threshold: ${RECOVER_THRESHOLD}"
-    qlog_info "History size: ${HISTORY_SIZE}, Timeout: ${PING_TIMEOUT}s"
+    qlog_info "History size: ${HISTORY_SIZE}, Carrier file: ${CARRIER_FILE}"
     qlog_info "========================================"
 
     # Clean up stale files from previous run
@@ -198,45 +180,42 @@ main() {
     history_count=0
 
     while true; do
-        local target
-        target=$(get_target)
+        local target rtt rc
 
-        local rtt
-        rtt=$(do_ping "$target")
+        if ! carrier_is_up; then
+            # WAN link is down — skip the network probe entirely.
+            rtt="null"
+            rc=1
+            qlog_debug "carrier=0, skipping probe"
+        else
+            target=$(get_target)
+            rtt=$(do_real_internet_probe "$target")
+            rc=$?
+        fi
 
-        if [ $? -eq 0 ] && [ -n "$rtt" ]; then
-            # --- Ping succeeded ---
+        if [ "$rc" -eq 0 ] && [ -n "$rtt" ]; then
+            # --- probe succeeded ---
             streak_success=$((streak_success + 1))
             streak_fail=0
-
-            qlog_debug "PING OK: ${target} rtt=${rtt}ms (streak_success=${streak_success})"
-
-            # Flip reachable back to true after sustained success
+            qlog_debug "PROBE OK: ${target} rtt=${rtt}ms (streak_success=${streak_success})"
             if [ "$reachable" = "false" ] && [ "$streak_success" -ge "$RECOVER_THRESHOLD" ]; then
                 prev_reachable="$reachable"
                 reachable="true"
                 qlog_state_change "reachable" "false" "true"
             fi
-
-            # Append to history ring buffer
             echo "$rtt" >> "$HISTORY_FILE"
         else
-            # --- Ping failed ---
+            # --- probe failed (carrier down OR HTTP code != 204 OR curl error) ---
             rtt="null"
             streak_fail=$((streak_fail + 1))
             streak_success=0
-
-            qlog_debug "PING FAIL: ${target} (streak_fail=${streak_fail})"
-
-            # Only mark unreachable after sustained failure
+            qlog_debug "PROBE FAIL: ${target:-<carrier_down>} (streak_fail=${streak_fail})"
             if [ "$reachable" = "true" ] && [ "$streak_fail" -ge "$FAIL_THRESHOLD" ]; then
                 prev_reachable="$reachable"
                 reachable="false"
                 qlog_state_change "reachable" "true" "false"
-                qlog_warn "Internet unreachable after ${FAIL_THRESHOLD} consecutive failures"
+                qlog_warn "Internet unreachable after ${FAIL_THRESHOLD} consecutive probe failures"
             fi
-
-            # Append null to history
             echo "null" >> "$HISTORY_FILE"
         fi
 
@@ -248,9 +227,7 @@ main() {
             history_count=$HISTORY_SIZE
         fi
 
-        # Write slim JSON cache
         write_cache "$rtt"
-
         sleep "$PING_INTERVAL"
     done
 }

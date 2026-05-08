@@ -222,5 +222,98 @@ result=$(
 echo "$result" | grep -q '^0\.1$' && ok "0.000123s → emits '0.1' (rounded)" || bad "tiny RTT formatting wrong: $result"
 
 # ---------------------------------------------------------------------------
+section "main loop integration — 2 cycles with stubbed curl + carrier"
+
+# Smoke test: run the daemon with PING_INTERVAL=1, stubbed curl, and a
+# fake carrier file. After 3 seconds (≥ 2 cycles), kill it and check that
+# the cache file is fresh and reachable=true.
+
+mkdir -p "$work/run/bin"
+
+cat > "$work/run/bin/curl" <<'STUB'
+#!/bin/sh
+# Always-204 stub
+echo "204 0.150000"
+exit 0
+STUB
+chmod +x "$work/run/bin/curl"
+
+mkdir -p "$work/run/sys"
+echo 1 > "$work/run/sys/carrier"
+
+cache="$work/run/cache.json"
+hist="$work/run/hist"
+
+(
+    set +eu
+    PATH="$work/run/bin:$PATH"
+    CARRIER_FILE="$work/run/sys/carrier"
+    PING_TARGET_1="http://x/204"
+    PING_TARGET_2="http://y/204"
+    PING_INTERVAL=1
+    FAIL_THRESHOLD=3
+    RECOVER_THRESHOLD=2
+    HISTORY_SIZE=10
+    export PATH CARRIER_FILE PING_TARGET_1 PING_TARGET_2 PING_INTERVAL \
+           FAIL_THRESHOLD RECOVER_THRESHOLD HISTORY_SIZE
+    sed -e "s|/tmp/qmanager_ping.json|$cache|g" \
+        -e "s|/tmp/qmanager_ping.json.tmp|$cache.tmp|g" \
+        -e "s|/tmp/qmanager_ping_history|$hist|g" \
+        -e "s|/tmp/qmanager_recovery_active|$work/run/no_recovery|g" \
+        -e "s|/tmp/qmanager_ping.pid|$work/run/pid|g" \
+        "$DAEMON" > "$work/run/daemon.sh"
+    chmod +x "$work/run/daemon.sh"
+    bash "$work/run/daemon.sh" >/dev/null 2>&1 &
+    daemon_pid=$!
+    sleep 3
+    # Use kill -9 so the bash wrapper exits immediately on Windows/Git Bash
+    # (SIGTERM leaves grandchild sh alive and wait hangs indefinitely).
+    kill -9 "$daemon_pid" 2>/dev/null
+    # Also kill the daemon's own sh process via its PID file if written.
+    [ -f "$work/run/pid" ] && kill -9 "$(cat "$work/run/pid" 2>/dev/null)" 2>/dev/null || true
+    sleep 1
+)
+
+if [ -f "$cache" ] && jq -e . "$cache" >/dev/null 2>&1; then
+    ok "daemon wrote valid JSON cache after 2 cycles"
+else
+    bad "cache file missing or invalid"
+fi
+
+reach=$(jq -r '.reachable' "$cache" 2>/dev/null)
+[ "$reach" = "true" ] && ok "reachable=true after 2 successful probes" \
+                      || bad "reachable was '$reach' (expected true)"
+
+ss=$(jq -r '.streak_success' "$cache" 2>/dev/null)
+[ "$ss" -ge 2 ] 2>/dev/null && ok "streak_success >= 2" \
+                            || bad "streak_success=$ss (expected >=2)"
+
+# Now flip carrier to 0, run another cycle, expect last_rtt_ms to be null.
+echo 0 > "$work/run/sys/carrier"
+(
+    set +eu
+    PATH="$work/run/bin:$PATH"
+    CARRIER_FILE="$work/run/sys/carrier"
+    PING_TARGET_1="http://x/204"
+    PING_TARGET_2="http://y/204"
+    PING_INTERVAL=1
+    FAIL_THRESHOLD=3
+    RECOVER_THRESHOLD=2
+    HISTORY_SIZE=10
+    export PATH CARRIER_FILE PING_TARGET_1 PING_TARGET_2 PING_INTERVAL \
+           FAIL_THRESHOLD RECOVER_THRESHOLD HISTORY_SIZE
+    bash "$work/run/daemon.sh" >/dev/null 2>&1 &
+    daemon_pid=$!
+    sleep 2
+    kill -9 "$daemon_pid" 2>/dev/null
+    [ -f "$work/run/pid" ] && kill -9 "$(cat "$work/run/pid" 2>/dev/null)" 2>/dev/null || true
+    sleep 1
+)
+
+last_rtt_type=$(jq -r '.last_rtt_ms | type' "$cache" 2>/dev/null)
+[ "$last_rtt_type" = "null" ] && ok "last_rtt_ms is null when carrier=0" \
+                              || bad "last_rtt_ms type = '$last_rtt_type' (expected null)"
+
+# ---------------------------------------------------------------------------
 printf '\nResult: %d pass, %d fail\n' "$pass_count" "$fail_count"
 exit "$fail"
