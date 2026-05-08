@@ -198,6 +198,10 @@ const data = {
       icon: Settings2,
       items: [
         {
+          title: "Ethernet Status",
+          url: "/local-network/ethernet",
+        },
+        {
           title: "TTL & MTU Settings",
           url: "/local-network/ttl-settings",
         },
