@@ -9,6 +9,27 @@
 # `bun run package`.
 set -eu
 
+# When invoked from bun on Windows (e.g. `bun run package` from PowerShell),
+# `bash` resolves to C:\Windows\system32\bash.exe — WSL bash. WSL Ubuntu
+# typically lacks `jq`, which makes the harnesses report misleading
+# "did not produce valid JSON" failures. Mirror build.sh: detect WSL and
+# re-exec under Git Bash so the harnesses see the same toolchain the
+# tarball will rely on. No-op on real Linux/macOS (the /proc/version check
+# fails) and on Git Bash directly (no "microsoft" string).
+if [ -z "${QMANAGER_GIT_BASH_REEXEC:-}" ] \
+    && [ -r /proc/version ] \
+    && grep -qiE 'microsoft|wsl' /proc/version 2>/dev/null; then
+    GIT_BASH="/mnt/c/Program Files/Git/usr/bin/bash.exe"
+    if [ -x "$GIT_BASH" ]; then
+        echo "[run-all.sh] Detected WSL bash — re-execing under Git Bash for jq access" >&2
+        export QMANAGER_GIT_BASH_REEXEC=1
+        exec "$GIT_BASH" "$0" "$@"
+    fi
+    echo "[run-all.sh] ERROR: Detected WSL bash but Git Bash not found at $GIT_BASH" >&2
+    echo "[run-all.sh] Install 'Git for Windows' (https://git-scm.com/download/win) so harnesses can find jq, or run from a Git Bash shell." >&2
+    exit 1
+fi
+
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 
 START_TIME=$(date +%s)
