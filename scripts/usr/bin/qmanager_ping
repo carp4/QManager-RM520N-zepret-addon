@@ -18,7 +18,7 @@
 #   - Frontend: reads via status.json (merged by poller)
 #
 # Install location: /usr/bin/qmanager_ping
-# Dependencies: ping (busybox), jq, date, tail, mv
+# Dependencies: ping (busybox), date, tail, mv
 # =============================================================================
 
 # --- Logging -----------------------------------------------------------------
