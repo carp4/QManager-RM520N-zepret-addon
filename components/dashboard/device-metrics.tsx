@@ -1,9 +1,8 @@
 "use client";
 
 import React from "react";
-import { motion } from "motion/react";
-import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { MetricBar } from "@/components/ui/metric-bar";
 import {
   Tooltip,
   TooltipTrigger,
@@ -48,38 +47,6 @@ const TEMP_WARN = 60; // °C
 const TEMP_DANGER = 75; // °C
 const CPU_WARN = 70; // percentage
 const CPU_DANGER = 90; // percentage
-
-// --- Animated metric progress bar ---
-function MetricBar({
-  value,
-  max = 100,
-  warnAt,
-  dangerAt,
-}: {
-  value: number;
-  max?: number;
-  warnAt: number;
-  dangerAt: number;
-}) {
-  const pct = Math.min((value / max) * 100, 100);
-  const colorClass =
-    value >= dangerAt
-      ? "bg-destructive"
-      : value >= warnAt
-        ? "bg-warning"
-        : "bg-primary";
-  return (
-    <div className="h-1 w-full overflow-hidden rounded-full bg-muted">
-      <motion.div
-        className={cn("h-full rounded-full", colorClass)}
-        initial={{ scaleX: 0 }}
-        animate={{ scaleX: pct / 100 }}
-        style={{ originX: 0 }}
-        transition={{ type: "spring", stiffness: 180, damping: 24 }}
-      />
-    </div>
-  );
-}
 
 const DeviceMetricsComponent = ({
   deviceData,

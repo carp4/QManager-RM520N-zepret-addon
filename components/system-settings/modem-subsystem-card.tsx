@@ -20,6 +20,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
+import { MetricBar } from "@/components/ui/metric-bar";
 import { useModemSubsys } from "@/hooks/use-modem-subsys";
 import type { ModemSubsysState } from "@/types/modem-subsys";
 
@@ -104,32 +105,66 @@ export default function ModemSubsystemCard() {
     return (
       <Card className="@container/card">
         <CardHeader>
-          <CardTitle>Modem Subsystem</CardTitle>
+          <CardTitle>System Health</CardTitle>
           <CardDescription>
-            Live modem firmware health and crash history.
+            Live modem firmware health and host system telemetry.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid gap-2">
+            {/* State */}
             <Separator />
             <div className="flex items-center justify-between">
               <Skeleton className="h-5 w-28" />
               <Skeleton className="h-6 w-20" />
             </div>
+            {/* Crashes since boot */}
             <Separator />
             <div className="flex items-center justify-between">
               <Skeleton className="h-5 w-36" />
               <Skeleton className="h-5 w-8" />
             </div>
+            {/* Last crashed */}
             <Separator />
             <div className="flex items-center justify-between">
               <Skeleton className="h-5 w-28" />
               <Skeleton className="h-5 w-24" />
             </div>
+            {/* CPU Load */}
             <Separator />
-            <div className="flex items-center justify-between">
-              <Skeleton className="h-5 w-20" />
-              <Skeleton className="h-5 w-32" />
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between">
+                <Skeleton className="h-5 w-20" />
+                <Skeleton className="h-5 w-12" />
+              </div>
+              <Skeleton className="h-1 w-full" />
+            </div>
+            {/* CPU Frequency */}
+            <Separator />
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between">
+                <Skeleton className="h-5 w-28" />
+                <Skeleton className="h-5 w-16" />
+              </div>
+              <Skeleton className="h-1 w-full" />
+            </div>
+            {/* Memory */}
+            <Separator />
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between">
+                <Skeleton className="h-5 w-16" />
+                <Skeleton className="h-5 w-28" />
+              </div>
+              <Skeleton className="h-1 w-full" />
+            </div>
+            {/* Storage */}
+            <Separator />
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between">
+                <Skeleton className="h-5 w-24" />
+                <Skeleton className="h-5 w-28" />
+              </div>
+              <Skeleton className="h-1 w-full" />
             </div>
           </div>
         </CardContent>
@@ -142,9 +177,9 @@ export default function ModemSubsystemCard() {
     return (
       <Card className="@container/card">
         <CardHeader>
-          <CardTitle>Modem Subsystem</CardTitle>
+          <CardTitle>System Health</CardTitle>
           <CardDescription>
-            Live modem firmware health and crash history.
+            Live modem firmware health and host system telemetry.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
@@ -160,13 +195,29 @@ export default function ModemSubsystemCard() {
     );
   }
 
+  // --- Derived metric values ---
+  const cpuLoad = data?.cpu?.load_1m ?? null;
+  const coreCount = data?.cpu?.core_count ?? null;
+  const resolvedCoreCount = cpuLoad !== null ? (coreCount ?? 4) : null;
+
+  const freqKhz = data?.cpu?.freq_khz ?? null;
+  const maxFreqKhz = data?.cpu?.max_freq_khz ?? null;
+
+  const memTotalKb = data?.memory?.total_kb ?? 0;
+  const memUsedKb = data?.memory?.used_kb ?? 0;
+  const showMemBar = data?.memory != null && memTotalKb > 0;
+
+  const storageTotalKb = data?.storage?.total_kb ?? 0;
+  const storageUsedKb = data?.storage?.used_kb ?? 0;
+  const showStorageBar = data?.storage != null && storageTotalKb > 0;
+
   // --- Data state ---
   return (
     <Card className="@container/card">
       <CardHeader>
-        <CardTitle>Modem Subsystem</CardTitle>
+        <CardTitle>System Health</CardTitle>
         <CardDescription>
-          Live modem firmware health and crash history.
+          Live modem firmware health and host system telemetry.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -217,13 +268,88 @@ export default function ModemSubsystemCard() {
             </p>
           </motion.div>
 
-          {/* ── Firmware ───────────────────────────────────────────── */}
+          {/* ── CPU Load ───────────────────────────────────────────── */}
           <Separator />
-          <motion.div variants={itemVariants} className="flex items-center justify-between">
-            <p className="font-semibold text-muted-foreground text-sm">Firmware</p>
-            <span className="font-mono text-sm text-muted-foreground">
-              {data?.firmware_name ?? "—"}
-            </span>
+          <motion.div variants={itemVariants} className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between">
+              <p className="font-semibold text-muted-foreground text-sm">CPU Load</p>
+              <p className="text-sm font-medium tabular-nums">
+                {cpuLoad !== null ? cpuLoad.toFixed(2) : "—"}
+              </p>
+            </div>
+            {cpuLoad !== null && resolvedCoreCount !== null && (
+              <MetricBar
+                value={cpuLoad}
+                max={resolvedCoreCount}
+                warnAt={resolvedCoreCount * 0.75}
+                dangerAt={resolvedCoreCount * 1.0}
+              />
+            )}
+          </motion.div>
+
+          {/* ── CPU Frequency ──────────────────────────────────────── */}
+          <Separator />
+          <motion.div variants={itemVariants} className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between">
+              <p className="font-semibold text-muted-foreground text-sm">CPU Frequency</p>
+              <p className="text-sm font-medium tabular-nums">
+                {freqKhz !== null ? `${(freqKhz / 1_000_000).toFixed(1)} GHz` : "—"}
+              </p>
+            </div>
+            {freqKhz !== null && maxFreqKhz !== null && (
+              <MetricBar
+                value={freqKhz}
+                max={maxFreqKhz}
+                warnAt={Infinity}
+                dangerAt={Infinity}
+                colorOverride="primary"
+              />
+            )}
+          </motion.div>
+
+          {/* ── Memory ─────────────────────────────────────────────── */}
+          <Separator />
+          <motion.div variants={itemVariants} className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between">
+              <p className="font-semibold text-muted-foreground text-sm">Memory</p>
+              <p className="text-sm font-medium tabular-nums">
+                {data?.memory != null
+                  ? `${Math.round(memUsedKb / 1024)} MB (${Math.round((memUsedKb / memTotalKb) * 100)}%)`
+                  : "—"}
+              </p>
+            </div>
+            {showMemBar && (
+              <MetricBar
+                value={(memUsedKb / memTotalKb) * 100}
+                max={100}
+                warnAt={70}
+                dangerAt={90}
+              />
+            )}
+          </motion.div>
+
+          {/* ── Storage ────────────────────────────────────────────── */}
+          <Separator />
+          <motion.div variants={itemVariants} className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between">
+              <p className="font-semibold text-muted-foreground text-sm">
+                Storage
+                <span className="text-xs text-muted-foreground ml-1">/usrdata</span>
+              </p>
+              <p className="text-sm font-medium tabular-nums">
+                {data?.storage != null
+                  ? `${Math.round(storageUsedKb / 1024)} / ${Math.round(storageTotalKb / 1024)} MB`
+                  : "—"}
+              </p>
+            </div>
+            {showStorageBar && (
+              <MetricBar
+                value={(storageUsedKb / storageTotalKb) * 100}
+                max={100}
+                warnAt={70}
+                dangerAt={90}
+              />
+            )}
           </motion.div>
 
           {/* ── Coredump warning (rendered only when present) ──────── */}
