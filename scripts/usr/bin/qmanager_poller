@@ -1519,6 +1519,14 @@ write_cache() {
         --argjson hist_int "${conn_history_interval:-2}" \
         --argjson hist_size "${CONN_HISTORY_SIZE:-60}" \
         --argjson during_rec "${conn_during_recovery:-false}" \
+        --arg conn_state "$conn_connectivity" \
+        --argjson conn_limited_reason "$conn_limited_reason" \
+        --arg conn_down_reason "$conn_down_reason" \
+        --argjson conn_streak_limited "$conn_streak_limited" \
+        --arg conn_profile "$conn_profile" \
+        --argjson conn_fail_secs "$conn_fail_secs" \
+        --argjson conn_recover_secs "$conn_recover_secs" \
+        --argjson conn_intercept_secs "$conn_intercept_secs" \
         --argjson wc_enabled "${wc_enabled:-false}" \
         --arg wc_state "${wc_state:-disabled}" \
         --argjson wc_tier "${wc_current_tier:-0}" \
@@ -1622,7 +1630,15 @@ write_cache() {
                 jitter_ms: $jit, packet_loss_pct: $pkt_loss,
                 ping_target: $ping_tgt, latency_history: $lat_hist,
                 history_interval_sec: $hist_int, history_size: $hist_size,
-                during_recovery: $during_rec
+                during_recovery: $during_rec,
+                state: $conn_state,
+                limited_reason: $conn_limited_reason,
+                down_reason: (if $conn_down_reason == "null" then null else $conn_down_reason end),
+                streak_limited: $conn_streak_limited,
+                profile: $conn_profile,
+                fail_secs: $conn_fail_secs,
+                recover_secs: $conn_recover_secs,
+                intercept_secs: $conn_intercept_secs
             },
             watchcat: {
                 enabled: $wc_enabled, state: $wc_state,
