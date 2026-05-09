@@ -51,6 +51,7 @@ impl History {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn len(&self) -> usize {
         self.entries.len()
     }

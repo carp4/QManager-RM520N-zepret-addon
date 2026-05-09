@@ -1,9 +1,3 @@
-// rustc 1.94.1 ICE workaround: each public method has #[allow(dead_code)]
-// because rustc panics in check_mod_deathness under --release when these
-// methods are only called from #[cfg(test)] code. The module declaration in
-// main.rs also carries #[allow(dead_code)] so the lint pass does not visit
-// these items at all. Annotations become unnecessary in Task 12 when main.rs
-// uses these methods.
 
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -15,6 +9,7 @@ pub struct Logger {
     component: String,
 }
 
+#[allow(deprecated)] // libc::time_t is i32 on musl <1.2; harmless until 2038
 fn format_timestamp() -> String {
     let mut t: libc::time_t = 0;
     unsafe { libc::time(&mut t); }
@@ -66,16 +61,11 @@ impl Logger {
         }
     }
 
-    #[allow(dead_code)]
     pub fn info(&self, msg: &str) { self.write_line("INFO", msg); }
-    #[allow(dead_code)]
     pub fn warn(&self, msg: &str) { self.write_line("WARN", msg); }
-    #[allow(dead_code)]
     pub fn error(&self, msg: &str) { self.write_line("ERROR", msg); }
-    #[allow(dead_code)]
     pub fn debug(&self, msg: &str) { self.write_line("DEBUG", msg); }
 
-    #[allow(dead_code)]
     pub fn state_change(&self, field: &str, old: &str, new: &str) {
         self.info(&format!("STATE: {}: {} \u{2192} {}", field, old, new));
     }
