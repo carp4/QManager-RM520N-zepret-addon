@@ -996,6 +996,14 @@ read_ping_data() {
         conn_ping_target=""
         conn_history="[]"
         conn_during_recovery="false"
+        conn_connectivity="unknown"
+        conn_limited_reason="null"
+        conn_down_reason="null"
+        conn_streak_limited=0
+        conn_profile="unknown"
+        conn_fail_secs=0
+        conn_recover_secs=0
+        conn_intercept_secs=0
         _ping_stale_since=0
         return
     fi
@@ -1021,6 +1029,14 @@ read_ping_data() {
             conn_packet_loss=0
             conn_history="[]"
             conn_during_recovery="false"
+            conn_connectivity="unknown"
+            conn_limited_reason="null"
+            conn_down_reason="null"
+            conn_streak_limited=0
+            conn_profile="unknown"
+            conn_fail_secs=0
+            conn_recover_secs=0
+            conn_intercept_secs=0
 
             # Track sustained staleness: emit a one-shot event when the
             # ping daemon has been stale long enough that alerts could be
@@ -1051,13 +1067,22 @@ read_ping_data() {
 
     # Step A: Extract slim scalar fields from ping JSON (single jq call)
     # ping.json no longer carries stats/history — those are computed here from raw file.
+    # Phase 2 additions: tri-state connectivity + runtime profile/threshold fields.
     local _pdata
     _pdata=$(jq -r '[
         ((.reachable) | if . == null then "null" else tostring end),
         ((.last_rtt_ms) | if . == null then "null" else tostring end),
         ((.during_recovery) | if . == null then "false" else tostring end),
         ((.interval_sec) | if . == null then "5" else tostring end),
-        (.targets[0] // "")
+        (.targets[0] // ""),
+        (.connectivity // "unknown"),
+        ((.limited_reason) | if . == null then "null" else tostring end),
+        (.down_reason // "null"),
+        ((.streak_limited) | if . == null then "0" else tostring end),
+        (.profile // "unknown"),
+        ((.fail_secs) | if . == null then "0" else tostring end),
+        ((.recover_secs) | if . == null then "0" else tostring end),
+        ((.intercept_secs) | if . == null then "0" else tostring end)
     ] | @tsv' "$PING_CACHE" 2>/dev/null)
 
     conn_internet_available=$(printf '%s' "$_pdata" | cut -f1)
@@ -1065,6 +1090,14 @@ read_ping_data() {
     conn_during_recovery=$(printf '%s' "$_pdata" | cut -f3)
     conn_history_interval=$(printf '%s' "$_pdata" | cut -f4)
     conn_ping_target=$(printf '%s' "$_pdata" | cut -f5)
+    conn_connectivity=$(printf '%s' "$_pdata" | cut -f6)
+    conn_limited_reason=$(printf '%s' "$_pdata" | cut -f7)
+    conn_down_reason=$(printf '%s' "$_pdata" | cut -f8)
+    conn_streak_limited=$(printf '%s' "$_pdata" | cut -f9)
+    conn_profile=$(printf '%s' "$_pdata" | cut -f10)
+    conn_fail_secs=$(printf '%s' "$_pdata" | cut -f11)
+    conn_recover_secs=$(printf '%s' "$_pdata" | cut -f12)
+    conn_intercept_secs=$(printf '%s' "$_pdata" | cut -f13)
 
     # Step B: Single awk pass — only when ping timestamp changed (saves awk fork every 2s)
     # With ping daemon at 5s, awk runs ~every 5s instead of every cycle.
