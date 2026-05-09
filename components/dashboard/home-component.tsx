@@ -15,6 +15,9 @@ import RecentActivitiesComponent from "./recent-activities";
 import DeviceMetricsComponent from "./device-metrics";
 import LiveLatencyComponent from "./live-latency";
 
+const DEFAULT_POLL_MS = 2000;
+const POLL_BUFFER_MS = 250; // Small lag past each daemon write to avoid catching a half-written cache
+
 const containerVariants: Variants = {
   hidden: {},
   visible: { transition: { staggerChildren: 0.06 } },
@@ -30,8 +33,19 @@ const itemVariants: Variants = {
 };
 
 const HomeComponent = () => {
-  const { data, isLoading, isStale, error } = useModemStatus();
+  const [pollInterval, setPollInterval] = React.useState<number>(DEFAULT_POLL_MS);
+  const { data, isLoading, isStale, error } = useModemStatus({ pollInterval });
   const { data: trafficStream } = useTrafficStream();
+
+  // Tie poll cadence to the ping daemon's write interval (Connection Sensitivity).
+  // history_interval_sec comes straight from the active profile, so this adapts
+  // automatically when the user changes Sensitivity in System Settings.
+  const daemonIntervalSec = data?.connectivity?.history_interval_sec;
+  React.useEffect(() => {
+    if (!daemonIntervalSec || daemonIntervalSec <= 0) return;
+    const next = daemonIntervalSec * 1000 + POLL_BUFFER_MS;
+    setPollInterval((prev) => (prev === next ? prev : next));
+  }, [daemonIntervalSec]);
 
   const networkType = data?.network?.type ?? "";
   const carrierComponents = data?.network?.carrier_components ?? [];
