@@ -39,7 +39,7 @@ export const description = "A multiple bar chart";
 // Data Wiring
 // =============================================================================
 // The ping daemon writes RTT history as (number | null)[] where null = timeout.
-// We show the last 5 data points. For each point:
+// We show the last 10 data points. For each point:
 //   - latency: the RTT in ms (rounded), or 0 if timeout
 //   - packetloss: rolling % of null entries in a 10-sample window ending at
 //                 that point (gives a smoothed per-point loss indicator)
