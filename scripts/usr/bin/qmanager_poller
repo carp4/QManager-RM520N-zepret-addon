@@ -201,6 +201,15 @@ conn_history="[]"
 conn_history_interval=5
 conn_history_size=60
 conn_during_recovery="false"
+# Phase 2 — tri-state + runtime profile/threshold (from ping daemon)
+conn_connectivity="unknown"
+conn_limited_reason="null"
+conn_down_reason="null"
+conn_streak_limited=0
+conn_profile="unknown"
+conn_fail_secs=0
+conn_recover_secs=0
+conn_intercept_secs=0
 _last_ping_ts=0          # tracks last processed ping.json timestamp (awk gate)
 _ping_stale_since=0      # epoch when ping daemon first went stale (0 = healthy)
 
@@ -1077,7 +1086,7 @@ read_ping_data() {
         (.targets[0] // ""),
         (.connectivity // "unknown"),
         ((.limited_reason) | if . == null then "null" else tostring end),
-        (.down_reason // "null"),
+        ((.down_reason) | if . == null then "null" else tostring end),
         ((.streak_limited) | if . == null then "0" else tostring end),
         (.profile // "unknown"),
         ((.fail_secs) | if . == null then "0" else tostring end),
