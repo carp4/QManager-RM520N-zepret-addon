@@ -1004,6 +1004,7 @@ read_ping_data() {
         conn_packet_loss=0
         conn_ping_target=""
         conn_history="[]"
+        conn_history_interval=0
         conn_during_recovery="false"
         conn_connectivity="unknown"
         conn_limited_reason="null"
@@ -1037,6 +1038,7 @@ read_ping_data() {
             conn_jitter="null"
             conn_packet_loss=0
             conn_history="[]"
+            conn_history_interval=0
             conn_during_recovery="false"
             conn_connectivity="unknown"
             conn_limited_reason="null"
