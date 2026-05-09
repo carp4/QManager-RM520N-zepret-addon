@@ -339,6 +339,22 @@ export const PING_PROFILES: readonly PingProfile[] = [
   "quiet",
 ] as const;
 
+/** User-selectable preset for high_latency / high_packet_loss event thresholds. */
+export type QualityPreset = "standard" | "tolerant" | "very-tolerant";
+
+/** Display-order list of quality presets. */
+export const QUALITY_PRESETS: readonly QualityPreset[] = [
+  "standard",
+  "tolerant",
+  "very-tolerant",
+] as const;
+
+/** Persisted shape of /etc/qmanager/quality_thresholds.json (also the GET response settings field). */
+export interface QualityThresholdsSettings {
+  latency: { preset: QualityPreset };
+  loss: { preset: QualityPreset };
+}
+
 export type ConnectivityState =
   | "connected"
   | "degraded"
