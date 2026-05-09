@@ -3,6 +3,8 @@ mod carrier;
 #[allow(dead_code)]
 mod config;
 #[allow(dead_code)]
+mod history;
+#[allow(dead_code)]
 mod qlog;
 #[allow(dead_code)]
 mod state;
