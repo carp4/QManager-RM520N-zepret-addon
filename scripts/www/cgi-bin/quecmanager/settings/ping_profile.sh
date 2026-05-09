@@ -75,7 +75,7 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
     mkdir -p "$(dirname "$CONFIG")"
 
     # Atomic write: jq into .tmp, then mv. Avoids zero-byte config on jq failure.
-    if ! jq -n --arg profile "$new_profile" '{profile: $profile}' > "${CONFIG}.tmp" 2>/dev/null; then
+    if ! jq -n --arg profile "$new_profile" '{profile: $profile}' > "${CONFIG}.tmp"; then
         rm -f "${CONFIG}.tmp"
         cgi_error "write_failed" "Failed to generate config JSON"
         exit 0

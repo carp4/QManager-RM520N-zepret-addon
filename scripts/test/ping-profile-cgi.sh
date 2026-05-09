@@ -48,7 +48,7 @@ cgi_read_post() {
     fi
 }
 cgi_success() { printf '{"success":true}\n'; }
-cgi_error()   { printf '{"success":false,"error":"%s","message":"%s"}\n' "$1" "$2"; }
+cgi_error()   { printf '{"success":false,"error":"%s","detail":"%s"}\n' "$1" "$2"; }
 STUB
 
 # Re-execute the CGI with our stub library on PATH for sourcing.
@@ -122,7 +122,7 @@ fi
 BODY='{}'
 LEN=${#BODY}
 RES=$(printf '%s' "$BODY" | run_cgi POST application/json "$LEN")
-if echo "$RES" | jq -e '.success == false' >/dev/null; then
+if echo "$RES" | jq -e '.success == false and .error == "missing_action"' >/dev/null; then
     pass "Missing action rejected"
 else
     fail "Missing action rejected — got: $RES"
