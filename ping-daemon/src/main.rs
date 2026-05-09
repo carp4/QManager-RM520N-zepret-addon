@@ -7,6 +7,8 @@ mod config;
 #[allow(dead_code)]
 mod history;
 #[allow(dead_code)]
+mod pid;
+#[allow(dead_code)]
 mod qlog;
 #[allow(dead_code)]
 mod reload;
