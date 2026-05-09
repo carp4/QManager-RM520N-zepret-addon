@@ -15,6 +15,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertTriangleIcon } from "lucide-react";
+import { TbAlertTriangleFilled } from "react-icons/tb";
 import { SaveButton, useSaveFlash } from "@/components/ui/save-button";
 import { MetaPanel, MetaPair } from "@/components/ui/meta-panel";
 
@@ -256,14 +257,21 @@ export default function ConnectivitySensitivityCard() {
                   <MetaPair label="Fail threshold" value={formatSecs(activeMeta.failSecs)} />
                   <MetaPair label="Recover after" value={formatSecs(activeMeta.recoverSecs)} />
                 </div>
-                {stuckHint && (
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    Settings saved, but the probe is still on the old preset.
-                    Try refreshing in a moment; if this persists, restart the
-                    qmanager-ping service.
-                  </p>
-                )}
               </MetaPanel>
+            </motion.div>
+          )}
+
+          {/* ── Daemon-stuck warning banner ──────────────────────────── */}
+          {stuckHint && (
+            <motion.div variants={staggerItem}>
+              <div className="flex items-start gap-2 p-2 rounded-md bg-warning/10 border border-warning/30 text-warning text-sm">
+                <TbAlertTriangleFilled className="size-5 mt-0.5 shrink-0" />
+                <p className="font-semibold">
+                  Settings saved, but the probe is still on the old preset. Try
+                  refreshing in a moment; if this persists, restart the
+                  qmanager-ping service.
+                </p>
+              </div>
             </motion.div>
           )}
 

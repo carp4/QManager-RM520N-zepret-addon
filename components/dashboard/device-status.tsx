@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Eye, EyeOff } from "lucide-react";
 
 import type { DeviceStatus } from "@/types/modem-status";
+import packageJson from "@/package.json";
 
 const containerVariants: Variants = {
   hidden: {},
@@ -32,11 +33,13 @@ const itemVariants: Variants = {
 interface DeviceStatusComponentProps {
   data: DeviceStatus | null;
   isLoading: boolean;
+  lanGateway?: string;
 }
 
 const DeviceStatusComponent = ({
   data,
   isLoading,
+  lanGateway,
 }: DeviceStatusComponentProps) => {
   const [hidePrivate, setHidePrivate] = useState(false);
 
@@ -64,6 +67,8 @@ const DeviceStatusComponent = ({
       mono: true,
     },
     { label: "Active MIMO", value: data?.mimo || "-", mono: true },
+    { label: "LAN Gateway", value: lanGateway || "-", mono: true },
+    { label: "QManager Version", value: packageJson.version, mono: true },
   ];
 
   if (isLoading) {
@@ -80,7 +85,7 @@ const DeviceStatusComponent = ({
               <Skeleton className="size-44 rounded-full" />
             </div>
             <div className="grid divide-y divide-border border-y border-border">
-              {Array.from({ length: 9 }).map((_, i) => (
+              {Array.from({ length: 11 }).map((_, i) => (
                 <div
                   key={i}
                   className="flex items-center justify-between py-2"
