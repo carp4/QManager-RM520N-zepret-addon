@@ -99,6 +99,15 @@ if [ "$REQUEST_METHOD" = "GET" ]; then
         exit 0
     fi
 
+    # --- Reboot ack: /reboot/ page tells the OTA worker it has loaded ---
+    # Worker waits up to REBOOT_ACK_TIMEOUT for this file before rebooting,
+    # so the static reboot page is in browser memory before the device dies.
+    if [ "$action" = "reboot_ack" ]; then
+        touch /tmp/qmanager_reboot_ack 2>/dev/null
+        jq -n '{"success":true}'
+        exit 0
+    fi
+
     # --- Update check ---
     qlog_info "Checking for updates"
     ensure_update_config

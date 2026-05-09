@@ -15,6 +15,8 @@ LOG_FILE="/tmp/qmanager_update.log"
 INSTALL_LOG="/tmp/qmanager_install.log"
 STATUS_FILE="/tmp/qmanager_update.json"
 PID_FILE="/tmp/qmanager_update.pid"
+REBOOT_ACK_FILE="/tmp/qmanager_reboot_ack"
+REBOOT_ACK_TIMEOUT=12
 VERSION_FILE="/etc/qmanager/VERSION"
 PENDING_FILE="/etc/qmanager/VERSION.pending"
 UPDATES_DIR="/etc/qmanager/updates"
@@ -150,6 +152,27 @@ cleanup() {
     rm -rf /tmp/qmanager_install
 }
 
+# Wait for the /reboot/ page to confirm it has loaded by writing
+# REBOOT_ACK_FILE (via update.sh action=reboot_ack), then proceed with the
+# reboot syscall. Bounded by REBOOT_ACK_TIMEOUT so a closed tab, auto-update,
+# or any other UI-less invocation never blocks the reboot indefinitely.
+wait_for_reboot_ack() {
+    rm -f "$REBOOT_ACK_FILE" 2>/dev/null
+    log "Waiting up to ${REBOOT_ACK_TIMEOUT}s for /reboot/ ack..."
+    local i=0
+    while [ $i -lt "$REBOOT_ACK_TIMEOUT" ]; do
+        if [ -f "$REBOOT_ACK_FILE" ]; then
+            log "Reboot ack received after ${i}s — UI confirmed /reboot/ loaded"
+            rm -f "$REBOOT_ACK_FILE" 2>/dev/null
+            return 0
+        fi
+        sleep 1
+        i=$((i + 1))
+    done
+    log "Reboot ack timeout (${REBOOT_ACK_TIMEOUT}s) — proceeding without UI confirmation"
+    return 0
+}
+
 die() {
     log "ERROR: $1"
     write_status "error" "$1" "${VERSION:-}" ""
@@ -162,7 +185,7 @@ die() {
 # fs.protected_regular=1 prevents root from truncating files owned by other
 # users in sticky /tmp dirs. Prior failed CGI attempts may have left these
 # files owned by www-data, so rm-then-create instead of plain truncate.
-rm -f "$LOG_FILE" "$PID_FILE" 2>/dev/null || true
+rm -f "$LOG_FILE" "$PID_FILE" "$REBOOT_ACK_FILE" 2>/dev/null || true
 echo $$ > "$PID_FILE"
 trap cleanup EXIT INT TERM
 : > "$LOG_FILE"
@@ -234,7 +257,7 @@ if [ "$MODE" = "install" ]; then
     log "Rebooting"
     rm -f "$PID_FILE"
     trap - EXIT INT TERM
-    sleep 1
+    wait_for_reboot_ack
     reboot
     exit 0
 fi
@@ -351,7 +374,7 @@ if [ "$MODE" = "install_staged" ]; then
     log "Rebooting"
     rm -f "$PID_FILE"
     trap - EXIT INT TERM
-    sleep 1
+    wait_for_reboot_ack
     reboot
     exit 0
 fi
@@ -418,7 +441,7 @@ if [ "$MODE" = "rollback" ]; then
     log "Rebooting"
     rm -f "$PID_FILE"
     trap - EXIT INT TERM
-    sleep 1
+    wait_for_reboot_ack
     reboot
     exit 0
 fi
