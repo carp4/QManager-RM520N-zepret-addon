@@ -9,6 +9,8 @@ mod history;
 #[allow(dead_code)]
 mod qlog;
 #[allow(dead_code)]
+mod reload;
+#[allow(dead_code)]
 mod state;
 
 fn main() {
