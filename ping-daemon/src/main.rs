@@ -4,6 +4,8 @@ mod carrier;
 mod config;
 #[allow(dead_code)]
 mod qlog;
+#[allow(dead_code)]
+mod state;
 
 fn main() {
     eprintln!("qmanager-ping placeholder — not yet implemented");
