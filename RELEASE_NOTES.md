@@ -29,6 +29,7 @@ A reliability and polish release. Fresh installs now ship with SSH pre-configure
 - **Cleaner cold boots.** The poller's systemd unit now waits up to 30 seconds for `/dev/smd11` to appear before failing, ending the noisy "AT device not found" entries on the very first boot after a flash.
 - **Build-time test gate.** Workstation tests, shell-syntax checks, and line-ending detection now run before every tarball is assembled, so backend regressions are caught at build time instead of after install.
 - **More reliable Tailscale connect across modem variants.** The connect flow now passes `--reset` alongside `--accept-dns=false`, matching the long-standing rgmii-toolkit/SimpleAdmin convention that's been validated across PRAIRE-platform modems (RM501Q) and SDXLEMUR (RM520N-GL). Prevents flags from a previous `tailscale up` lingering into the next connect attempt and silently changing behavior.
+- **Self-cleaning web-UI firewall.** The web-UI port firewall (80/443) now lives in a dedicated `QMANAGER_FW` chain with atomic start/stop semantics, so restarts and upgrades can't accumulate stale rules. Devices coming from earlier versions automatically drain leftover INPUT-direct rules on the next start, and the live rule set is now a single source of truth — inspect with `iptables -L QMANAGER_FW -n -v`.
 
 ## 📥 Installation
 
