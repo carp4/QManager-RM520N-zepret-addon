@@ -147,11 +147,11 @@ else
     pass "Atomic write — no .tmp file lingers"
 fi
 
-# Test 9: Malformed JSON config falls back to tolerant on GET
+# Test 9: Malformed JSON config falls back to tolerant on GET, is_default=true
 echo 'not valid json' > "$QUALITY_CONFIG"
 RES=$(run_cgi GET)
-if echo "$RES" | jq -e '.success == true and .settings.latency.preset == "tolerant" and .settings.loss.preset == "tolerant"' >/dev/null; then
-    pass "GET with malformed config falls back to tolerant"
+if echo "$RES" | jq -e '.success == true and .settings.latency.preset == "tolerant" and .settings.loss.preset == "tolerant" and .is_default == true' >/dev/null; then
+    pass "GET with malformed config falls back to tolerant + is_default=true"
 else
     fail "GET with malformed config — got: $RES"
 fi

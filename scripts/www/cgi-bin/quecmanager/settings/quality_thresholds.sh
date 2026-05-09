@@ -41,20 +41,26 @@ if [ "$REQUEST_METHOD" = "GET" ]; then
 
     lat="tolerant"
     loss="tolerant"
-    is_default=true
+    lat_ok=false
+    loss_ok=false
 
     if [ -f "$CONFIG" ]; then
-        is_default=false
         v_lat=$(jq -r '.latency.preset // empty' "$CONFIG" 2>/dev/null) || v_lat=""
         v_loss=$(jq -r '.loss.preset // empty' "$CONFIG" 2>/dev/null) || v_loss=""
         case "$v_lat" in
-            standard|tolerant|very-tolerant) lat="$v_lat" ;;
+            standard|tolerant|very-tolerant) lat="$v_lat"; lat_ok=true ;;
             *) qlog_warn "quality_thresholds.json had unexpected latency preset '$v_lat', returning default" ;;
         esac
         case "$v_loss" in
-            standard|tolerant|very-tolerant) loss="$v_loss" ;;
+            standard|tolerant|very-tolerant) loss="$v_loss"; loss_ok=true ;;
             *) qlog_warn "quality_thresholds.json had unexpected loss preset '$v_loss', returning default" ;;
         esac
+    fi
+
+    if [ "$lat_ok" = "true" ] && [ "$loss_ok" = "true" ]; then
+        is_default=false
+    else
+        is_default=true
     fi
 
     jq -n --arg lat "$lat" --arg loss "$loss" --argjson is_default "$is_default" \
