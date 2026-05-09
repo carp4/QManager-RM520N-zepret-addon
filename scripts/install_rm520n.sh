@@ -978,7 +978,90 @@ install_backend() {
         info "Config initialized at /etc/qmanager/qmanager.conf"
     fi
 
+    # --- Bootstrap default ping_profile.json / migrate legacy env vars ----------
+    install_ping_profile
+    migrate_ping_environment
+
     info "Backend installed"
+}
+
+# --- Bootstrap Default ping_profile.json -------------------------------------
+
+# Bootstrap default ping_profile.json on first install. Idempotent.
+install_ping_profile() {
+    local target="/etc/qmanager/ping_profile.json"
+    local source_file="$SRC_SCRIPTS/etc/qmanager/ping_profile.json"
+
+    mkdir -p /etc/qmanager
+    if [ ! -f "$target" ]; then
+        if [ -f "$source_file" ]; then
+            cp "$source_file" "$target"
+            chmod 644 "$target"
+            echo "  Installed default ping profile (relaxed)"
+        else
+            echo "  WARNING: $source_file missing from installer payload" >&2
+        fi
+    else
+        echo "  Existing ping profile preserved at $target"
+    fi
+}
+
+# --- Migrate Legacy Ping Environment -----------------------------------------
+
+# Migrate old cycle-count env vars in /etc/qmanager/environment to time-based.
+# Old: FAIL_THRESHOLD=3 (cycles)  ->  New: FAIL_SECS=15 (seconds, assuming 5s probe interval)
+# Idempotent: re-running on already-migrated file is a no-op.
+migrate_ping_environment() {
+    local env_file="/etc/qmanager/environment"
+    [ -f "$env_file" ] || return 0
+
+    # Skip if migration already happened (FAIL_SECS present, FAIL_THRESHOLD absent)
+    if grep -q '^FAIL_SECS=' "$env_file" && ! grep -q '^FAIL_THRESHOLD=' "$env_file"; then
+        return 0
+    fi
+    if ! grep -q '^FAIL_THRESHOLD=\|^RECOVER_THRESHOLD=\|^HISTORY_SIZE=' "$env_file"; then
+        return 0
+    fi
+
+    echo "  Migrating ping env vars from cycle-count to time-based..."
+    local interval=5
+    if grep -q '^PING_INTERVAL=' "$env_file"; then
+        interval=$(grep '^PING_INTERVAL=' "$env_file" | head -1 | cut -d= -f2)
+        # Defensive default if the value is missing or non-numeric
+        case "$interval" in
+            ''|*[!0-9]*) interval=5 ;;
+        esac
+    fi
+
+    local backup="${env_file}.pre-rust-ping.bak"
+    cp "$env_file" "$backup"
+
+    local tmp; tmp=$(mktemp)
+    while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in
+            FAIL_THRESHOLD=*)
+                local n="${line#FAIL_THRESHOLD=}"
+                case "$n" in ''|*[!0-9]*) n=3 ;; esac
+                printf 'FAIL_SECS=%s\n' "$((n * interval))" >> "$tmp"
+                ;;
+            RECOVER_THRESHOLD=*)
+                local n="${line#RECOVER_THRESHOLD=}"
+                case "$n" in ''|*[!0-9]*) n=2 ;; esac
+                printf 'RECOVER_SECS=%s\n' "$((n * interval))" >> "$tmp"
+                ;;
+            HISTORY_SIZE=*)
+                local n="${line#HISTORY_SIZE=}"
+                case "$n" in ''|*[!0-9]*) n=60 ;; esac
+                printf 'HISTORY_SECS=%s\n' "$((n * interval))" >> "$tmp"
+                ;;
+            *)
+                printf '%s\n' "$line" >> "$tmp"
+                ;;
+        esac
+    done < "$env_file"
+    mv "$tmp" "$env_file"
+    chmod 644 "$env_file"
+    echo "  Migrated $env_file (backup at $backup)"
 }
 
 # --- Cleanup Legacy Scripts --------------------------------------------------
