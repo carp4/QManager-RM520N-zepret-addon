@@ -81,7 +81,7 @@ func TestCommandDefinitions_AllPresent(t *testing.T) {
 	for _, cmd := range slashCommands() {
 		names[cmd.Name] = true
 	}
-	required := []string{"signal", "bands", "status", "events", "reboot", "lock-band", "network-mode"}
+	required := []string{"signal", "bands", "status", "events", "device", "sim", "watchcat", "reboot", "lock-band", "network-mode"}
 	for _, r := range required {
 		if !names[r] {
 			t.Errorf("missing slash command: %s", r)

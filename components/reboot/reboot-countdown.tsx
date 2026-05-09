@@ -46,6 +46,13 @@ export function RebootCountdown() {
     }
     sessionStorage.removeItem(SESSION_KEY);
     setVerified(true);
+
+    // Tell the OTA worker (if any) that the static reboot page has loaded
+    // so it can stop waiting and fire the reboot syscall. Harmless on
+    // non-OTA reboots — the worker simply isn't watching.
+    fetch("/cgi-bin/quecmanager/system/update.sh?action=reboot_ack", {
+      keepalive: true,
+    }).catch(() => {});
   }, []);
 
   // Keep ref in sync so the polling effect can read it without re-subscribing

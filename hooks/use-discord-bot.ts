@@ -20,10 +20,15 @@ export interface UseDiscordBotReturn {
   isSendingTest: boolean;
   error: string | null;
   saveSettings: (payload: DiscordBotSavePayload) => Promise<boolean>;
-  sendTestDm: () => Promise<boolean>;
+  sendTestDm: () => Promise<{ success: boolean; error?: string }>;
   enable: () => Promise<boolean>;
   disable: () => Promise<boolean>;
-  refresh: () => void;
+  resetBot: () => Promise<boolean>;
+  isResetting: boolean;
+  // Pass silent=true for background polling so the skeleton doesn't flash on
+  // every poll. Default (no arg) mimics an explicit user action and shows the
+  // loading state.
+  refresh: (silent?: boolean) => void;
 }
 
 export function useDiscordBot(): UseDiscordBotReturn {
@@ -32,6 +37,7 @@ export function useDiscordBot(): UseDiscordBotReturn {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isSendingTest, setIsSendingTest] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const mountedRef = useRef(true);
 
@@ -85,14 +91,17 @@ export function useDiscordBot(): UseDiscordBotReturn {
     }
   }, [fetchAll]);
 
-  const sendTestDm = useCallback(async (): Promise<boolean> => {
+  const sendTestDm = useCallback(async (): Promise<{ success: boolean; error?: string }> => {
     setIsSendingTest(true);
     try {
       const resp = await authFetch(CGI_TEST, { method: "POST" });
       const json = await resp.json();
-      return json.success;
-    } catch { return false; }
-    finally { if (mountedRef.current) setIsSendingTest(false); }
+      return { success: !!json.success, error: json.error };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : "Network error" };
+    } finally {
+      if (mountedRef.current) setIsSendingTest(false);
+    }
   }, []);
 
   const enable = useCallback(async (): Promise<boolean> => {
@@ -117,6 +126,27 @@ export function useDiscordBot(): UseDiscordBotReturn {
     return json.success;
   }, [fetchAll]);
 
-  return { settings, status, isLoading, isSaving, isSendingTest, error,
-           saveSettings, sendTestDm, enable, disable, refresh: fetchAll };
+  const resetBot = useCallback(async (): Promise<boolean> => {
+    setIsResetting(true);
+    try {
+      const resp = await authFetch(CGI_CONFIGURE, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reset" }),
+      });
+      const json = await resp.json();
+      if (!mountedRef.current) return false;
+      if (!json.success) { setError(json.error ?? "Failed to reset"); return false; }
+      await fetchAll(true);
+      return true;
+    } catch (err) {
+      if (mountedRef.current) setError(err instanceof Error ? err.message : "Failed to reset");
+      return false;
+    } finally {
+      if (mountedRef.current) setIsResetting(false);
+    }
+  }, [fetchAll]);
+
+  return { settings, status, isLoading, isSaving, isSendingTest, isResetting, error,
+           saveSettings, sendTestDm, enable, disable, resetBot, refresh: fetchAll };
 }

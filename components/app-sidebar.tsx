@@ -18,7 +18,7 @@ import {
   SettingsIcon,
   TerminalIcon,
   DownloadIcon,
-  TerminalSquareIcon,
+  EthernetPort,
 } from "lucide-react";
 
 import QManagerLogo from "@/public/qmanager-logo.svg";
@@ -70,6 +70,10 @@ const data = {
           title: "System Health Check",
           url: "/system-settings/system-health-check",
         },
+        {
+          title: "Connection Quality",
+          url: "/system-settings/connection-quality",
+        },
       ],
     },
     {
@@ -78,14 +82,12 @@ const data = {
       icon: DownloadIcon,
     },
     {
-      title: "AT Terminal",
+      title: "Terminals",
       url: "/system-settings/at-terminal",
       icon: TerminalIcon,
-    },
-    {
-      title: "Web Console",
-      url: "/system-settings/web-console",
-      icon: TerminalSquareIcon,
+      items: [
+        { title: "Web Console", url: "/system-settings/web-console" },
+      ],
     },
   ],
   navSecondary: [
@@ -192,6 +194,11 @@ const data = {
     },
   ],
   localNetwork: [
+    {
+      title: "Ethernet Status",
+      url: "/local-network/ethernet",
+      icon: EthernetPort,
+    },
     {
       title: "Settings",
       url: "/local-network/ip-passthrough",

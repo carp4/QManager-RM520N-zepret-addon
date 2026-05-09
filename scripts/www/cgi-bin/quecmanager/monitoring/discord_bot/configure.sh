@@ -4,7 +4,7 @@
 # =============================================================================
 # configure.sh — Discord Bot configuration CGI (GET + POST)
 # GET:  Returns current config (token masked) + bot status.
-# POST: action=save_settings | action=install | action=uninstall | action=enable | action=disable
+# POST: action=save_settings | action=install | action=uninstall | action=reset | action=enable | action=disable
 # =============================================================================
 
 qlog_init "cgi_discord_configure"
@@ -76,6 +76,21 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
             && mv "$tmp" "$CONFIG"
 
         touch "$RELOAD_FLAG"
+
+        # Drive the service state to match the saved `enabled` flag.
+        # We use svc_restart (not svc_start) because the daemon caches
+        # token, owner_discord_id, and dmChannelID in memory at startup —
+        # svc_start is a no-op for an already-running unit, so config
+        # changes (new token after Reset, new owner ID) would never take
+        # effect. svc_restart picks them up cleanly. systemctl restart
+        # also starts a stopped unit, so this covers both transitions.
+        if [ "$enabled" = "true" ]; then
+            svc_enable qmanager_discord
+            svc_restart qmanager_discord
+        else
+            svc_stop qmanager_discord
+        fi
+
         jq -n '{success:true}'
         ;;
     install)
@@ -89,6 +104,18 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
         svc_stop qmanager_discord
         svc_disable qmanager_discord
         rm -f "$BOT_BIN" "$CONFIG"
+        jq -n '{success:true}'
+        ;;
+    reset)
+        svc_stop qmanager_discord
+        svc_disable qmanager_discord
+        rm -f "$CONFIG"
+        rm -f /etc/qmanager/discord_dm_channel
+        rm -f "$RELOAD_FLAG"
+        rm -f /tmp/qmanager_discord_test
+        # Clear the daemon's status cache so post-reset GET /status.sh
+        # doesn't keep reporting connected=true from the stopped bot.
+        rm -f /tmp/qmanager_discord_status.json
         jq -n '{success:true}'
         ;;
     enable)

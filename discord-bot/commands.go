@@ -9,6 +9,9 @@ func slashCommands() []*discordgo.ApplicationCommand {
 		{Name: "bands", Description: "Active technology, band lock state, and carrier aggregation details"},
 		{Name: "status", Description: "Connectivity, WAN IP, operator, uptime, and CPU temperature"},
 		{Name: "events", Description: "Last 5 network events"},
+		{Name: "device", Description: "Modem hardware info — model, firmware, IMEI, supported bands"},
+		{Name: "sim", Description: "SIM details — slot, ICCID, IMSI, phone, APN (private response)"},
+		{Name: "watchcat", Description: "Watchcat recovery system status — current tier, failures, last recovery"},
 		{Name: "reboot", Description: "Reboot the modem (requires confirmation)"},
 		{
 			Name:        "lock-band",
@@ -17,13 +20,13 @@ func slashCommands() []*discordgo.ApplicationCommand {
 				{
 					Type:        discordgo.ApplicationCommandOptionString,
 					Name:        "lte_bands",
-					Description: "LTE bands to lock, colon-separated (e.g. B3:B28), or 'auto' to unlock",
+					Description: "LTE bands to lock, comma-separated (e.g. B3,B7,B28), or 'auto' to unlock",
 					Required:    optional,
 				},
 				{
 					Type:        discordgo.ApplicationCommandOptionString,
 					Name:        "nr_bands",
-					Description: "NR bands to lock, colon-separated (e.g. n78), or 'auto' to unlock",
+					Description: "NR bands to lock, comma-separated (e.g. n41,n78), or 'auto' to unlock",
 					Required:    optional,
 				},
 			},

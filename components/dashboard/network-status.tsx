@@ -26,7 +26,14 @@ import type {
   NetworkStatus,
   ConnectivityStatus,
   ServiceStatus,
+  PingTriState,
 } from "@/types/modem-status";
+
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface NetworkStatusComponentProps {
   data: NetworkStatus | null;
@@ -134,6 +141,91 @@ function getServiceColor(
   return "yellow";
 }
 
+// ─── Internet badge — tri-state with optional tooltip ──────────────────────
+
+interface InternetBadge {
+  cls: string;
+  label: string;
+  state: PingTriState;
+  tooltip: string | null;
+}
+
+function buildInternetBadge(c: ConnectivityStatus | null): InternetBadge {
+  // Prefer the new tri-state field; fall back to internet_available for
+  // rolling-upgrade safety (poller without Phase 2 forwarding).
+  let state: PingTriState = "unknown";
+  if (c?.state) {
+    state = c.state;
+  } else if (c?.internet_available === true) {
+    state = "connected";
+  } else if (c?.internet_available === false) {
+    state = "disconnected";
+  }
+
+  switch (state) {
+    case "connected":
+      return {
+        cls: "bg-success/15 text-success hover:bg-success/20 border-success/30",
+        label: "Online",
+        state,
+        tooltip: null,
+      };
+    case "limited":
+      return {
+        cls: "bg-warning/15 text-warning hover:bg-warning/20 border-warning/30",
+        label: "Carrier Limited",
+        state,
+        tooltip: limitedTooltip(c?.limited_reason ?? null),
+      };
+    case "disconnected":
+      return {
+        cls: "bg-destructive/15 text-destructive hover:bg-destructive/20 border-destructive/30",
+        label: "Offline",
+        state,
+        tooltip: downTooltip(c?.down_reason ?? null),
+      };
+    default:
+      return {
+        cls: "bg-muted/50 text-muted-foreground hover:bg-muted/70 border-muted-foreground/30",
+        label: "Internet",
+        state,
+        tooltip: null,
+      };
+  }
+}
+
+function limitedTooltip(code: number | null): string {
+  if (code === null) {
+    return "Carrier is intercepting probes — billing or activation page likely.";
+  }
+  if (code >= 300 && code < 400) {
+    return `Carrier is redirecting probes (HTTP ${code}). Likely walled-garden or activation page.`;
+  }
+  if (code >= 400) {
+    return `Carrier returned HTTP ${code}. Probe path is intercepted but not by a redirect.`;
+  }
+  return `Network reachable but probe returned HTTP ${code}, not 204. Carrier may be redirecting traffic to a billing or activation page.`;
+}
+
+function downTooltip(reason: string | null): string {
+  switch (reason) {
+    case "carrier_down":
+      return "Cellular carrier link is down (sysfs reports no carrier).";
+    case "timeout":
+      return "Probe timed out — connection may be stalled.";
+    case "refused":
+      return "Connection refused by probe target.";
+    case "reset":
+      return "Connection reset by carrier or peer.";
+    case "dns":
+      return "DNS resolution failed.";
+    case "malformed":
+      return "Probe response was malformed.";
+    default:
+      return "Internet unreachable.";
+  }
+}
+
 // Color map for the pulsating service rings
 const serviceColorMap: Record<
   string,
@@ -192,10 +284,6 @@ const NetworkStatusComponent = ({
   // Whether we have a real network (LTE/5G), not fallback 3G
   const hasNetwork = networkDisplay.hasNetwork;
 
-  // Internet status — driven by ping daemon via connectivity data
-  // true = reachable, false = unreachable, null = ping daemon not running / unknown
-  const internetAvailable = connectivity?.internet_available ?? null;
-
   return (
     <Card className="@container/card">
       <CardHeader>
@@ -250,36 +338,41 @@ const NetworkStatusComponent = ({
                     : "Radio Off"}
               </Badge>
 
-              {/* Internet status — green/red/gray based on ping daemon */}
-              <Badge
-                variant="outline"
-                className={
-                  internetAvailable === true
-                    ? "bg-success/15 text-success hover:bg-success/20 border-success/30"
-                    : internetAvailable === false
-                      ? "bg-destructive/15 text-destructive hover:bg-destructive/20 border-destructive/30"
-                      : "bg-muted/50 text-muted-foreground hover:bg-muted/70 border-muted-foreground/30"
+              {/* Internet status — tri-state from ping daemon */}
+              {(() => {
+                const b = buildInternetBadge(connectivity);
+                const dot =
+                  b.state === "connected" ? (
+                    <span className="relative flex size-2 shrink-0">
+                      <span className="absolute inline-flex size-full rounded-full bg-success opacity-75 animate-ping" />
+                      <span className="relative inline-flex size-2 rounded-full bg-success" />
+                    </span>
+                  ) : b.state === "limited" ? (
+                    <span className="relative flex size-2 shrink-0">
+                      <span className="absolute inline-flex size-full rounded-full bg-warning opacity-75 animate-ping" />
+                      <span className="relative inline-flex size-2 rounded-full bg-warning" />
+                    </span>
+                  ) : b.state === "disconnected" ? (
+                    <span className="inline-flex size-2 rounded-full shrink-0 bg-destructive" />
+                  ) : (
+                    <span className="inline-flex size-2 rounded-full shrink-0 bg-muted-foreground" />
+                  );
+                const badge = (
+                  <Badge variant="outline" className={b.cls}>
+                    {dot}
+                    {b.label}
+                  </Badge>
+                );
+                if (b.tooltip) {
+                  return (
+                    <Tooltip>
+                      <TooltipTrigger asChild>{badge}</TooltipTrigger>
+                      <TooltipContent>{b.tooltip}</TooltipContent>
+                    </Tooltip>
+                  );
                 }
-              >
-                {/* Sonar ping — only when online */}
-                {internetAvailable === true ? (
-                  <span className="relative flex size-2 shrink-0">
-                    <span className="absolute inline-flex size-full rounded-full bg-success opacity-75 animate-ping" />
-                    <span className="relative inline-flex size-2 rounded-full bg-success" />
-                  </span>
-                ) : (
-                  <span
-                    className={`inline-flex size-2 rounded-full shrink-0 ${
-                      internetAvailable === false ? "bg-destructive" : "bg-muted-foreground"
-                    }`}
-                  />
-                )}
-                {internetAvailable === true
-                  ? "Online"
-                  : internetAvailable === false
-                    ? "Offline"
-                    : "Internet"}
-              </Badge>
+                return badge;
+              })()}
             </div>
           )}
         </div>

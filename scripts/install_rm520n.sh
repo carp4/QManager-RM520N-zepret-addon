@@ -275,9 +275,27 @@ preflight() {
         die "This script must be run as root"
     fi
 
-    # Hard requirement: curl with TLS. We removed all wget fallbacks intentionally.
+    # Hard requirement: curl with TLS. If missing but Entware is already
+    # bootstrapped, self-heal by installing curl via opkg so users who fetched
+    # this script with wget can still complete the install.
     if ! command -v curl >/dev/null 2>&1; then
-        die "curl is required but not found in PATH. Aborting."
+        if [ -x /opt/bin/opkg ]; then
+            warn "curl not found — installing from Entware"
+            /opt/bin/opkg update >/dev/null 2>&1 || true
+            if /opt/bin/opkg install curl >/dev/null 2>&1; then
+                [ -x /opt/bin/curl ] && ln -sf /opt/bin/curl /usr/bin/curl 2>/dev/null
+                hash -r 2>/dev/null || true
+                if command -v curl >/dev/null 2>&1; then
+                    info "curl installed from Entware"
+                else
+                    die "curl install via Entware succeeded but curl still not on PATH. Aborting."
+                fi
+            else
+                die "curl is required but not found, and 'opkg install curl' failed. Aborting."
+            fi
+        else
+            die "curl is required but not found, and Entware is not installed. Install curl first (e.g. via Entware) and re-run."
+        fi
     fi
 
     if [ "$DO_FORCE" = "1" ]; then
@@ -597,6 +615,11 @@ RCEOF
 
         # Ensure jq is in standard PATH (lighttpd CGI won't see /opt/bin)
         [ -x /opt/bin/jq ] && ln -sf /opt/bin/jq /usr/bin/jq 2>/dev/null || true
+
+        # Same for curl — Entware-installed curl lands in /opt/bin/, but
+        # CGI scripts and BusyBox shells don't have /opt/bin on PATH.
+        [ -x /opt/bin/curl ] && ! command -v curl >/dev/null 2>&1 && \
+            ln -sf /opt/bin/curl /usr/bin/curl 2>/dev/null || true
 
         # coreutils-timeout
         if command -v timeout >/dev/null 2>&1; then
@@ -955,7 +978,90 @@ install_backend() {
         info "Config initialized at /etc/qmanager/qmanager.conf"
     fi
 
+    # --- Bootstrap default ping_profile.json / migrate legacy env vars ----------
+    install_ping_profile
+    migrate_ping_environment
+
     info "Backend installed"
+}
+
+# --- Bootstrap Default ping_profile.json -------------------------------------
+
+# Bootstrap default ping_profile.json on first install. Idempotent.
+install_ping_profile() {
+    local target="/etc/qmanager/ping_profile.json"
+    local source_file="$SRC_SCRIPTS/etc/qmanager/ping_profile.json"
+
+    mkdir -p /etc/qmanager
+    if [ ! -f "$target" ]; then
+        if [ -f "$source_file" ]; then
+            cp "$source_file" "$target"
+            chmod 644 "$target"
+            echo "  Installed default ping profile (relaxed)"
+        else
+            echo "  WARNING: $source_file missing from installer payload" >&2
+        fi
+    else
+        echo "  Existing ping profile preserved at $target"
+    fi
+}
+
+# --- Migrate Legacy Ping Environment -----------------------------------------
+
+# Migrate old cycle-count env vars in /etc/qmanager/environment to time-based.
+# Old: FAIL_THRESHOLD=3 (cycles)  ->  New: FAIL_SECS=15 (seconds, assuming 5s probe interval)
+# Idempotent: re-running on already-migrated file is a no-op.
+migrate_ping_environment() {
+    local env_file="/etc/qmanager/environment"
+    [ -f "$env_file" ] || return 0
+
+    # Skip if migration already happened (FAIL_SECS present, FAIL_THRESHOLD absent)
+    if grep -q '^FAIL_SECS=' "$env_file" && ! grep -q '^FAIL_THRESHOLD=' "$env_file"; then
+        return 0
+    fi
+    if ! grep -q '^FAIL_THRESHOLD=\|^RECOVER_THRESHOLD=\|^HISTORY_SIZE=' "$env_file"; then
+        return 0
+    fi
+
+    echo "  Migrating ping env vars from cycle-count to time-based..."
+    local interval=5
+    if grep -q '^PING_INTERVAL=' "$env_file"; then
+        interval=$(grep '^PING_INTERVAL=' "$env_file" | head -1 | cut -d= -f2)
+        # Defensive default if the value is missing or non-numeric
+        case "$interval" in
+            ''|*[!0-9]*) interval=5 ;;
+        esac
+    fi
+
+    local backup="${env_file}.pre-rust-ping.bak"
+    cp "$env_file" "$backup"
+
+    local tmp; tmp=$(mktemp)
+    while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in
+            FAIL_THRESHOLD=*)
+                local n="${line#FAIL_THRESHOLD=}"
+                case "$n" in ''|*[!0-9]*) n=3 ;; esac
+                printf 'FAIL_SECS=%s\n' "$((n * interval))" >> "$tmp"
+                ;;
+            RECOVER_THRESHOLD=*)
+                local n="${line#RECOVER_THRESHOLD=}"
+                case "$n" in ''|*[!0-9]*) n=2 ;; esac
+                printf 'RECOVER_SECS=%s\n' "$((n * interval))" >> "$tmp"
+                ;;
+            HISTORY_SIZE=*)
+                local n="${line#HISTORY_SIZE=}"
+                case "$n" in ''|*[!0-9]*) n=60 ;; esac
+                printf 'HISTORY_SECS=%s\n' "$((n * interval))" >> "$tmp"
+                ;;
+            *)
+                printf '%s\n' "$line" >> "$tmp"
+                ;;
+        esac
+    done < "$env_file"
+    mv "$tmp" "$env_file"
+    chmod 644 "$env_file"
+    echo "  Migrated $env_file (backup at $backup)"
 }
 
 # --- Cleanup Legacy Scripts --------------------------------------------------
@@ -1175,7 +1281,7 @@ start_services() {
     systemctl start qmanager-setup 2>/dev/null || true
 
     # Start always-on services with verification
-    for svc in qmanager-cfun-fix qmanager-ping qmanager-poller qmanager-ttl qmanager-mtu qmanager-imei-check; do
+    for svc in qmanager-cfun-fix qmanager-ping qmanager-poller qmanager-traffic qmanager-ttl qmanager-mtu qmanager-imei-check; do
         systemctl start "$svc" 2>/dev/null || true
     done
 
@@ -1197,7 +1303,7 @@ start_services() {
 
     # Verify critical services
     local svc_errors=0
-    for svc in qmanager-firewall lighttpd qmanager-setup qmanager-ping qmanager-poller; do
+    for svc in qmanager-firewall lighttpd qmanager-setup qmanager-ping qmanager-poller qmanager-traffic; do
         if systemctl is-active "$svc" >/dev/null 2>&1; then
             info "$svc is running"
         else

@@ -253,6 +253,29 @@ export interface TrafficStatus {
   total_tx_bytes: number;
 }
 
+/**
+ * Live cellular traffic stream from `qmanager_traffic` daemon.
+ * Sourced from `/proc/net/dev` at 1 Hz, independent of the 2 s poller cache.
+ * `iface` is `null` when neither rmnet candidate is up.
+ * `stale` is set by the CGI when the on-disk file is older than 5 s.
+ */
+export interface TrafficStream {
+  /** Unix epoch seconds when the daemon wrote this snapshot */
+  ts: number;
+  /** Active cellular interface name, or null when none is up */
+  iface: string | null;
+  /** Cumulative RX bytes since interface bringup (modem boot) */
+  total_rx_bytes: number;
+  /** Cumulative TX bytes since interface bringup (modem boot) */
+  total_tx_bytes: number;
+  /** Current download speed in bytes/sec, computed from a 1 s delta */
+  rx_bytes_per_sec: number;
+  /** Current upload speed in bytes/sec, computed from a 1 s delta */
+  tx_bytes_per_sec: number;
+  /** True when the on-disk file is older than 5 s (daemon stuck or stopped) */
+  stale?: boolean;
+}
+
 // --- Utility Types -----------------------------------------------------------
 
 /** Signal quality thresholds for UI indicators */
@@ -302,6 +325,36 @@ export function getSignalQuality(
   return "poor";
 }
 
+/** Daemon's authoritative tri-state connectivity outcome (from qmanager_ping.json's `connectivity` field). */
+export type PingTriState = "connected" | "limited" | "disconnected" | "unknown";
+
+/** User-selectable ping daemon sensitivity profile. */
+export type PingProfile = "sensitive" | "regular" | "relaxed" | "quiet";
+
+/** Display-order list of the four named profiles. */
+export const PING_PROFILES: readonly PingProfile[] = [
+  "sensitive",
+  "regular",
+  "relaxed",
+  "quiet",
+] as const;
+
+/** User-selectable preset for high_latency / high_packet_loss event thresholds. */
+export type QualityPreset = "standard" | "tolerant" | "very-tolerant";
+
+/** Display-order list of quality presets. */
+export const QUALITY_PRESETS: readonly QualityPreset[] = [
+  "standard",
+  "tolerant",
+  "very-tolerant",
+] as const;
+
+/** Persisted shape of /etc/qmanager/quality_thresholds.json (also the GET response settings field). */
+export interface QualityThresholdsSettings {
+  latency: { preset: QualityPreset };
+  loss: { preset: QualityPreset };
+}
+
 export type ConnectivityState =
   | "connected"
   | "degraded"
@@ -336,6 +389,25 @@ export interface ConnectivityStatus {
   history_size: number;
   /** Whether watchcat recovery is currently active */
   during_recovery: boolean;
+  /** Phase 2 — daemon's tri-state connectivity outcome. null means the field is missing
+      from status.json (rolling-upgrade fallback). */
+  state: PingTriState | null;
+  /** When state == "limited", the HTTP code seen by the probe (e.g., 200, 302). null otherwise. */
+  limited_reason: number | null;
+  /** When state == "disconnected", the failure reason: "carrier_down" | "timeout" | "refused"
+      | "reset" | "dns" | "malformed". null otherwise. */
+  down_reason: string | null;
+  /** Consecutive limited-outcome probes. Resets on any other outcome. */
+  streak_limited: number;
+  /** Daemon's runtime profile string. Can be one of PingProfile, or "custom" (env-var override),
+      or "unknown" (daemon dead/stale). Typed as string to admit all three. */
+  profile: string;
+  /** Runtime fail-threshold in seconds (active in the daemon). 0 if daemon dead/stale. */
+  fail_secs: number;
+  /** Runtime recover-threshold in seconds. 0 if daemon dead/stale. */
+  recover_secs: number;
+  /** Runtime intercept-threshold in seconds. 0 if daemon dead/stale. */
+  intercept_secs: number;
 }
 
 // --- Watchcat State (from /tmp/qmanager_watchcat.json via poller) ------------

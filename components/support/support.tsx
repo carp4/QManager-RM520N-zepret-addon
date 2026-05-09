@@ -53,8 +53,8 @@ const SupportComponent = () => {
           <CardContent>
             <div className="grid gap-6">
               <p className="text-sm text-muted-foreground leading-relaxed">
-                Found a bug, have a feature idea, or need help with your
-                setup? Reach out through any of the channels below.
+                Found a bug, have a feature idea, or need help with your setup?
+                Reach out through any of the channels below.
               </p>
               <div>
                 <dl className="grid divide-y divide-border border-y border-border">
@@ -108,9 +108,9 @@ const SupportComponent = () => {
           <CardContent>
             <div className="grid gap-6">
               <p className="text-sm text-muted-foreground leading-relaxed">
-                The Cellular Modem Talk/Development community on Discord is where users share
-                configurations, troubleshoot issues together, and discuss
-                cellular networking tips. Come say hello!
+                The Cellular Modem Talk/Development community on Discord is
+                where users share configurations, troubleshoot issues together,
+                and discuss cellular networking tips. Come say hello!
               </p>
               <div className="flex flex-col items-center gap-4">
                 <div className="rounded-lg border border-border bg-muted p-2">
@@ -123,12 +123,12 @@ const SupportComponent = () => {
                   />
                 </div>
                 <a
-                  href="https://discord.gg/wNuzkg8s"
+                  href="https://discord.iamromulan.dev/"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1.5 py-1 text-sm font-semibold text-primary hover:underline underline-offset-4"
                 >
-                  discord.gg/wNuzkg8s
+                  discord.iamromulan.dev/
                   <ExternalLink className="h-3.5 w-3.5" />
                 </a>
               </div>

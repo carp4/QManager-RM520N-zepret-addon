@@ -92,6 +92,25 @@ curl -fsSL -o /tmp/qmanager-installer.sh \
 
 The interactive installer fetches the latest release, verifies the SHA-256 checksum, bootstraps Entware (if needed), installs lighttpd, deploys the QManager frontend and backend, configures systemd services, and optionally sets up SSH (dropbear). Bundled dependencies (`atcli_smd11`, `sms_tool`, `jq`, `dropbear`) are installed automatically. The SSH root password is automatically set to match the web UI password during first-time onboarding. A reboot is triggered after installation.
 
+> **If `curl` isn't available on your modem** (common on x5x/x6x firmwares like RM502, RM520, RM521), install it through Entware first, then call it by absolute path so the BusyBox shell's default `PATH` doesn't trip you up:
+>
+> ```sh
+> opkg update && opkg install curl
+> /opt/bin/curl -fsSL -o /tmp/qmanager-installer.sh \
+>   https://github.com/dr-dolomite/QManager-RM520N/raw/refs/heads/main/qmanager-installer.sh && \
+>   bash /tmp/qmanager-installer.sh
+> ```
+>
+> **If you have `wget` but not `curl`**, just use `wget` to fetch the installer — the installer's preflight will install `curl` from Entware automatically (Entware must already be bootstrapped) so future OTA updates work:
+>
+> ```sh
+> wget -O /tmp/qmanager-installer.sh \
+>   https://github.com/dr-dolomite/QManager-RM520N/raw/refs/heads/main/qmanager-installer.sh && \
+>   bash /tmp/qmanager-installer.sh
+> ```
+>
+> The QManager installer creates a `/usr/bin/curl` symlink during install, so subsequent commands and OTA updates pick up `curl` from the standard PATH without manual export.
+
 ### Upgrading
 
 From v0.1.5+, go to **System Settings → Software Update** and use the built-in OTA update flow — download, verify, and install without SSH. Rollback to the previous version is available if needed.
@@ -276,14 +295,17 @@ QManager runs 10 systemd services on the modem:
 
 ---
 
-## Support the Project
+## Tips for the Project
 
 <div align="center">
-  <h3>Support QManager's Development</h3>
-  <p>Your contribution helps maintain the project and fund continued development, testing on new cellular networks, and hardware costs.</p>
+  <h3>Tip QManager's Development</h3>
+  <p>Your tips help maintain the project and fund continued development, testing on new cellular networks, and hardware costs.</p>
   <br/>
   <a href="https://github.com/sponsors/dr-dolomite" target="_blank">
-    <img height="40" src="https://img.shields.io/badge/Sponsor-%E2%9D%A4-EA4AAA?style=for-the-badge&logo=githubsponsors&logoColor=white" alt="Sponsor on GitHub" />
+    <img height="40" src="https://img.shields.io/badge/GitHub%20Tip-%E2%9D%A4-EA4AAA?style=for-the-badge&logo=githubsponsors&logoColor=white" alt="Tip on GitHub" />
+  </a>
+  <a href="https://paypal.me/iamrusss" target="_blank">
+    <img height="40" src="https://img.shields.io/badge/PayPal%20Tip-00457C?style=for-the-badge&logo=paypal&logoColor=white" alt="Tip via PayPal" />
   </a>
   <br/><br/>
   <p><strong>GCash via Remitly</strong><br/>Name: Russel Yasol<br/>Number: +639544817486</p>

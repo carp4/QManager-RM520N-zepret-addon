@@ -327,7 +327,10 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
         # NOTE: Do NOT use --json flag — its output is fully buffered on
         # RM520N-GL (no stdbuf available) and never flushes to the file.
         # Interactive mode flushes the auth URL immediately.
-        ( ts_cmd up --accept-dns=false > "$TS_UP_OUTPUT" 2>&1 ) &
+        # --reset clears any lingering flags from a prior `tailscale up`
+        # (matches the rgmii-toolkit/SimpleAdmin convention validated across
+        # PRAIRE and SDXLEMUR modem platforms).
+        ( ts_cmd up --reset --accept-dns=false > "$TS_UP_OUTPUT" 2>&1 ) &
         ts_up_pid=$!
         echo "$ts_up_pid" > "$TS_UP_PID_FILE"
 
