@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { authFetch } from "@/lib/auth-fetch";
 
-import { CartesianGrid, Line, LineChart, XAxis } from "recharts";
+import { CartesianGrid, Line, LineChart } from "recharts";
 import {
   Card,
   CardContent,
@@ -46,7 +46,7 @@ export const description = "A multiple bar chart";
 // =============================================================================
 
 /** How many points to show on the chart */
-const CHART_POINTS = 5;
+const CHART_POINTS = 10;
 
 /** Rolling window size for per-point packet loss calculation */
 const LOSS_WINDOW = 10;
@@ -192,12 +192,6 @@ const LiveLatencyComponent = ({ connectivity }: LiveLatencyComponentProps) => {
               }}
             >
               <CartesianGrid vertical={false} />
-              <XAxis
-                dataKey="time"
-                tickLine={false}
-                axisLine={false}
-                tickMargin={8}
-              />
               <ChartTooltip
                 cursor={false}
                 content={
