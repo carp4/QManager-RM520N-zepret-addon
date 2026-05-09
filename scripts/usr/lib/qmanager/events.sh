@@ -57,6 +57,10 @@ _qt_load() {
     local lat loss
     lat=$(jq -r '.latency.preset // "tolerant"' "$QUALITY_CONFIG" 2>/dev/null)
     loss=$(jq -r '.loss.preset // "tolerant"' "$QUALITY_CONFIG" 2>/dev/null)
+    if [ -z "$lat" ] || [ -z "$loss" ]; then
+        qlog_warn "quality_thresholds.json parse failed, keeping current thresholds"
+        return 0
+    fi
     case "$lat"  in standard|tolerant|very-tolerant) _qt_apply_lat  "$lat"  ;; esac
     case "$loss" in standard|tolerant|very-tolerant) _qt_apply_loss "$loss" ;; esac
 }
