@@ -9,8 +9,13 @@
 #
 # Active-interface selection (per tick):
 #   1. Prefer $NETWORK_IFACE (rmnet_ipa0 on RM520N-GL).
-#   2. If operstate != up, try rmnet_data0.
-#   3. If neither up, emit iface=null with zeroed counters.
+#   2. If primary is missing from /proc/net/dev, try rmnet_data0.
+#   3. If neither present, emit iface=null with zeroed counters.
+#
+# NOTE: Quectel rmnet drivers leave /sys/class/net/<iface>/operstate at
+# "unknown" even when the interface is actively passing traffic, so we cannot
+# gate selection on operstate. /proc/net/dev presence is the source of truth
+# (mirrors the qmanager_poller approach).
 #
 # Counter-reset handling: a negative delta (modem SSR re-created the iface)
 # causes one zero tick and reseeds the baseline.
@@ -51,19 +56,22 @@ prev_ts=0
 
 # --- Helpers -----------------------------------------------------------------
 
-# pick_iface — echo the iface to read this tick, or empty if none up
+# iface_in_proc <iface> — true if iface appears in /proc/net/dev
+iface_in_proc() {
+    grep -q "^[[:space:]]*$1:" /proc/net/dev 2>/dev/null
+}
+
+# pick_iface — echo the iface to read this tick, or empty if none present.
+# Quectel rmnet drivers don't update operstate, so we use /proc/net/dev
+# presence (same approach as qmanager_poller).
 pick_iface() {
-    if [ -r "/sys/class/net/$PRIMARY_IFACE/operstate" ]; then
-        if [ "$(cat "/sys/class/net/$PRIMARY_IFACE/operstate" 2>/dev/null)" = "up" ]; then
-            echo "$PRIMARY_IFACE"
-            return
-        fi
+    if iface_in_proc "$PRIMARY_IFACE"; then
+        echo "$PRIMARY_IFACE"
+        return
     fi
-    if [ -n "$FALLBACK_IFACE" ] && [ -r "/sys/class/net/$FALLBACK_IFACE/operstate" ]; then
-        if [ "$(cat "/sys/class/net/$FALLBACK_IFACE/operstate" 2>/dev/null)" = "up" ]; then
-            echo "$FALLBACK_IFACE"
-            return
-        fi
+    if [ -n "$FALLBACK_IFACE" ] && iface_in_proc "$FALLBACK_IFACE"; then
+        echo "$FALLBACK_IFACE"
+        return
     fi
     echo ""
 }

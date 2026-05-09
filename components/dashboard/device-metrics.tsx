@@ -71,17 +71,27 @@ const DeviceMetricsComponent = ({
   const displayConnUptime = deviceData?.conn_uptime_seconds ?? 0;
 
   // Prefer the 1 Hz stream daemon; fall back to the 2 s poller cache when
-  // the stream daemon is starting, stopped, or stale.
-  const rxSpeed =
-    trafficStream?.rx_bytes_per_sec ?? trafficData?.rx_bytes_per_sec ?? 0;
-  const txSpeed =
-    trafficStream?.tx_bytes_per_sec ?? trafficData?.tx_bytes_per_sec ?? 0;
+  // the stream daemon is missing, stale, or has no bound iface. The stream
+  // emits explicit 0s when iface is null, so a `??` chain alone would never
+  // fall through — gate on iface presence and freshness instead.
+  const streamUsable =
+    trafficStream != null &&
+    trafficStream.iface != null &&
+    !trafficStream.stale;
 
-  // Cumulative totals — same fallback pattern.
-  const totalRx =
-    trafficStream?.total_rx_bytes ?? trafficData?.total_rx_bytes ?? 0;
-  const totalTx =
-    trafficStream?.total_tx_bytes ?? trafficData?.total_tx_bytes ?? 0;
+  const rxSpeed = streamUsable
+    ? trafficStream.rx_bytes_per_sec
+    : trafficData?.rx_bytes_per_sec ?? 0;
+  const txSpeed = streamUsable
+    ? trafficStream.tx_bytes_per_sec
+    : trafficData?.tx_bytes_per_sec ?? 0;
+
+  const totalRx = streamUsable
+    ? trafficStream.total_rx_bytes
+    : trafficData?.total_rx_bytes ?? 0;
+  const totalTx = streamUsable
+    ? trafficStream.total_tx_bytes
+    : trafficData?.total_tx_bytes ?? 0;
   const isTempHigh = temp !== null && temp >= TEMP_WARN;
   const isCpuHigh = cpu !== null && cpu >= CPU_WARN;
   const memPct = memTotal > 0 ? (memUsed / memTotal) * 100 : 0;
