@@ -15,7 +15,6 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertTriangleIcon } from "lucide-react";
-import { Separator } from "@/components/ui/separator";
 import { SaveButton, useSaveFlash } from "@/components/ui/save-button";
 
 import { usePingProfile } from "@/hooks/use-ping-profile";
@@ -84,11 +83,15 @@ export default function ConnectivitySensitivityCard() {
 
   // Local selection state — initialized from saved profile, syncs on remount
   const [selected, setSelected] = useState<PingProfile | undefined>(profile);
+  const initializedRef = useRef(false);
 
-  // When the saved profile finishes loading or changes after save, re-sync local state
+  // When the saved profile arrives, sync local state once.
   useEffect(() => {
-    if (profile && selected === undefined) setSelected(profile);
-  }, [profile, selected]);
+    if (profile !== undefined && !initializedRef.current) {
+      setSelected(profile);
+      initializedRef.current = true;
+    }
+  }, [profile]);
 
   // After a successful save, sync local selection to whatever was just saved
   // (prevents stale dirty state if user clicks a profile twice)
@@ -106,6 +109,7 @@ export default function ConnectivitySensitivityCard() {
   // Daemon-stuck detection: after a save, if the daemon's runtime profile
   // doesn't match within STUCK_THRESHOLD_MS, surface a footnote.
   const [stuckHint, setStuckHint] = useState(false);
+  const [saveCount, setSaveCount] = useState(0);
   useEffect(() => {
     if (lastSavedAtRef.current === null) return;
     const interval = setInterval(() => {
@@ -123,7 +127,7 @@ export default function ConnectivitySensitivityCard() {
       }
     }, 2_000);
     return () => clearInterval(interval);
-  }, [modemStatus?.connectivity?.profile]);
+  }, [saveCount, modemStatus?.connectivity?.profile]);
 
   // Save handler
   const handleSave = async () => {
@@ -134,6 +138,7 @@ export default function ConnectivitySensitivityCard() {
       lastSavedAtRef.current = Date.now();
       lastSavedProfileRef.current = selected;
       setStuckHint(false);
+      setSaveCount((c) => c + 1);
       toast.success("Sensitivity profile updated");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to save";
@@ -262,7 +267,6 @@ export default function ConnectivitySensitivityCard() {
 
           {/* ── Save button ──────────────────────────────────────────── */}
           <motion.div variants={itemVariants} className="flex justify-end">
-            <Separator className="hidden" />
             <SaveButton
               onClick={handleSave}
               isSaving={isSaving}
