@@ -154,9 +154,13 @@ fn max1(n: u64) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn defaults_match_relaxed_when_no_json_no_env() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         clear_env();
         let cfg = load(Path::new("/nonexistent/no_such_file.json"));
         assert_eq!(cfg.profile, "relaxed");
@@ -168,6 +172,7 @@ mod tests {
 
     #[test]
     fn json_profile_overrides_default() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         clear_env();
         let p = write_temp_json(r#"{"profile":"regular"}"#);
         let cfg = load(&p);
@@ -178,6 +183,7 @@ mod tests {
 
     #[test]
     fn json_field_overrides_profile_default() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         clear_env();
         let p = write_temp_json(r#"{"profile":"regular","fail_secs":99}"#);
         let cfg = load(&p);
@@ -186,6 +192,7 @@ mod tests {
 
     #[test]
     fn env_overrides_json_and_marks_custom() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         clear_env();
         let p = write_temp_json(r#"{"profile":"regular","fail_secs":99}"#);
         std::env::set_var("FAIL_SECS", "42");
@@ -197,6 +204,7 @@ mod tests {
 
     #[test]
     fn malformed_json_falls_back_to_defaults() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         clear_env();
         let p = write_temp_json("{ this is not valid json }");
         let cfg = load(&p);
