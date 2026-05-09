@@ -17,12 +17,14 @@ trap 'rm -rf "$WORK"' EXIT
 
 # Fake iptables: tracks rules in $WORK/state.txt. One rule per line.
 # Each line is the literal argv after dropping `-w <n>` if present.
-# Supports: -N (add chain), -X (delete chain), -F (flush), -A, -D, -I, -C, -L
+# Supports: -N (add chain), -X (delete chain), -F (flush), -A, -D, -I, -C
+# (-L falls to the catch-all exit 0 — sufficient since nothing calls it)
 cat >"$WORK/iptables" <<'FAKE'
 #!/usr/bin/env bash
 STATE="$IPTABLES_STATE"
 LOG="$IPTABLES_LOG"
-# Drop -w <secs> if present
+# Strip `-w <secs>` (space-separated only — glued form `-w5` is NOT stripped;
+# acceptable because qmanager_firewall never uses -w).
 args=()
 skip=0
 for a in "$@"; do
@@ -48,7 +50,14 @@ case "${args[0]}" in
         echo "RULE $chain $rest" >> "$STATE" ;;
     -I)  # -I CHAIN [pos] ...rule...
         chain="${args[1]}"
-        rest="${args[*]:2}"
+        # Position argument (integer) is a syntactic hint to real iptables,
+        # not part of the rule specification — strip it so stored rules match
+        # what -C and -D look for.
+        if [[ "${args[2]:-}" =~ ^[0-9]+$ ]]; then
+            rest="${args[*]:3}"
+        else
+            rest="${args[*]:2}"
+        fi
         echo "RULE $chain $rest" >> "$STATE" ;;
     -D)  # -D CHAIN ...rule...
         chain="${args[1]}"
@@ -103,6 +112,16 @@ grep -q '^CHAIN QMANAGER_FW$' "$IPTABLES_STATE" \
     && { echo "FAIL: chain not deleted by stop"; exit 1; }
 grep -q '^RULE INPUT -j QMANAGER_FW$' "$IPTABLES_STATE" \
     && { echo "FAIL: hook not removed by stop"; exit 1; }
+
+# --- Test 3.5: restart works (stop+start cycle) ---
+"$SCRIPT" restart
+grep -q '^CHAIN QMANAGER_FW$' "$IPTABLES_STATE" || { echo "FAIL: restart did not create chain"; exit 1; }
+rule_count_r=$(grep -c '^RULE QMANAGER_FW ' "$IPTABLES_STATE" || true)
+[ "$rule_count_r" -gt 0 ] || { echo "FAIL: restart left empty chain"; exit 1; }
+hook_count_r=$(grep -c '^RULE INPUT -j QMANAGER_FW$' "$IPTABLES_STATE" || true)
+[ "$hook_count_r" = "1" ] || { echo "FAIL: restart hook count is $hook_count_r, expected 1"; exit 1; }
+# Reset state to stopped before Test 4 (which seeds legacy rules)
+"$SCRIPT" stop
 
 # --- Test 4: cleanup_legacy drains pre-chain INPUT-direct rules ---
 # Simulate orphan rules from old implementation
