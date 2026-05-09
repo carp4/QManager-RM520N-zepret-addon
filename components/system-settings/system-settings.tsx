@@ -5,8 +5,6 @@ import SystemSettingsCard from "@/components/system-settings/system-settings-car
 import ScheduledOperationsCard from "@/components/system-settings/scheduled-operations-card";
 import SSHPasswordCard from "@/components/system-settings/ssh-password-card";
 import ModemSubsystemCard from "@/components/system-settings/modem-subsystem-card";
-import ConnectivitySensitivityCard from "@/components/system-settings/connectivity-sensitivity-card";
-import QualityThresholdsCard from "@/components/system-settings/quality-thresholds-card";
 
 const SystemSettings = () => {
   const hookData = useSystemSettings();
@@ -21,8 +19,6 @@ const SystemSettings = () => {
         <ScheduledOperationsCard {...hookData} />
         <SSHPasswordCard />
         <ModemSubsystemCard />
-        <ConnectivitySensitivityCard />
-        <QualityThresholdsCard />
       </div>
     </div>
   );

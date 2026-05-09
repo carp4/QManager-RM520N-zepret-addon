@@ -157,6 +157,15 @@ _ev_ca_diff() {
     _diff_removed=$(printf '%s\n' "$result" | tail -n 1)
 }
 
+# Round a latency value (e.g. "137.90286") to nearest integer ("138").
+# Returns input unchanged if "null", empty, or non-numeric.
+_ev_round_latency() {
+    case "$1" in
+        ""|null) printf '%s' "$1"; return 0 ;;
+    esac
+    awk -v v="$1" 'BEGIN { if (v+0 == v) printf "%.0f", v; else printf "%s", v }'
+}
+
 # Build a short network context string from current state
 # Output: "5G-NSA: B3 + N41" or "LTE: B3" or "5G-SA: N41"
 _ev_net_context() {
@@ -340,7 +349,7 @@ detect_data_connection_events() {
         if [ "$conn_internet_available" = "true" ] && [ "$prev_ev_internet" = "false" ]; then
             local restore_ctx=""
             if [ "$conn_latency" != "null" ] && [ -n "$conn_latency" ]; then
-                restore_ctx=" (latency: ${conn_latency}ms)"
+                restore_ctx=" (latency: $(_ev_round_latency "$conn_latency")ms)"
             fi
             append_event "internet_restored" "Internet connectivity restored${restore_ctx}" "info"
         elif [ "$conn_internet_available" = "false" ] && [ "$prev_ev_internet" = "true" ]; then
@@ -360,14 +369,14 @@ detect_data_connection_events() {
             ev_high_lat_streak=$((ev_high_lat_streak + 1))
             if [ "$ev_high_lat_streak" -ge "$_qt_lat_debounce" ] && [ "$ev_lat_alerted" = "false" ]; then
                 append_event "high_latency" \
-                    "High latency detected (${conn_latency}ms, avg ${conn_avg_latency}ms)" "warning"
+                    "High latency detected ($(_ev_round_latency "$conn_latency")ms, avg $(_ev_round_latency "$conn_avg_latency")ms)" "warning"
                 ev_lat_alerted=true
             fi
         else
             # Latency below threshold — recover if previously alerted
             if [ "$ev_lat_alerted" = "true" ]; then
                 append_event "latency_recovered" \
-                    "Latency recovered (${conn_latency}ms)" "info"
+                    "Latency recovered ($(_ev_round_latency "$conn_latency")ms)" "info"
             fi
             ev_high_lat_streak=0
             ev_lat_alerted=false

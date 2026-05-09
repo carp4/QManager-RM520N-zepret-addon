@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { motion, type Variants } from "motion/react";
+import { motion } from "motion/react";
 
 import {
   Card,
@@ -11,54 +11,61 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertTriangleIcon } from "lucide-react";
 import { SaveButton, useSaveFlash } from "@/components/ui/save-button";
+import { MetaPanel, MetaPair } from "@/components/ui/meta-panel";
 
 import { usePingProfile } from "@/hooks/use-ping-profile";
 import { useModemStatus } from "@/hooks/use-modem-status";
 import { PING_PROFILES, type PingProfile } from "@/types/modem-status";
-
-// ─── Animation variants ────────────────────────────────────────────────────
-
-const containerVariants: Variants = {
-  hidden: {},
-  visible: { transition: { staggerChildren: 0.06 } },
-};
-
-const itemVariants: Variants = {
-  hidden: { opacity: 0, y: 8 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.25, ease: "easeOut" } },
-};
+import { staggerContainer, staggerItem } from "@/lib/motion-presets";
 
 // ─── Profile metadata (UI labels and per-preset blurbs) ────────────────────
 
+// Mirrors ping-daemon/src/config.rs::ProfileConfig::for_profile.
+// Keep these in sync — the daemon is the source of truth, this table is
+// purely for previewing values in the UI before the user saves.
 const PROFILE_META: Record<
   PingProfile,
-  { label: string; blurb: string; intervalLabel: string }
+  {
+    label: string;
+    blurb: string;
+    intervalSec: number;
+    failSecs: number;
+    recoverSecs: number;
+  }
 > = {
   sensitive: {
     label: "Sensitive",
     blurb:
       "Fastest UI feedback. Best for hardwired or strong-signal setups.",
-    intervalLabel: "1s",
+    intervalSec: 1,
+    failSecs: 6,
+    recoverSecs: 3,
   },
   regular: {
     label: "Regular",
     blurb: "Balanced default. Good for most users.",
-    intervalLabel: "2s",
+    intervalSec: 2,
+    failSecs: 10,
+    recoverSecs: 6,
   },
   relaxed: {
     label: "Relaxed",
     blurb: "Conservative. Matches the previous QManager default.",
-    intervalLabel: "5s",
+    intervalSec: 5,
+    failSecs: 15,
+    recoverSecs: 10,
   },
   quiet: {
     label: "Quiet",
     blurb: "Battery and data conscious. Slowest reaction time.",
-    intervalLabel: "10s",
+    intervalSec: 10,
+    failSecs: 30,
+    recoverSecs: 20,
   },
 };
 
@@ -190,7 +197,6 @@ export default function ConnectivitySensitivityCard() {
   }
 
   const activeMeta = selected ? PROFILE_META[selected] : null;
-  const runtime = modemStatus?.connectivity ?? null;
 
   return (
     <Card className="@container/card">
@@ -210,63 +216,59 @@ export default function ConnectivitySensitivityCard() {
 
         <motion.div
           className="grid gap-3"
-          variants={containerVariants}
+          variants={staggerContainer}
           initial="hidden"
           animate="visible"
         >
           {/* ── Segmented control ────────────────────────────────────── */}
-          <motion.div variants={itemVariants}>
-            <ToggleGroup
-              type="single"
+          <motion.div variants={staggerItem}>
+            <Tabs
               value={selected ?? ""}
               onValueChange={(v) => {
                 if (v && (PING_PROFILES as readonly string[]).includes(v)) {
                   setSelected(v as PingProfile);
                 }
               }}
-              className="grid grid-cols-4 gap-1 rounded-md bg-muted p-1"
-              aria-label="Connectivity sensitivity profile"
             >
-              {PING_PROFILES.map((p) => (
-                <ToggleGroupItem
-                  key={p}
-                  value={p}
-                  className="data-[state=on]:bg-background data-[state=on]:shadow-sm rounded-sm text-sm"
-                  aria-label={`${PROFILE_META[p].label} (${PROFILE_META[p].intervalLabel} probe)`}
-                >
-                  {PROFILE_META[p].label}
-                </ToggleGroupItem>
-              ))}
-            </ToggleGroup>
+              <TabsList
+                className="grid w-full grid-cols-4"
+                aria-label="Connectivity sensitivity profile"
+              >
+                {PING_PROFILES.map((p) => (
+                  <TabsTrigger
+                    key={p}
+                    value={p}
+                    aria-label={`${PROFILE_META[p].label} (${PROFILE_META[p].intervalSec}s probe)`}
+                  >
+                    {PROFILE_META[p].label}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
           </motion.div>
 
           {/* ── Active-profile meta panel ────────────────────────────── */}
           {activeMeta && (
-            <motion.div
-              variants={itemVariants}
-              className="rounded-md border bg-muted/40 px-3 py-2.5 text-sm"
-            >
-              <p className="text-foreground">
-                <span className="font-semibold">{activeMeta.label}</span>
-                <span className="text-muted-foreground"> — {activeMeta.blurb}</span>
-              </p>
-              <div className="mt-2 grid grid-cols-3 gap-x-3 gap-y-1">
-                <MetaPair label="Probe interval" value={formatSecs(runtime?.history_interval_sec)} />
-                <MetaPair label="Fail threshold" value={formatSecs(runtime?.fail_secs)} />
-                <MetaPair label="Recover after" value={formatSecs(runtime?.recover_secs)} />
-              </div>
-              {stuckHint && (
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Daemon hasn&apos;t picked up the change yet — check{" "}
-                  <code className="font-mono text-[0.7rem]">systemctl status qmanager-ping</code>{" "}
-                  if this persists.
-                </p>
-              )}
+            <motion.div variants={staggerItem}>
+              <MetaPanel title={activeMeta.label} blurb={activeMeta.blurb}>
+                <div className="mt-2 grid grid-cols-3 gap-x-3 gap-y-1">
+                  <MetaPair label="Probe interval" value={formatSecs(activeMeta.intervalSec)} />
+                  <MetaPair label="Fail threshold" value={formatSecs(activeMeta.failSecs)} />
+                  <MetaPair label="Recover after" value={formatSecs(activeMeta.recoverSecs)} />
+                </div>
+                {stuckHint && (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Settings saved, but the probe is still on the old preset.
+                    Try refreshing in a moment; if this persists, restart the
+                    qmanager-ping service.
+                  </p>
+                )}
+              </MetaPanel>
             </motion.div>
           )}
 
           {/* ── Save button ──────────────────────────────────────────── */}
-          <motion.div variants={itemVariants} className="flex justify-end">
+          <motion.div variants={staggerItem} className="flex justify-end">
             <SaveButton
               onClick={handleSave}
               isSaving={isSaving}
@@ -280,13 +282,3 @@ export default function ConnectivitySensitivityCard() {
   );
 }
 
-// ─── Sub-component ──────────────────────────────────────────────────────────
-
-function MetaPair({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex flex-col">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <span className="text-sm font-semibold tabular-nums">{value}</span>
-    </div>
-  );
-}

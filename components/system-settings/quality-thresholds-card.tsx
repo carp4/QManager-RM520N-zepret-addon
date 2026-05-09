@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { motion, type Variants } from "motion/react";
+import { motion } from "motion/react";
 
 import {
   Card,
@@ -11,12 +11,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertTriangleIcon } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { SaveButton, useSaveFlash } from "@/components/ui/save-button";
+import { MetaPanel, MetaPair } from "@/components/ui/meta-panel";
 
 import { useQualityThresholds } from "@/hooks/use-quality-thresholds";
 import { useModemStatus } from "@/hooks/use-modem-status";
@@ -25,18 +26,7 @@ import {
   type QualityPreset,
   type QualityThresholdsSettings,
 } from "@/types/modem-status";
-
-// ─── Animation variants ────────────────────────────────────────────────────
-
-const containerVariants: Variants = {
-  hidden: {},
-  visible: { transition: { staggerChildren: 0.06 } },
-};
-
-const itemVariants: Variants = {
-  hidden: { opacity: 0, y: 8 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.25, ease: "easeOut" } },
-};
+import { staggerContainer, staggerItem } from "@/lib/motion-presets";
 
 // ─── Preset metadata ────────────────────────────────────────────────────────
 
@@ -108,6 +98,10 @@ export default function QualityThresholdsCard() {
     useQualityThresholds();
   const { data: modemStatus } = useModemStatus();
   const { saved, markSaved } = useSaveFlash();
+
+  // SSR-safe stable ids for tablist <-> visible-label association (WCAG 1.3.1).
+  const latencyLabelId = useId();
+  const lossLabelId = useId();
 
   const [selected, setSelected] = useState<QualityThresholdsSettings | undefined>(
     thresholds,
@@ -216,21 +210,15 @@ export default function QualityThresholdsCard() {
 
         <motion.div
           className="grid gap-5"
-          variants={containerVariants}
+          variants={staggerContainer}
           initial="hidden"
           animate="visible"
         >
           {/* ── Latency row ─────────────────────────────────────────── */}
-          <motion.div variants={itemVariants} className="grid gap-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">Latency</span>
-              <span className="text-xs text-muted-foreground tabular-nums">
-                Current: <span className="font-semibold">{formatLatency(liveLatency)}</span>
-              </span>
-            </div>
+          <motion.div variants={staggerItem} className="grid gap-3">
+            <span id={latencyLabelId} className="text-sm font-medium">Latency</span>
 
-            <ToggleGroup
-              type="single"
+            <Tabs
               value={latPreset}
               onValueChange={(v) => {
                 if (v && (QUALITY_PRESETS as readonly string[]).includes(v)) {
@@ -240,26 +228,24 @@ export default function QualityThresholdsCard() {
                   });
                 }
               }}
-              className="grid grid-cols-3 gap-1 rounded-md bg-muted p-1"
-              aria-label="Latency threshold preset"
             >
-              {QUALITY_PRESETS.map((p) => (
-                <ToggleGroupItem
-                  key={p}
-                  value={p}
-                  className="data-[state=on]:bg-background data-[state=on]:shadow-sm rounded-sm text-sm"
-                  aria-label={`${LATENCY_META[p].label} (${LATENCY_META[p].threshold} ms)`}
-                >
-                  {LATENCY_META[p].label}
-                </ToggleGroupItem>
-              ))}
-            </ToggleGroup>
+              <TabsList
+                className="grid w-full grid-cols-3"
+                aria-labelledby={latencyLabelId}
+              >
+                {QUALITY_PRESETS.map((p) => (
+                  <TabsTrigger
+                    key={p}
+                    value={p}
+                    aria-label={`${LATENCY_META[p].label} (${LATENCY_META[p].threshold} ms)`}
+                  >
+                    {LATENCY_META[p].label}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
 
-            <div className="rounded-md border bg-muted/40 px-3 py-2.5 text-sm">
-              <p className="text-foreground">
-                <span className="font-semibold">{latMeta.label}</span>
-                <span className="text-muted-foreground"> — {latMeta.blurb}</span>
-              </p>
+            <MetaPanel title={latMeta.label} blurb={latMeta.blurb}>
               <div className="mt-2 grid grid-cols-3 gap-x-3 gap-y-1">
                 <MetaPair label="Threshold" value={`${latMeta.threshold} ms`} />
                 <MetaPair label="Debounce" value={`${latMeta.debounce} samples`} />
@@ -275,22 +261,16 @@ export default function QualityThresholdsCard() {
                   }
                 />
               </div>
-            </div>
+            </MetaPanel>
           </motion.div>
 
           <Separator />
 
           {/* ── Packet loss row ─────────────────────────────────────── */}
-          <motion.div variants={itemVariants} className="grid gap-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">Packet loss</span>
-              <span className="text-xs text-muted-foreground tabular-nums">
-                Current: <span className="font-semibold">{formatLoss(liveLoss)}</span>
-              </span>
-            </div>
+          <motion.div variants={staggerItem} className="grid gap-3">
+            <span id={lossLabelId} className="text-sm font-medium">Packet loss</span>
 
-            <ToggleGroup
-              type="single"
+            <Tabs
               value={lossPreset}
               onValueChange={(v) => {
                 if (v && (QUALITY_PRESETS as readonly string[]).includes(v)) {
@@ -300,26 +280,24 @@ export default function QualityThresholdsCard() {
                   });
                 }
               }}
-              className="grid grid-cols-3 gap-1 rounded-md bg-muted p-1"
-              aria-label="Packet loss threshold preset"
             >
-              {QUALITY_PRESETS.map((p) => (
-                <ToggleGroupItem
-                  key={p}
-                  value={p}
-                  className="data-[state=on]:bg-background data-[state=on]:shadow-sm rounded-sm text-sm"
-                  aria-label={`${LOSS_META[p].label} (${LOSS_META[p].threshold} percent)`}
-                >
-                  {LOSS_META[p].label}
-                </ToggleGroupItem>
-              ))}
-            </ToggleGroup>
+              <TabsList
+                className="grid w-full grid-cols-3"
+                aria-labelledby={lossLabelId}
+              >
+                {QUALITY_PRESETS.map((p) => (
+                  <TabsTrigger
+                    key={p}
+                    value={p}
+                    aria-label={`${LOSS_META[p].label} (${LOSS_META[p].threshold} percent)`}
+                  >
+                    {LOSS_META[p].label}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
 
-            <div className="rounded-md border bg-muted/40 px-3 py-2.5 text-sm">
-              <p className="text-foreground">
-                <span className="font-semibold">{lossMeta.label}</span>
-                <span className="text-muted-foreground"> — {lossMeta.blurb}</span>
-              </p>
+            <MetaPanel title={lossMeta.label} blurb={lossMeta.blurb}>
               <div className="mt-2 grid grid-cols-3 gap-x-3 gap-y-1">
                 <MetaPair label="Threshold" value={`${lossMeta.threshold} %`} />
                 <MetaPair label="Debounce" value={`${lossMeta.debounce} samples`} />
@@ -329,20 +307,20 @@ export default function QualityThresholdsCard() {
                   glyph={liveLoss === null ? null : lossOk ? "ok" : "warn"}
                 />
               </div>
-            </div>
+            </MetaPanel>
           </motion.div>
 
           {isDefault && (
             <motion.p
-              variants={itemVariants}
+              variants={staggerItem}
               className="text-xs text-muted-foreground"
             >
-              Default after recent update — pick Standard for stricter thresholds.
+              Using default thresholds — pick Standard to flag smaller spikes.
             </motion.p>
           )}
 
           {/* ── Save button ──────────────────────────────────────────── */}
-          <motion.div variants={itemVariants} className="flex justify-end">
+          <motion.div variants={staggerItem} className="flex justify-end">
             <SaveButton
               onClick={handleSave}
               isSaving={isSaving}
@@ -356,27 +334,3 @@ export default function QualityThresholdsCard() {
   );
 }
 
-// ─── Sub-component ──────────────────────────────────────────────────────────
-
-function MetaPair({
-  label,
-  value,
-  glyph = null,
-}: {
-  label: string;
-  value: string;
-  glyph?: "ok" | "warn" | null;
-}) {
-  return (
-    <div className="flex flex-col">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <span className="text-sm font-semibold tabular-nums flex items-center gap-1.5">
-        {value}
-        {glyph === "ok" && <span className="text-success">●</span>}
-        {glyph === "warn" && (
-          <span className="text-warning animate-pulse">⚠</span>
-        )}
-      </span>
-    </div>
-  );
-}
