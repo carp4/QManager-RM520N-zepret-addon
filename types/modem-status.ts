@@ -325,6 +325,20 @@ export function getSignalQuality(
   return "poor";
 }
 
+/** Daemon's authoritative tri-state connectivity outcome (from qmanager_ping.json's `connectivity` field). */
+export type PingTriState = "connected" | "limited" | "disconnected" | "unknown";
+
+/** User-selectable ping daemon sensitivity profile. */
+export type PingProfile = "sensitive" | "regular" | "relaxed" | "quiet";
+
+/** Display-order list of the four named profiles. */
+export const PING_PROFILES: readonly PingProfile[] = [
+  "sensitive",
+  "regular",
+  "relaxed",
+  "quiet",
+] as const;
+
 export type ConnectivityState =
   | "connected"
   | "degraded"
@@ -359,6 +373,25 @@ export interface ConnectivityStatus {
   history_size: number;
   /** Whether watchcat recovery is currently active */
   during_recovery: boolean;
+  /** Phase 2 — daemon's tri-state connectivity outcome. null means the field is missing
+      from status.json (rolling-upgrade fallback). */
+  state: PingTriState | null;
+  /** When state == "limited", the HTTP code seen by the probe (e.g., 200, 302). null otherwise. */
+  limited_reason: number | null;
+  /** When state == "disconnected", the failure reason: "carrier_down" | "timeout" | "refused"
+      | "reset" | "dns" | "malformed". null otherwise. */
+  down_reason: string | null;
+  /** Consecutive limited-outcome probes. Resets on any other outcome. */
+  streak_limited: number;
+  /** Daemon's runtime profile string. Can be one of PingProfile, or "custom" (env-var override),
+      or "unknown" (daemon dead/stale). Typed as string to admit all three. */
+  profile: string;
+  /** Runtime fail-threshold in seconds (active in the daemon). 0 if daemon dead/stale. */
+  fail_secs: number;
+  /** Runtime recover-threshold in seconds. 0 if daemon dead/stale. */
+  recover_secs: number;
+  /** Runtime intercept-threshold in seconds. 0 if daemon dead/stale. */
+  intercept_secs: number;
 }
 
 // --- Watchcat State (from /tmp/qmanager_watchcat.json via poller) ------------
