@@ -1,4 +1,6 @@
 #[allow(dead_code)]
+mod carrier;
+#[allow(dead_code)]
 mod config;
 #[allow(dead_code)]
 mod qlog;
