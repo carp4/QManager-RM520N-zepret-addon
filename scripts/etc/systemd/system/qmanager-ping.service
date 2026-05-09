@@ -6,17 +6,15 @@ After=network.target qmanager-setup.service
 [Service]
 Type=simple
 ExecStart=/usr/bin/qmanager_ping
-# Documented relaxed-profile defaults — preserve today's 5s probe behavior on
-# fresh starts before /etc/qmanager/ping_profile.json is read. Operator
-# overrides via EnvironmentFile= below win because systemd processes these
-# directives in declaration order and later assignments override earlier ones
-# for the same variable.
-Environment=PING_PROFILE=relaxed
-Environment=PING_INTERVAL=5
-Environment=FAIL_SECS=15
-Environment=RECOVER_SECS=10
-Environment=INTERCEPT_SECS=8
-Environment=HISTORY_SECS=300
+# Targets and the carrier sysfs path are device-level config and live here.
+# Profile and timing knobs (PING_PROFILE, PING_INTERVAL, FAIL_SECS, RECOVER_SECS,
+# INTERCEPT_SECS, HISTORY_SECS) are intentionally NOT set here: the daemon's
+# resolution order is env > JSON > hardcoded defaults (see ping-daemon/src/config.rs),
+# so any inline Environment= for those would beat /etc/qmanager/ping_profile.json
+# written by the Connectivity Sensitivity UI. The daemon's hardcoded defaults
+# already match the relaxed profile (5s interval) for fresh boots before the
+# JSON exists. Operators who genuinely need a manual override can drop values
+# into /etc/qmanager/environment.
 Environment=PING_TARGET_1=http://www.gstatic.com/generate_204
 Environment=PING_TARGET_2=http://cp.cloudflare.com/
 Environment=CARRIER_FILE=/sys/class/net/rmnet_data0/carrier
