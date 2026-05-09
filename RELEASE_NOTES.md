@@ -1,4 +1,4 @@
-# 🚀 QManager RM520N BETA v0.1.7 Draft
+# 🚀 QManager RM520N BETA v0.1.7
 
 A reliability and polish release. Fresh installs are now SSH-ready out of the box, modems that boot with the radio off self-recover, and the poller gains a cycle-budget watchdog plus ping-daemon liveness tracking. A new **Discord Bot** puts modem status and control in your pocket, antenna alignment recordings persist across reloads and reboots, and a live **System Health** card surfaces CPU, memory, storage, and modem-subsystem telemetry at a glance. Under the hood, HTTP transport is now curl-only and the ping daemon is a Rust binary with persistent connections — typically 50–60% lower latency readings on cellular.
 
