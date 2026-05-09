@@ -131,7 +131,7 @@ echo "RULE INPUT -p tcp --dport 80 -j DROP" >> "$IPTABLES_STATE"
 echo "RULE INPUT -i bridge0 -p tcp --dport 80 -j ACCEPT" >> "$IPTABLES_STATE"
 "$SCRIPT" start
 # After start, all legacy INPUT rules should be drained
-remaining_orphans=$(grep -E '^RULE INPUT -(i [^ ]+ )?-p tcp --dport (80|443) -j (ACCEPT|DROP)$' "$IPTABLES_STATE" | wc -l)
+remaining_orphans=$({ grep -E '^RULE INPUT -(i [^ ]+ )?-p tcp --dport (80|443) -j (ACCEPT|DROP)$' "$IPTABLES_STATE" || true; } | wc -l)
 [ "$remaining_orphans" = "0" ] \
     || { echo "FAIL: $remaining_orphans legacy orphan rules remain"; cat "$IPTABLES_STATE"; exit 1; }
 
