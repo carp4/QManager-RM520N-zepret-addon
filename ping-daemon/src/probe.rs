@@ -8,7 +8,6 @@ use crate::url::Scheme;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DownReason {
-    CarrierDown,
     Timeout,
     Refused,
     Reset,
@@ -19,7 +18,6 @@ pub enum DownReason {
 impl DownReason {
     pub fn as_str(&self) -> &'static str {
         match self {
-            DownReason::CarrierDown => "carrier_down",
             DownReason::Timeout => "timeout",
             DownReason::Refused => "refused",
             DownReason::Reset => "reset",

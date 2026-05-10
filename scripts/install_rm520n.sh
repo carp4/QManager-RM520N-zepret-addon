@@ -325,18 +325,24 @@ preflight() {
                     printf "  Do you want to proceed anyway? [y/N] "
 
                     # Prefer /dev/tty so the prompt still works when stdin is
-                    # piped (curl|bash, adb shell without -t, etc.). Tolerate
-                    # read EOF so set -e doesn't abort silently before the user
-                    # can answer. No controlling terminal at all → instruct the
-                    # user to re-run with --force rather than dying mid-prompt.
+                    # piped (curl|bash, adb shell without -t, etc.). Use a
+                    # redirect probe (not [ -r ]) — /dev/tty always has read
+                    # permissions but returns ENXIO on open when there is no
+                    # controlling terminal (systemd service, OTA worker, etc.).
                     local answer=""
-                    if [ -r /dev/tty ]; then
+                    if { true </dev/tty; } 2>/dev/null; then
                         read -r answer </dev/tty || answer=""
                     elif [ -t 0 ]; then
                         read -r answer || answer=""
-                    else
+                    fi
+                    # No terminal available (OTA update, curl|bash, headless ADB):
+                    # auto-proceed with a warning rather than aborting. The old
+                    # qmanager_update worker (pre-v0.1.8) does not pass --force, so
+                    # dying here silently breaks OTA upgrades on variant devices.
+                    if [ -z "$answer" ]; then
                         printf "\n"
-                        die "No terminal available to confirm. Re-run with --force to bypass the device check."
+                        warn "No terminal available — proceeding non-interactively. Use --force to suppress this check."
+                        answer="y"
                     fi
                     case "$answer" in
                         [Yy]|[Yy][Ee][Ss]) info "Proceeding on user request" ;;

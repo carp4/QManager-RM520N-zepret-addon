@@ -215,8 +215,31 @@ export default function ConnectivitySensitivityCard() {
         </CardHeader>
         <CardContent>
           <div className="grid gap-3">
+            {/* Profile tabs */}
             <Skeleton className="h-10 w-full rounded-md" />
+            {/* Active-profile meta panel */}
             <Skeleton className="h-20 w-full rounded-md" />
+            {/* Separator */}
+            <Separator className="my-2" />
+            {/* Probe targets header + reset icon */}
+            <div className="flex items-start justify-between gap-3">
+              <div className="grid gap-1.5 flex-1">
+                <Skeleton className="h-4 w-28" />
+                <Skeleton className="h-3 w-full max-w-md" />
+              </div>
+              <Skeleton className="h-9 w-9 rounded-md shrink-0" />
+            </div>
+            {/* Primary URL */}
+            <div className="grid gap-1.5">
+              <Skeleton className="h-4 w-20" />
+              <Skeleton className="h-9 w-full rounded-md" />
+            </div>
+            {/* Secondary URL */}
+            <div className="grid gap-1.5">
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="h-9 w-full rounded-md" />
+            </div>
+            {/* Save button */}
             <div className="flex justify-end">
               <Skeleton className="h-9 w-32" />
             </div>

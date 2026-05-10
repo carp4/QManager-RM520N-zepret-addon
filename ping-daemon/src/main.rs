@@ -1,5 +1,4 @@
 mod cache;
-mod carrier;
 mod config;
 mod history;
 mod pid;
@@ -55,7 +54,6 @@ fn main() {
         "Interval: {}s, fail/recover/intercept: {}s/{}s/{}s, history: {}s",
         cfg.interval_sec, cfg.fail_secs, cfg.recover_secs, cfg.intercept_secs, cfg.history_secs
     ));
-    log.info(&format!("Carrier file: {}", cfg.carrier_file.display()));
     log.info("========================================");
 
     let cache = CacheWriter::new(Path::new(CACHE_PATH), Path::new(RECOVERY_FLAG));
@@ -83,32 +81,27 @@ fn main() {
             }
         }
 
-        let (target, outcome) = if !carrier::is_up(&cfg.carrier_file) {
-            log.debug("carrier=0, skipping probe");
-            (None, ProbeOutcome::Disconnected { reason: probe::DownReason::CarrierDown })
-        } else {
-            // Primary first; if Disconnected, fallback to secondary in the same tick.
-            // Limited / Connected from primary skips the secondary probe (saves data).
-            let primary_outcome = client.probe(&cfg.target_1);
-            match &primary_outcome {
-                ProbeOutcome::Disconnected { .. } => {
-                    log.debug(&format!(
-                        "primary {} failed, trying secondary {}",
-                        cfg.target_1, cfg.target_2,
-                    ));
-                    let secondary_outcome = client.probe(&cfg.target_2);
-                    match &secondary_outcome {
-                        ProbeOutcome::Connected { .. } | ProbeOutcome::Limited { .. } => {
-                            (Some(cfg.target_2.clone()), secondary_outcome)
-                        }
-                        ProbeOutcome::Disconnected { .. } => {
-                            // Both failed — report primary's reason for clearer debugging.
-                            (Some(cfg.target_1.clone()), primary_outcome)
-                        }
+        // Primary first; if Disconnected, fallback to secondary in the same tick.
+        // Limited / Connected from primary skips the secondary probe (saves data).
+        let primary_outcome = client.probe(&cfg.target_1);
+        let (target, outcome) = match &primary_outcome {
+            ProbeOutcome::Disconnected { .. } => {
+                log.debug(&format!(
+                    "primary {} failed, trying secondary {}",
+                    cfg.target_1, cfg.target_2,
+                ));
+                let secondary_outcome = client.probe(&cfg.target_2);
+                match &secondary_outcome {
+                    ProbeOutcome::Connected { .. } | ProbeOutcome::Limited { .. } => {
+                        (Some(cfg.target_2.clone()), secondary_outcome)
+                    }
+                    ProbeOutcome::Disconnected { .. } => {
+                        // Both failed — report primary's reason for clearer debugging.
+                        (Some(cfg.target_1.clone()), primary_outcome)
                     }
                 }
-                _ => (Some(cfg.target_1.clone()), primary_outcome),
             }
+            _ => (Some(cfg.target_1.clone()), primary_outcome),
         };
 
         let kind = match &outcome {

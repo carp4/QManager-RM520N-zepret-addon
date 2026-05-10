@@ -6,8 +6,7 @@ After=network.target qmanager-setup.service
 [Service]
 Type=simple
 ExecStart=/usr/bin/qmanager_ping
-# Carrier sysfs path is the only target/device-config that lives here.
-# All probe targets and timing knobs (PING_TARGET_1, PING_TARGET_2,
+# Probe targets and timing knobs (PING_TARGET_1, PING_TARGET_2,
 # PING_PROFILE, PING_INTERVAL, FAIL_SECS, RECOVER_SECS, INTERCEPT_SECS,
 # HISTORY_SECS) are intentionally NOT set here: the daemon's resolution
 # order is env > JSON > hardcoded defaults (see ping-daemon/src/config.rs),
@@ -16,7 +15,6 @@ ExecStart=/usr/bin/qmanager_ping
 # defaults (Cloudflare primary, Google secondary; relaxed profile) cover
 # fresh boots before the JSON exists. Operators who genuinely need a
 # manual override can drop values into /etc/qmanager/environment.
-Environment=CARRIER_FILE=/sys/class/net/rmnet_data0/carrier
 EnvironmentFile=-/etc/qmanager/environment
 TimeoutStopSec=10
 Restart=on-failure

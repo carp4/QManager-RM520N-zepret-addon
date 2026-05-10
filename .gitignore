@@ -55,3 +55,6 @@ RELEASE_NOTE.md
 
 # bundled build tools (developer-local; not part of the repo)
 /tools/
+
+# Health check directory
+/health-checks/

@@ -1,3 +1,9 @@
+# 🚀 QManager RM520N BETA v0.1.9-draft
+
+// Write here 
+
+
+
 # 🚀 QManager RM520N BETA v0.1.8
 
 The connectivity engine got a real fix: it now uses a primary-then-fallback probe with configurable URLs, defaults to Cloudflare so installs in regions that block Google still come up clean, and finally speaks HTTPS. Also fixes Network Priority on Quectel x6x firmwares.

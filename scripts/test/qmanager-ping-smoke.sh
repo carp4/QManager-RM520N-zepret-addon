@@ -1,7 +1,7 @@
 #!/bin/sh
 # Workstation/on-device smoke test for the Rust qmanager_ping binary.
-# Stops the systemd service, runs the binary against a local stub HTTP server
-# and a fake carrier file, then validates the JSON output.
+# Stops the systemd service, runs the binary against a local stub HTTP server,
+# then validates the JSON output.
 #
 # Run on the device or in WSL2 with the binary built. Requires: jq, python3.
 #
@@ -39,9 +39,6 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-CARRIER="$WORK/carrier"
-echo 1 > "$CARRIER"
-
 # Remove any stale state from previous runs so we never read old cache data.
 rm -f /tmp/qmanager_ping.json /tmp/qmanager_ping.pid /tmp/qmanager_ping_history
 
@@ -68,7 +65,6 @@ INTERCEPT_SECS=4 \
 HISTORY_SECS=10 \
 PING_TARGET_1="http://127.0.0.1:18204/" \
 PING_TARGET_2="http://127.0.0.1:18204/" \
-CARRIER_FILE="$CARRIER" \
 "$BIN" >/tmp/qping_smoke.log 2>&1 &
 DAEMON_PID=$!
 
@@ -90,24 +86,12 @@ PROFILE=$(jq -r .profile /tmp/qmanager_ping.json)
 [ "$PROFILE" = "custom" ] || { echo "FAIL: profile=$PROFILE expected custom (env overrides)"; exit 1; }
 echo "PASS: connected path"
 
-# Flip carrier to 0
-echo 0 > "$CARRIER"
-sleep 4
-
-CONN=$(jq -r .connectivity /tmp/qmanager_ping.json)
-DOWN=$(jq -r .down_reason /tmp/qmanager_ping.json)
-[ "$CONN" = "disconnected" ] || { echo "FAIL: connectivity=$CONN expected disconnected"; exit 1; }
-[ "$DOWN" = "carrier_down" ] || { echo "FAIL: down_reason=$DOWN expected carrier_down"; exit 1; }
-echo "PASS: disconnected path"
-
 # ─── Test: primary unreachable, fallback to secondary ────────────────────────
 echo
 echo "TEST: primary down → fallback to secondary"
 
 # Reset state for this scenario.
 rm -f /tmp/qmanager_ping.json /tmp/qmanager_ping.pid /tmp/qmanager_ping_history
-# Carrier must be up so the daemon actually probes (it was set to 0 above).
-echo 1 > "$CARRIER"
 
 # Kill the previous daemon instance (already dead from timeout, but be sure).
 kill "$DAEMON_PID" 2>/dev/null || true
@@ -123,7 +107,6 @@ INTERCEPT_SECS=4 \
 HISTORY_SECS=10 \
 PING_TARGET_1="http://127.0.0.1:18203/" \
 PING_TARGET_2="http://127.0.0.1:18204/" \
-CARRIER_FILE="$CARRIER" \
 "$BIN" >>/tmp/qping_smoke.log 2>&1 &
 DAEMON_PID=$!
 

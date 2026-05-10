@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ProfileConfig {
@@ -11,7 +11,6 @@ pub struct ProfileConfig {
     pub history_secs: u64,
     pub target_1: String,
     pub target_2: String,
-    pub carrier_file: PathBuf,
 }
 
 impl ProfileConfig {
@@ -25,7 +24,6 @@ impl ProfileConfig {
             history_secs: 300,
             target_1: "http://cp.cloudflare.com/".into(),
             target_2: "http://www.gstatic.com/generate_204".into(),
-            carrier_file: PathBuf::from("/sys/class/net/rmnet_data0/carrier"),
         }
     }
 
@@ -135,7 +133,6 @@ pub fn load(json_path: &Path) -> ProfileConfig {
     }
     if let Ok(v) = std::env::var("PING_TARGET_1") { cfg.target_1 = v; }
     if let Ok(v) = std::env::var("PING_TARGET_2") { cfg.target_2 = v; }
-    if let Ok(v) = std::env::var("CARRIER_FILE") { cfg.carrier_file = PathBuf::from(v); }
 
     if env_override {
         cfg.profile = "custom".into();
@@ -285,8 +282,7 @@ mod tests {
 
     fn clear_env() {
         for k in &["PING_PROFILE","PING_INTERVAL","FAIL_SECS","RECOVER_SECS",
-                   "INTERCEPT_SECS","HISTORY_SECS","PING_TARGET_1","PING_TARGET_2",
-                   "CARRIER_FILE"] {
+                   "INTERCEPT_SECS","HISTORY_SECS","PING_TARGET_1","PING_TARGET_2"] {
             std::env::remove_var(k);
         }
     }
