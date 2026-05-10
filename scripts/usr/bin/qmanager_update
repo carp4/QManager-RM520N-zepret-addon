@@ -98,7 +98,10 @@ run_install_with_progress() {
     local last_label="" current_label="" step_line="" rc=0
 
     : > "$INSTALL_LOG"
-    sh install_rm520n.sh --skip-packages --no-reboot >> "$INSTALL_LOG" 2>&1 &
+    # --force skips the firmware-detection prompt; OTA only ever targets an
+    # already-running QManager device, and the installer's stdin is closed in
+    # this CGI-spawned context (read would EOF and abort under set -e).
+    sh install_rm520n.sh --force --skip-packages --no-reboot >> "$INSTALL_LOG" 2>&1 &
     local install_pid=$!
 
     while pid_alive "$install_pid"; do
@@ -242,7 +245,7 @@ if [ "$MODE" = "install" ]; then
     rm -f "$download_path"
     cd /tmp/qmanager_install || die "Extraction failed — /tmp/qmanager_install not found"
 
-    log "Running install_rm520n.sh --skip-packages --no-reboot"
+    log "Running install_rm520n.sh --force --skip-packages --no-reboot"
     if ! run_install_with_progress "$VERSION"; then
         die "Installation failed. Check $LOG_FILE for details."
     fi
@@ -359,7 +362,7 @@ if [ "$MODE" = "install_staged" ]; then
     rm -f "$STAGED_TARBALL" "$STAGED_VERSION"
     cd /tmp/qmanager_install || die "Extraction failed — /tmp/qmanager_install not found"
 
-    log "Running install_rm520n.sh --skip-packages --no-reboot"
+    log "Running install_rm520n.sh --force --skip-packages --no-reboot"
     if ! run_install_with_progress "$VERSION"; then
         die "Installation failed. Check $LOG_FILE for details."
     fi
@@ -426,7 +429,7 @@ if [ "$MODE" = "rollback" ]; then
     rm -f "$download_path"
     cd /tmp/qmanager_install || die "Extraction failed"
 
-    log "Running install_rm520n.sh --skip-packages --no-reboot"
+    log "Running install_rm520n.sh --force --skip-packages --no-reboot"
     if ! run_install_with_progress "$VERSION"; then
         die "Rollback installation failed. Check $LOG_FILE"
     fi

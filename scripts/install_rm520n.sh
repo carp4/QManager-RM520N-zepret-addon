@@ -323,8 +323,21 @@ preflight() {
                     printf "%s\n" "$ver" | sed 's/^/    /'
                     printf "\n  This installer targets RM520N-GL devices. Your device may not be compatible.\n"
                     printf "  Do you want to proceed anyway? [y/N] "
-                    local answer
-                    read -r answer
+
+                    # Prefer /dev/tty so the prompt still works when stdin is
+                    # piped (curl|bash, adb shell without -t, etc.). Tolerate
+                    # read EOF so set -e doesn't abort silently before the user
+                    # can answer. No controlling terminal at all → instruct the
+                    # user to re-run with --force rather than dying mid-prompt.
+                    local answer=""
+                    if [ -r /dev/tty ]; then
+                        read -r answer </dev/tty || answer=""
+                    elif [ -t 0 ]; then
+                        read -r answer || answer=""
+                    else
+                        printf "\n"
+                        die "No terminal available to confirm. Re-run with --force to bypass the device check."
+                    fi
                     case "$answer" in
                         [Yy]|[Yy][Ee][Ss]) info "Proceeding on user request" ;;
                         *) die "Installation aborted by user" ;;
