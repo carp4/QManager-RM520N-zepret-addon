@@ -488,6 +488,68 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
     fi
 
     # -------------------------------------------------------------------------
+    # action: set_ssh — persist SSH intent flag + apply live if daemon running
+    # -------------------------------------------------------------------------
+    # User intent (1 or 0) is stored in $SSH_PREF_FILE and read by the connect
+    # path so SSH survives `tailscale up --reset`. When the daemon is running
+    # we also apply the change immediately via `tailscale set --ssh=`.
+    if [ "$ACTION" = "set_ssh" ]; then
+        ssh_value=$(printf '%s' "$POST_DATA" | jq -r '.enabled | if . == null then empty else tostring end')
+        if [ -z "$ssh_value" ]; then
+            cgi_error "missing_field" "enabled field is required"
+            exit 0
+        fi
+        case "$ssh_value" in
+            true)  new_flag="1" ;;
+            false) new_flag="0" ;;
+            *)
+                cgi_error "invalid_value" "enabled must be true or false"
+                exit 0
+                ;;
+        esac
+
+        # Snapshot previous flag for rollback on `tailscale set` failure.
+        old_flag=""
+        if [ -f "$SSH_PREF_FILE" ]; then
+            old_flag=$(cat "$SSH_PREF_FILE" 2>/dev/null | tr -d ' \n\r')
+        fi
+
+        # Atomic write: .tmp + mv (matches the convention in email/sms alert configs).
+        mkdir -p /etc/qmanager 2>/dev/null
+        tmp_file="${SSH_PREF_FILE}.tmp"
+        printf '%s\n' "$new_flag" > "$tmp_file" 2>/dev/null
+        if [ ! -f "$tmp_file" ]; then
+            cgi_error "write_failed" "Could not write SSH preference file"
+            exit 0
+        fi
+        mv -f "$tmp_file" "$SSH_PREF_FILE"
+
+        # If daemon is up, apply immediately. Otherwise return pending=true so
+        # the UI surfaces "applies on next connect".
+        if is_daemon_running; then
+            set_output=$(ts_cmd set --ssh="$ssh_value" 2>&1)
+            set_rc=$?
+            if [ "$set_rc" -ne 0 ]; then
+                # Roll back the flag write so the UI state matches reality.
+                if [ -n "$old_flag" ]; then
+                    printf '%s\n' "$old_flag" > "$SSH_PREF_FILE"
+                else
+                    rm -f "$SSH_PREF_FILE"
+                fi
+                qlog_error "tailscale set --ssh=$ssh_value failed: $set_output"
+                jq -n --arg detail "$set_output" '{success: false, error: "set_failed", detail: $detail}'
+                exit 0
+            fi
+            qlog_info "Tailscale SSH set to $ssh_value"
+            cgi_success
+        else
+            qlog_info "Tailscale SSH preference set to $ssh_value (daemon stopped, will apply on next connect)"
+            jq -n '{success: true, pending: true, message: "Tailscale SSH will activate on next connect."}'
+        fi
+        exit 0
+    fi
+
+    # -------------------------------------------------------------------------
     # action: uninstall — remove tailscale from the device
     # -------------------------------------------------------------------------
     if [ "$ACTION" = "uninstall" ]; then
