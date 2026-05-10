@@ -517,12 +517,16 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
         # Atomic write: .tmp + mv (matches the convention in email/sms alert configs).
         mkdir -p /etc/qmanager 2>/dev/null
         tmp_file="${SSH_PREF_FILE}.tmp"
-        printf '%s\n' "$new_flag" > "$tmp_file" 2>/dev/null
-        if [ ! -f "$tmp_file" ]; then
+        trap 'rm -f "$tmp_file"' EXIT
+        if ! printf '%s\n' "$new_flag" > "$tmp_file"; then
             cgi_error "write_failed" "Could not write SSH preference file"
             exit 0
         fi
-        mv -f "$tmp_file" "$SSH_PREF_FILE"
+        if ! mv -f "$tmp_file" "$SSH_PREF_FILE"; then
+            cgi_error "write_failed" "Could not persist SSH preference (filesystem error)"
+            exit 0
+        fi
+        trap - EXIT
 
         # If daemon is up, apply immediately. Otherwise return pending=true so
         # the UI surfaces "applies on next connect".
