@@ -10,7 +10,7 @@ It also distinguishes three connectivity states (instead of two):
 
 - `connected` — got HTTP 204
 - `limited` — got HTTP non-204 (carrier billing / cap / activation intercept)
-- `disconnected` — TCP failure or carrier link down
+- `disconnected` — network failure (timeout, connection refused/reset, DNS failure, or malformed response)
 
 ## Build
 

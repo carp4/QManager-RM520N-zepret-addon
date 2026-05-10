@@ -431,7 +431,7 @@ export interface ConnectivityStatus {
   state: PingTriState | null;
   /** When state == "limited", the HTTP code seen by the probe (e.g., 200, 302). null otherwise. */
   limited_reason: number | null;
-  /** When state == "disconnected", the failure reason: "carrier_down" | "timeout" | "refused"
+  /** When state == "disconnected", the failure reason: "timeout" | "refused"
       | "reset" | "dns" | "malformed". null otherwise. */
   down_reason: string | null;
   /** Consecutive limited-outcome probes. Resets on any other outcome. */

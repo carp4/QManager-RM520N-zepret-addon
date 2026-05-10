@@ -209,8 +209,6 @@ function limitedTooltip(code: number | null): string {
 
 function downTooltip(reason: string | null): string {
   switch (reason) {
-    case "carrier_down":
-      return "Cellular carrier link is down (sysfs reports no carrier).";
     case "timeout":
       return "Probe timed out — connection may be stalled.";
     case "refused":
