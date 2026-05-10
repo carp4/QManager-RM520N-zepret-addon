@@ -7,6 +7,7 @@ mod probe;
 mod qlog;
 mod reload;
 mod state;
+mod tls_dial;
 mod url;
 
 use std::path::Path;
