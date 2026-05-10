@@ -506,9 +506,28 @@ The CGI reader (`/cgi-bin/quecmanager/system/modem-subsys.sh`) is now a thin `jq
 **Location:** `/usr/bin/qmanager_ping`
 **State files:** `/tmp/qmanager_ping.json` (current state), `/tmp/qmanager_ping_history` (flat ring buffer)
 
-The single source of internet reachability data. Pings two targets (default `google.com`, `cloudflare.com`) on a 5-second interval. Writes atomic JSON with `available`, `latency_ms`, `streak_ok`, and `streak_fail` fields. Does not touch the modem or AT device. Stats (avg/min/max/jitter/loss) are computed by the poller from the history file.
+The single source of internet reachability data. Probes two configurable HTTP/HTTPS targets on a 5-second interval using a primary-then-fallback strategy. Writes atomic JSON with `available`, `latency_ms`, `streak_ok`, and `streak_fail` fields. Does not touch the modem or AT device. Stats (avg/min/max/jitter/loss) are computed by the poller from the history file.
+
+**Config:** `/etc/qmanager/ping_profile.json` — `profile` (sensitivity preset), `target_1` (primary), `target_2` (secondary).
 
 Consumers: poller (reads `ping.json` and history), watchcat (reads `streak_fail` to drive recovery), frontend (reads via `status.json` merged by poller).
+
+### Probe Targets
+
+The ping daemon checks two targets in a primary-then-fallback strategy. Primary is probed every interval; secondary is only probed when primary returns `Disconnected`.
+
+Both targets accept:
+- Full URL: `https://example.com/path` or `http://example.com/path`
+- Bare hostname: `youtube.com` (auto-prefixed to `https://youtube.com/`)
+- Hostname with path: `example.com/health` → `https://example.com/health`
+
+**Response interpretation:**
+- For canonical captive-portal endpoints (`/generate_204`, `/hotspot-detect.html`): 204 = Connected, anything else = Limited (probable captive portal intercept).
+- For custom URLs: any HTTP response (2xx–5xx) = Connected — the network path worked end-to-end. Limited state only triggers from canonical endpoints.
+
+**Defaults:** `http://cp.cloudflare.com/` (primary), `http://www.gstatic.com/generate_204` (secondary).
+
+**Why these defaults:** Cloudflare's captive portal endpoint is reachable from most regions including networks that filter Google services (e.g. mainland China). Google's `gstatic` is the established fallback for everywhere else.
 
 #### `qmanager_watchcat`
 

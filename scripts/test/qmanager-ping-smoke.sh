@@ -100,5 +100,58 @@ DOWN=$(jq -r .down_reason /tmp/qmanager_ping.json)
 [ "$DOWN" = "carrier_down" ] || { echo "FAIL: down_reason=$DOWN expected carrier_down"; exit 1; }
 echo "PASS: disconnected path"
 
+# ─── Test: primary unreachable, fallback to secondary ────────────────────────
+echo
+echo "TEST: primary down → fallback to secondary"
+
+# Reset state for this scenario.
+rm -f /tmp/qmanager_ping.json /tmp/qmanager_ping.pid /tmp/qmanager_ping_history
+# Carrier must be up so the daemon actually probes (it was set to 0 above).
+echo 1 > "$CARRIER"
+
+# Kill the previous daemon instance (already dead from timeout, but be sure).
+kill "$DAEMON_PID" 2>/dev/null || true
+wait "$DAEMON_PID" 2>/dev/null || true
+
+# Point primary at port 18203 (no listener → refused) so it always fails.
+# Secondary points at the still-running stub on port 18204.
+# Path "/" is a custom URL (not /generate_204) so any HTTP response = Connected.
+PING_INTERVAL=1 \
+FAIL_SECS=3 \
+RECOVER_SECS=2 \
+INTERCEPT_SECS=4 \
+HISTORY_SECS=10 \
+PING_TARGET_1="http://127.0.0.1:18203/" \
+PING_TARGET_2="http://127.0.0.1:18204/" \
+CARRIER_FILE="$CARRIER" \
+"$BIN" >>/tmp/qping_smoke.log 2>&1 &
+DAEMON_PID=$!
+
+sleep 4
+
+if [ ! -f /tmp/qmanager_ping.json ]; then
+    echo "FAIL: /tmp/qmanager_ping.json was not created in fallback test"
+    exit 1
+fi
+
+CONN=$(jq -r .connectivity /tmp/qmanager_ping.json)
+TARGET_USED=$(jq -r '.probe_target_used' /tmp/qmanager_ping.json)
+
+kill "$DAEMON_PID" 2>/dev/null || true
+wait "$DAEMON_PID" 2>/dev/null || true
+DAEMON_PID=""
+
+if [ "$CONN" != "connected" ]; then
+    echo "FAIL: expected connectivity=connected with working fallback, got '$CONN'"
+    exit 1
+fi
+
+if [ "$TARGET_USED" != "http://127.0.0.1:18204/" ]; then
+    echo "FAIL: expected probe_target_used=http://127.0.0.1:18204/, got '$TARGET_USED'"
+    exit 1
+fi
+
+echo "PASS: fallback to secondary works"
+
 echo
 echo "All smoke checks passed."

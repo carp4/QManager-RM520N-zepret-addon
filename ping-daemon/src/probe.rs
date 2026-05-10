@@ -1,7 +1,10 @@
 use std::collections::HashMap;
+use std::io;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::time::{Duration, Instant};
+
+use crate::url::Scheme;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DownReason {
@@ -33,8 +36,38 @@ pub enum ProbeOutcome {
     Disconnected { reason: DownReason },
 }
 
+/// Connection variant cached per host:port keep-alive bucket.
+enum Conn {
+    Plain(TcpStream),
+    Tls(rustls::StreamOwned<rustls::ClientConnection, TcpStream>),
+}
+
+impl io::Read for Conn {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        match self {
+            Conn::Plain(s) => s.read(buf),
+            Conn::Tls(s) => s.read(buf),
+        }
+    }
+}
+
+impl io::Write for Conn {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        match self {
+            Conn::Plain(s) => s.write(buf),
+            Conn::Tls(s) => s.write(buf),
+        }
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        match self {
+            Conn::Plain(s) => s.flush(),
+            Conn::Tls(s) => s.flush(),
+        }
+    }
+}
+
 pub struct KeepAliveClient {
-    connections: HashMap<String, TcpStream>,
+    connections: HashMap<String, Conn>,
     timeout: Duration,
 }
 
@@ -45,43 +78,39 @@ impl KeepAliveClient {
 
     /// Probe a target URL. Returns the outcome enum.
     pub fn probe(&mut self, url: &str) -> ProbeOutcome {
-        let parsed = match parse_http_url(url) {
+        let parsed = match crate::url::parse(url) {
             Some(p) => p,
             None => return ProbeOutcome::Disconnected { reason: DownReason::Malformed },
         };
         let host_port = format!("{}:{}", parsed.host, parsed.port);
-        let host_for_header = parsed.host.clone();
 
         let start = Instant::now();
-        let (mut stream, tcp_reused) = match self.connections.remove(&host_port) {
-            Some(s) => (s, true),
-            None => match self.dial(&host_port) {
-                Ok(s) => (s, false),
+        let (mut conn, tcp_reused) = match self.connections.remove(&host_port) {
+            Some(c) => (c, true),
+            None => match self.dial(&parsed.host, &host_port, parsed.scheme) {
+                Ok(c) => (c, false),
                 Err(reason) => return ProbeOutcome::Disconnected { reason },
             },
         };
 
-        if let Err(reason) = self.send_get(&mut stream, &host_for_header, &parsed.path) {
-            // Reset path: drop connection, attempt one fresh dial in this same probe cycle.
-            // This avoids a "stale keepalive = false alarm" event on every Nth probe when
-            // the server / carrier closes idle connections silently.
+        if let Err(reason) = self.send_get(&mut conn, &parsed.host, &parsed.path) {
             if tcp_reused {
-                let mut fresh = match self.dial(&host_port) {
-                    Ok(s) => s,
+                let mut fresh = match self.dial(&parsed.host, &host_port, parsed.scheme) {
+                    Ok(c) => c,
                     Err(r) => return ProbeOutcome::Disconnected { reason: r },
                 };
-                if let Err(r) = self.send_get(&mut fresh, &host_for_header, &parsed.path) {
+                if let Err(r) = self.send_get(&mut fresh, &parsed.host, &parsed.path) {
                     return ProbeOutcome::Disconnected { reason: r };
                 }
-                return self.read_response(fresh, &host_port, start, false);
+                return self.read_response(fresh, &host_port, parsed.is_canonical_204, start, false);
             }
             return ProbeOutcome::Disconnected { reason };
         }
 
-        self.read_response(stream, &host_port, start, tcp_reused)
+        self.read_response(conn, &host_port, parsed.is_canonical_204, start, tcp_reused)
     }
 
-    fn dial(&self, host_port: &str) -> Result<TcpStream, DownReason> {
+    fn dial(&self, host: &str, host_port: &str, scheme: Scheme) -> Result<Conn, DownReason> {
         let addrs: Vec<_> = match host_port.to_socket_addrs() {
             Ok(it) => it.collect(),
             Err(_) => return Err(DownReason::Dns),
@@ -91,26 +120,34 @@ impl KeepAliveClient {
         stream.set_read_timeout(Some(self.timeout)).ok();
         stream.set_write_timeout(Some(self.timeout)).ok();
         stream.set_nodelay(true).ok();
-        Ok(stream)
+        match scheme {
+            Scheme::Http => Ok(Conn::Plain(stream)),
+            Scheme::Https => {
+                let tls = crate::tls_dial::handshake(stream, host, self.timeout)
+                    .map_err(map_io_err)?;
+                Ok(Conn::Tls(tls))
+            }
+        }
     }
 
-    fn send_get(&self, stream: &mut TcpStream, host: &str, path: &str) -> Result<(), DownReason> {
+    fn send_get(&self, conn: &mut Conn, host: &str, path: &str) -> Result<(), DownReason> {
         let req = format!(
             "GET {} HTTP/1.1\r\nHost: {}\r\nConnection: keep-alive\r\nUser-Agent: qmanager-ping/0.1\r\nAccept: */*\r\n\r\n",
             path, host
         );
-        stream.write_all(req.as_bytes()).map_err(map_io_err)?;
+        conn.write_all(req.as_bytes()).map_err(map_io_err)?;
         Ok(())
     }
 
     fn read_response(
         &mut self,
-        stream: TcpStream,
+        conn: Conn,
         host_port: &str,
+        is_canonical_204: bool,
         start: Instant,
         tcp_reused: bool,
     ) -> ProbeOutcome {
-        let mut reader = BufReader::new(stream);
+        let mut reader = BufReader::new(conn);
 
         let mut status_line = String::new();
         if reader.read_line(&mut status_line).is_err() || status_line.is_empty() {
@@ -154,43 +191,27 @@ impl KeepAliveClient {
         }
 
         let rtt_ms = (start.elapsed().as_secs_f64() * 1000.0) as f32;
-        let stream = reader.into_inner();
+        let conn = reader.into_inner();
 
         if !connection_close {
-            self.connections.insert(host_port.to_string(), stream);
+            self.connections.insert(host_port.to_string(), conn);
         }
-        // If connection_close, we drop `stream` here; the next probe will dial fresh.
 
-        if code == 204 {
-            ProbeOutcome::Connected { rtt_ms, tcp_reused }
+        // Response interpretation:
+        // - Canonical 204 endpoint (gstatic, apple): 204=Connected, 200=Limited (captive portal),
+        //   anything else = Limited (treat as broken intercept).
+        // - Custom URL (e.g. youtube.com): any HTTP response we read = Connected. The probe
+        //   reaching this point already proves DNS+TCP+TLS+HTTP all worked end-to-end.
+        if is_canonical_204 {
+            if code == 204 {
+                ProbeOutcome::Connected { rtt_ms, tcp_reused }
+            } else {
+                ProbeOutcome::Limited { rtt_ms, http_code: code, tcp_reused }
+            }
         } else {
-            ProbeOutcome::Limited { rtt_ms, http_code: code, tcp_reused }
+            ProbeOutcome::Connected { rtt_ms, tcp_reused }
         }
     }
-}
-
-#[derive(Debug)]
-struct ParsedUrl {
-    host: String,
-    port: u16,
-    path: String,
-}
-
-fn parse_http_url(url: &str) -> Option<ParsedUrl> {
-    let rest = url.strip_prefix("http://")?;
-    let (host_part, path) = match rest.find('/') {
-        Some(i) => (&rest[..i], &rest[i..]),
-        None => (rest, "/"),
-    };
-    let (host, port) = match host_part.rsplit_once(':') {
-        Some((h, p)) => {
-            let port: u16 = p.parse().ok()?;
-            (h.to_string(), port)
-        }
-        None => (host_part.to_string(), 80),
-    };
-    if host.is_empty() { return None; }
-    Some(ParsedUrl { host, port, path: path.to_string() })
 }
 
 fn parse_status_code(line: &str) -> Option<u16> {
@@ -305,7 +326,7 @@ mod tests {
             "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n",
         ]);
         let mut c = KeepAliveClient::new(Duration::from_secs(2));
-        let url = format!("http://127.0.0.1:{}/204", port);
+        let url = format!("http://127.0.0.1:{}/generate_204", port);
         let r = c.probe(&url);
         match r {
             ProbeOutcome::Connected { tcp_reused, .. } => assert!(!tcp_reused),
@@ -320,7 +341,7 @@ mod tests {
             "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n",
         ]);
         let mut c = KeepAliveClient::new(Duration::from_secs(2));
-        let url = format!("http://127.0.0.1:{}/204", port);
+        let url = format!("http://127.0.0.1:{}/generate_204", port);
         let _ = c.probe(&url);
         let r = c.probe(&url);
         match r {
@@ -339,7 +360,8 @@ mod tests {
         let leaked: &'static str = Box::leak(resp.into_boxed_str());
         let (port, _stop) = spawn_server(vec![leaked]);
         let mut c = KeepAliveClient::new(Duration::from_secs(2));
-        let url = format!("http://127.0.0.1:{}/", port);
+        // /generate_204 path → canonical semantics → 200 = Limited
+        let url = format!("http://127.0.0.1:{}/generate_204", port);
         match c.probe(&url) {
             ProbeOutcome::Limited { http_code, .. } => assert_eq!(http_code, 200),
             other => panic!("expected Limited, got {:?}", other),
@@ -351,7 +373,8 @@ mod tests {
         let resp = "HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n";
         let (port, _stop) = spawn_server(vec![resp]);
         let mut c = KeepAliveClient::new(Duration::from_secs(2));
-        let url = format!("http://127.0.0.1:{}/", port);
+        // /generate_204 path → canonical semantics → 502 = Limited
+        let url = format!("http://127.0.0.1:{}/generate_204", port);
         match c.probe(&url) {
             ProbeOutcome::Limited { http_code, .. } => assert_eq!(http_code, 502),
             other => panic!("expected Limited 502, got {:?}", other),
@@ -378,7 +401,7 @@ mod tests {
             "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n",
         ]);
         let mut c = KeepAliveClient::new(Duration::from_secs(2));
-        let url = format!("http://127.0.0.1:{}/", port);
+        let url = format!("http://127.0.0.1:{}/generate_204", port);
         let _ = c.probe(&url);
         // Second probe should NOT be tcp_reused since first response had Connection: close
         let r = c.probe(&url);
@@ -389,36 +412,55 @@ mod tests {
     }
 
     #[test]
-    fn parse_url_with_path_and_no_port() {
-        let p = parse_http_url("http://www.gstatic.com/generate_204").unwrap();
-        assert_eq!(p.host, "www.gstatic.com");
-        assert_eq!(p.port, 80);
-        assert_eq!(p.path, "/generate_204");
-    }
-
-    #[test]
-    fn parse_url_with_explicit_port() {
-        let p = parse_http_url("http://127.0.0.1:8080/foo").unwrap();
-        assert_eq!(p.host, "127.0.0.1");
-        assert_eq!(p.port, 8080);
-        assert_eq!(p.path, "/foo");
-    }
-
-    #[test]
-    fn parse_url_no_path_defaults_to_slash() {
-        let p = parse_http_url("http://example.com").unwrap();
-        assert_eq!(p.path, "/");
-    }
-
-    #[test]
-    fn parse_url_rejects_https() {
-        assert!(parse_http_url("https://example.com").is_none());
-    }
-
-    #[test]
     fn parse_status_code_extracts_204() {
         assert_eq!(parse_status_code("HTTP/1.1 204 No Content\r\n"), Some(204));
         assert_eq!(parse_status_code("HTTP/1.0 200 OK\r\n"), Some(200));
         assert_eq!(parse_status_code("garbage"), None);
+    }
+
+    #[test]
+    fn probe_custom_url_treats_200_as_connected() {
+        let body = "<html>youtube</html>";
+        let resp = format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nContent-Type: text/html\r\n\r\n{}",
+            body.len(), body
+        );
+        let leaked: &'static str = Box::leak(resp.into_boxed_str());
+        let (port, _stop) = spawn_server(vec![leaked]);
+        let mut c = KeepAliveClient::new(Duration::from_secs(2));
+        // Path "/" is NOT canonical → custom URL semantics → 200 = Connected
+        let url = format!("http://127.0.0.1:{}/", port);
+        match c.probe(&url) {
+            ProbeOutcome::Connected { .. } => {}
+            other => panic!("expected Connected for custom URL 200, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn probe_custom_url_treats_502_as_connected() {
+        let resp = "HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n";
+        let (port, _stop) = spawn_server(vec![resp]);
+        let mut c = KeepAliveClient::new(Duration::from_secs(2));
+        let url = format!("http://127.0.0.1:{}/", port);
+        match c.probe(&url) {
+            // Network worked — server is the broken party. We're online.
+            ProbeOutcome::Connected { .. } => {}
+            other => panic!("expected Connected for custom URL 502, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn probe_https_url_against_real_server_returns_some_outcome() {
+        // Network-dependent smoke test, gated by env to keep CI offline-friendly.
+        if std::env::var("QMANAGER_TLS_TEST").is_err() {
+            eprintln!("skipping HTTPS smoke test (set QMANAGER_TLS_TEST=1 to run)");
+            return;
+        }
+        let mut c = KeepAliveClient::new(Duration::from_secs(5));
+        let r = c.probe("https://www.cloudflare.com/");
+        match r {
+            ProbeOutcome::Connected { .. } | ProbeOutcome::Limited { .. } => {}
+            other => panic!("expected Connected or Limited, got {:?}", other),
+        }
     }
 }

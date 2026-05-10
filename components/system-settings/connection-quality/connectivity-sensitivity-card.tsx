@@ -12,9 +12,13 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertTriangleIcon } from "lucide-react";
+import { AlertTriangleIcon, RotateCcwIcon } from "lucide-react";
 import { TbAlertTriangleFilled } from "react-icons/tb";
 import { SaveButton, useSaveFlash } from "@/components/ui/save-button";
 import { MetaPanel, MetaPair } from "@/components/ui/meta-panel";
@@ -74,6 +78,18 @@ const PROFILE_META: Record<
 // "daemon hasn't picked up the change yet" footnote.
 const STUCK_THRESHOLD_MS = 30_000;
 
+const DEFAULT_TARGET_1 = "http://cp.cloudflare.com/";
+const DEFAULT_TARGET_2 = "http://www.gstatic.com/generate_204";
+
+function validateTargetClient(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return "URL cannot be empty";
+  if (trimmed.length > 256) return "URL too long (max 256 characters)";
+  if (/\s/.test(trimmed)) return "URL cannot contain spaces";
+  if (/[`$();|<>"\\]/.test(trimmed)) return "URL contains disallowed characters";
+  return null;
+}
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function formatSecs(value: number | null | undefined): string {
@@ -84,22 +100,40 @@ function formatSecs(value: number | null | undefined): string {
 // ─── Component ──────────────────────────────────────────────────────────────
 
 export default function ConnectivitySensitivityCard() {
-  const { profile, isLoading, error, isSaving, saveError, save } =
-    usePingProfile();
+  const {
+    profile,
+    target1,
+    target2,
+    isLoading,
+    error,
+    isSaving,
+    saveError,
+    save,
+  } = usePingProfile();
   const { data: modemStatus } = useModemStatus();
   const { saved, markSaved } = useSaveFlash();
 
-  // Local selection state — initialized from saved profile, syncs on remount
   const [selected, setSelected] = useState<PingProfile | undefined>(profile);
+  const [target1Input, setTarget1Input] = useState<string>("");
+  const [target2Input, setTarget2Input] = useState<string>("");
+  const [target1Err, setTarget1Err] = useState<string | null>(null);
+  const [target2Err, setTarget2Err] = useState<string | null>(null);
   const initializedRef = useRef(false);
 
-  // When the saved profile arrives, sync local state once.
+  // When the saved settings arrive, sync local state once.
   useEffect(() => {
-    if (profile !== undefined && !initializedRef.current) {
+    if (
+      profile !== undefined &&
+      target1 !== undefined &&
+      target2 !== undefined &&
+      !initializedRef.current
+    ) {
       setSelected(profile);
+      setTarget1Input(target1);
+      setTarget2Input(target2);
       initializedRef.current = true;
     }
-  }, [profile]);
+  }, [profile, target1, target2]);
 
   // After a successful save, sync local selection to whatever was just saved
   // (prevents stale dirty state if user clicks a profile twice)
@@ -108,11 +142,15 @@ export default function ConnectivitySensitivityCard() {
 
   // Dirty detection
   const isDirty = useMemo(() => {
-    if (!profile || !selected) return false;
-    return selected !== profile;
-  }, [profile, selected]);
+    if (!profile || selected === undefined) return false;
+    if (selected !== profile) return true;
+    if (target1 !== undefined && target1Input !== target1) return true;
+    if (target2 !== undefined && target2Input !== target2) return true;
+    return false;
+  }, [profile, selected, target1, target1Input, target2, target2Input]);
 
-  const canSave = isDirty && !isSaving;
+  const hasValidationErrors = target1Err !== null || target2Err !== null;
+  const canSave = isDirty && !isSaving && !hasValidationErrors;
 
   // Daemon-stuck detection: after a save, if the daemon's runtime profile
   // doesn't match within STUCK_THRESHOLD_MS, surface a footnote.
@@ -140,14 +178,25 @@ export default function ConnectivitySensitivityCard() {
   // Save handler
   const handleSave = async () => {
     if (!canSave || !selected) return;
+    // Re-validate at submit time
+    const e1 = validateTargetClient(target1Input);
+    const e2 = validateTargetClient(target2Input);
+    setTarget1Err(e1);
+    setTarget2Err(e2);
+    if (e1 || e2) return;
+
     try {
-      await save(selected);
+      await save({
+        profile: selected,
+        target_1: target1Input.trim(),
+        target_2: target2Input.trim(),
+      });
       markSaved();
       lastSavedAtRef.current = Date.now();
       lastSavedProfileRef.current = selected;
       setStuckHint(false);
       setSaveCount((c) => c + 1);
-      toast.success("Sensitivity profile updated");
+      toast.success("Connectivity settings updated");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to save";
       toast.error(msg);
@@ -260,6 +309,91 @@ export default function ConnectivitySensitivityCard() {
               </MetaPanel>
             </motion.div>
           )}
+
+          {/* ── Probe target inputs ──────────────────────────────────── */}
+          <Separator className="my-2" />
+          <motion.div variants={staggerItem} className="grid gap-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h4 className="text-sm font-medium">Probe Targets</h4>
+                <p id="probe-targets-help" className="text-xs text-muted-foreground mt-0.5">
+                  Primary is checked first. Secondary is only used if primary fails. URLs without a scheme default to https.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="shrink-0"
+                onClick={() => {
+                  setTarget1Input(DEFAULT_TARGET_1);
+                  setTarget2Input(DEFAULT_TARGET_2);
+                  setTarget1Err(null);
+                  setTarget2Err(null);
+                }}
+                aria-label="Reset probe targets to defaults"
+                title="Reset to defaults"
+              >
+                <RotateCcwIcon />
+              </Button>
+            </div>
+
+            <div className="grid gap-1.5">
+              <Label htmlFor="target-primary">Primary URL</Label>
+              <Input
+                id="target-primary"
+                value={target1Input}
+                onChange={(e) => {
+                  setTarget1Input(e.target.value);
+                  setTarget1Err(validateTargetClient(e.target.value));
+                }}
+                placeholder="youtube.com or https://example.com/"
+                aria-invalid={target1Err !== null}
+                aria-describedby={
+                  target1Err
+                    ? "probe-targets-help target-primary-err"
+                    : "probe-targets-help"
+                }
+              />
+              {target1Err && (
+                <p
+                  id="target-primary-err"
+                  role="alert"
+                  className="text-xs text-destructive"
+                >
+                  {target1Err}
+                </p>
+              )}
+            </div>
+
+            <div className="grid gap-1.5">
+              <Label htmlFor="target-secondary">Secondary URL (fallback)</Label>
+              <Input
+                id="target-secondary"
+                value={target2Input}
+                onChange={(e) => {
+                  setTarget2Input(e.target.value);
+                  setTarget2Err(validateTargetClient(e.target.value));
+                }}
+                placeholder="cloudflare.com or http://example.com/generate_204"
+                aria-invalid={target2Err !== null}
+                aria-describedby={
+                  target2Err
+                    ? "probe-targets-help target-secondary-err"
+                    : "probe-targets-help"
+                }
+              />
+              {target2Err && (
+                <p
+                  id="target-secondary-err"
+                  role="alert"
+                  className="text-xs text-destructive"
+                >
+                  {target2Err}
+                </p>
+              )}
+            </div>
+          </motion.div>
 
           {/* ── Daemon-stuck warning banner ──────────────────────────── */}
           {stuckHint && (

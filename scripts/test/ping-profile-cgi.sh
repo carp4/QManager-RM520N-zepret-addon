@@ -82,7 +82,7 @@ fi
 # Test 2: POST each valid profile, verify file + reload flag
 for p in sensitive regular relaxed quiet; do
     rm -f "$PING_PROFILE_RELOAD_FLAG"
-    BODY="{\"action\":\"save_settings\",\"profile\":\"$p\"}"
+    BODY="{\"action\":\"save_settings\",\"profile\":\"$p\",\"target_1\":\"http://cp.cloudflare.com/\",\"target_2\":\"http://www.gstatic.com/generate_204\"}"
     LEN=${#BODY}
     RES=$(printf '%s' "$BODY" | run_cgi POST application/json "$LEN")
     if ! echo "$RES" | jq -e '.success == true' >/dev/null; then
@@ -142,6 +142,36 @@ if echo "$RES" | jq -e '.success == true and .settings.profile == "relaxed"' >/d
     pass "GET with malformed config falls back to relaxed"
 else
     fail "GET with malformed config — got: $RES"
+fi
+
+# ─── Target validation: empty target rejected ───────────────────────────────
+BODY='{"action":"save_settings","profile":"relaxed","target_1":"","target_2":"http://x/"}'
+LEN=${#BODY}
+RES=$(printf '%s' "$BODY" | run_cgi POST application/json "$LEN")
+if echo "$RES" | jq -e '.success == false and .error == "invalid_target"' >/dev/null; then
+    pass "empty target_1 rejected"
+else
+    fail "empty target_1 rejected — got: $RES"
+fi
+
+# ─── Target validation: shell-injection attempt rejected ────────────────────
+BODY='{"action":"save_settings","profile":"relaxed","target_1":"http://x/\";rm -rf /tmp","target_2":"http://y/"}'
+LEN=${#BODY}
+RES=$(printf '%s' "$BODY" | run_cgi POST application/json "$LEN")
+if echo "$RES" | jq -e '.success == false and .error == "invalid_target"' >/dev/null; then
+    pass "shell metacharacter in target rejected"
+else
+    fail "shell metacharacter in target rejected — got: $RES"
+fi
+
+# ─── Target validation: bare hostname accepted ──────────────────────────────
+BODY='{"action":"save_settings","profile":"relaxed","target_1":"youtube.com","target_2":"google.com"}'
+LEN=${#BODY}
+RES=$(printf '%s' "$BODY" | run_cgi POST application/json "$LEN")
+if echo "$RES" | jq -e '.success == true' >/dev/null; then
+    pass "bare hostname accepted"
+else
+    fail "bare hostname accepted — got: $RES"
 fi
 
 echo ""

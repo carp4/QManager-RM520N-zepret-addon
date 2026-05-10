@@ -26,6 +26,7 @@
 - **Antenna Alignment** — 3-position recording tool that compares composite signal scores to recommend best antenna placement
 - **Network Events** — Automatic detection of band changes, cell handoffs, carrier aggregation changes, and connectivity events
 - **Latency Monitoring** — Real-time ping with 24-hour history, jitter, packet loss, and aggregated views (hourly/12h/daily)
+- **Connectivity Engine** — Configurable HTTP/HTTPS probe with primary-then-fallback, captive-portal detection, and a sensitivity preset (regions that block Google still come up clean by default)
 - **Traffic Statistics** — Live throughput (Mbps) and cumulative data usage
 
 ### Cellular Configuration

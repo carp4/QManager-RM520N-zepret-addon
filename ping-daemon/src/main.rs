@@ -7,6 +7,8 @@ mod probe;
 mod qlog;
 mod reload;
 mod state;
+mod tls_dial;
+mod url;
 
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -14,7 +16,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use cache::{CacheWriter, PingCache};
-use config::ProfileConfig;
 use history::History;
 use pid::PidGuard;
 use probe::{KeepAliveClient, ProbeOutcome};
@@ -62,7 +63,6 @@ fn main() {
     let reload = ReloadWatcher::new(Path::new(RELOAD_FLAG));
     let mut client = KeepAliveClient::new(PROBE_TIMEOUT);
     let mut streaks = StreakState::new();
-    let mut target_index = 0u8;
 
     while !stop.load(Ordering::SeqCst) {
         if reload.pending() {
@@ -87,9 +87,28 @@ fn main() {
             log.debug("carrier=0, skipping probe");
             (None, ProbeOutcome::Disconnected { reason: probe::DownReason::CarrierDown })
         } else {
-            let t = pick_target(&cfg, &mut target_index);
-            let r = client.probe(&t);
-            (Some(t), r)
+            // Primary first; if Disconnected, fallback to secondary in the same tick.
+            // Limited / Connected from primary skips the secondary probe (saves data).
+            let primary_outcome = client.probe(&cfg.target_1);
+            match &primary_outcome {
+                ProbeOutcome::Disconnected { .. } => {
+                    log.debug(&format!(
+                        "primary {} failed, trying secondary {}",
+                        cfg.target_1, cfg.target_2,
+                    ));
+                    let secondary_outcome = client.probe(&cfg.target_2);
+                    match &secondary_outcome {
+                        ProbeOutcome::Connected { .. } | ProbeOutcome::Limited { .. } => {
+                            (Some(cfg.target_2.clone()), secondary_outcome)
+                        }
+                        ProbeOutcome::Disconnected { .. } => {
+                            // Both failed — report primary's reason for clearer debugging.
+                            (Some(cfg.target_1.clone()), primary_outcome)
+                        }
+                    }
+                }
+                _ => (Some(cfg.target_1.clone()), primary_outcome),
+            }
         };
 
         let kind = match &outcome {
@@ -160,12 +179,6 @@ fn main() {
     }
 
     log.info("SIGTERM/SIGINT received, exiting cleanly");
-}
-
-fn pick_target(cfg: &ProfileConfig, idx: &mut u8) -> String {
-    let t = if *idx == 0 { &cfg.target_1 } else { &cfg.target_2 };
-    *idx = (*idx + 1) % 2;
-    t.clone()
 }
 
 fn conn_label(c: Connectivity) -> &'static str {

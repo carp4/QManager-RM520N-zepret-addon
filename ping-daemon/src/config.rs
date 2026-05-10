@@ -23,8 +23,8 @@ impl ProfileConfig {
             recover_secs: 10,
             intercept_secs: 8,
             history_secs: 300,
-            target_1: "http://www.gstatic.com/generate_204".into(),
-            target_2: "http://cp.cloudflare.com/".into(),
+            target_1: "http://cp.cloudflare.com/".into(),
+            target_2: "http://www.gstatic.com/generate_204".into(),
             carrier_file: PathBuf::from("/sys/class/net/rmnet_data0/carrier"),
         }
     }
@@ -89,6 +89,8 @@ struct ProfileJson {
     recover_secs: Option<u64>,
     intercept_secs: Option<u64>,
     history_secs: Option<u64>,
+    target_1: Option<String>,
+    target_2: Option<String>,
 }
 
 /// Resolution order: env vars > JSON > hardcoded defaults.
@@ -111,6 +113,8 @@ pub fn load(json_path: &Path) -> ProfileConfig {
         if let Some(v) = j.recover_secs { cfg.recover_secs = v; }
         if let Some(v) = j.intercept_secs { cfg.intercept_secs = v; }
         if let Some(v) = j.history_secs { cfg.history_secs = v; }
+        if let Some(v) = j.target_1.as_ref() { cfg.target_1 = v.clone(); }
+        if let Some(v) = j.target_2.as_ref() { cfg.target_2 = v.clone(); }
     }
 
     let mut env_override = false;
@@ -154,9 +158,13 @@ fn max1(n: u64) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn defaults_match_relaxed_when_no_json_no_env() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         clear_env();
         let cfg = load(Path::new("/nonexistent/no_such_file.json"));
         assert_eq!(cfg.profile, "relaxed");
@@ -168,6 +176,7 @@ mod tests {
 
     #[test]
     fn json_profile_overrides_default() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         clear_env();
         let p = write_temp_json(r#"{"profile":"regular"}"#);
         let cfg = load(&p);
@@ -178,6 +187,7 @@ mod tests {
 
     #[test]
     fn json_field_overrides_profile_default() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         clear_env();
         let p = write_temp_json(r#"{"profile":"regular","fail_secs":99}"#);
         let cfg = load(&p);
@@ -186,6 +196,7 @@ mod tests {
 
     #[test]
     fn env_overrides_json_and_marks_custom() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         clear_env();
         let p = write_temp_json(r#"{"profile":"regular","fail_secs":99}"#);
         std::env::set_var("FAIL_SECS", "42");
@@ -197,6 +208,7 @@ mod tests {
 
     #[test]
     fn malformed_json_falls_back_to_defaults() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         clear_env();
         let p = write_temp_json("{ this is not valid json }");
         let cfg = load(&p);
@@ -235,6 +247,40 @@ mod tests {
         assert_eq!(cfg.interval_sec, 10);
         assert_eq!(cfg.intercept_secs, 8);
         assert_eq!(cfg.intercept_threshold_cycles(), 1);
+    }
+
+    #[test]
+    fn json_targets_override_defaults() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        clear_env();
+        let p = write_temp_json(
+            r#"{"profile":"relaxed","target_1":"https://1.1.1.1/","target_2":"http://example.com/"}"#,
+        );
+        let cfg = load(&p);
+        assert_eq!(cfg.target_1, "https://1.1.1.1/");
+        assert_eq!(cfg.target_2, "http://example.com/");
+    }
+
+    #[test]
+    fn missing_json_targets_keep_hardcoded_defaults() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        clear_env();
+        let p = write_temp_json(r#"{"profile":"regular"}"#);
+        let cfg = load(&p);
+        // Hardcoded defaults from ProfileConfig::relaxed() (swapped in Task 6).
+        assert_eq!(cfg.target_1, "http://cp.cloudflare.com/");
+        assert_eq!(cfg.target_2, "http://www.gstatic.com/generate_204");
+    }
+
+    #[test]
+    fn env_target_still_beats_json() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        clear_env();
+        let p = write_temp_json(r#"{"target_1":"https://json.example/"}"#);
+        std::env::set_var("PING_TARGET_1", "https://env.example/");
+        let cfg = load(&p);
+        assert_eq!(cfg.target_1, "https://env.example/");
+        std::env::remove_var("PING_TARGET_1");
     }
 
     fn clear_env() {
