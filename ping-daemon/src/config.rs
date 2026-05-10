@@ -23,8 +23,8 @@ impl ProfileConfig {
             recover_secs: 10,
             intercept_secs: 8,
             history_secs: 300,
-            target_1: "http://www.gstatic.com/generate_204".into(),
-            target_2: "http://cp.cloudflare.com/".into(),
+            target_1: "http://cp.cloudflare.com/".into(),
+            target_2: "http://www.gstatic.com/generate_204".into(),
             carrier_file: PathBuf::from("/sys/class/net/rmnet_data0/carrier"),
         }
     }
@@ -267,9 +267,9 @@ mod tests {
         clear_env();
         let p = write_temp_json(r#"{"profile":"regular"}"#);
         let cfg = load(&p);
-        // Hardcoded defaults from ProfileConfig::relaxed() (Task 6 will swap these).
-        assert_eq!(cfg.target_1, "http://www.gstatic.com/generate_204");
-        assert_eq!(cfg.target_2, "http://cp.cloudflare.com/");
+        // Hardcoded defaults from ProfileConfig::relaxed() (swapped in Task 6).
+        assert_eq!(cfg.target_1, "http://cp.cloudflare.com/");
+        assert_eq!(cfg.target_2, "http://www.gstatic.com/generate_204");
     }
 
     #[test]
