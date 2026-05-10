@@ -48,7 +48,7 @@ bash ../scripts/test/qmanager-ping-smoke.sh
 
 The daemon reads, in priority order:
 
-1. Env vars (`PING_INTERVAL`, `FAIL_SECS`, `RECOVER_SECS`, `INTERCEPT_SECS`, `HISTORY_SECS`, `PING_TARGET_1`, `PING_TARGET_2`, `CARRIER_FILE`, `PING_PROFILE`)
+1. Env vars (`PING_INTERVAL`, `FAIL_SECS`, `RECOVER_SECS`, `INTERCEPT_SECS`, `HISTORY_SECS`, `PING_TARGET_1`, `PING_TARGET_2`, `PING_PROFILE`)
 2. `/etc/qmanager/ping_profile.json`
 3. Hardcoded relaxed-profile defaults (5s/15s/10s/8s)
 

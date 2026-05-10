@@ -1000,6 +1000,7 @@ install_backend() {
     # --- Bootstrap default ping_profile.json / migrate legacy env vars ----------
     install_ping_profile
     migrate_ping_environment
+    prune_stale_ping_environment
 
     info "Backend installed"
 }
@@ -1081,6 +1082,41 @@ migrate_ping_environment() {
     mv "$tmp" "$env_file"
     chmod 644 "$env_file"
     echo "  Migrated $env_file (backup at $backup)"
+}
+
+# --- Prune Stale Ping Environment Vars ---------------------------------------
+
+# Strip env vars that were removed in a past release and are now no-ops or harmful.
+# Idempotent: safe to run on every install/upgrade.
+#   CARRIER_FILE — removed in v0.1.9: daemon now relies solely on HTTP probes.
+prune_stale_ping_environment() {
+    local env_file="/etc/qmanager/environment"
+    [ -f "$env_file" ] || return 0
+
+    local stale_keys="CARRIER_FILE"
+    local pruned=0
+    local tmp; tmp=$(mktemp)
+
+    while IFS= read -r line || [ -n "$line" ]; do
+        local key="${line%%=*}"
+        local drop=0
+        for k in $stale_keys; do
+            [ "$key" = "$k" ] && drop=1 && break
+        done
+        if [ "$drop" = "1" ]; then
+            pruned=$(( pruned + 1 ))
+        else
+            printf '%s\n' "$line" >> "$tmp"
+        fi
+    done < "$env_file"
+
+    if [ "$pruned" -gt 0 ]; then
+        mv "$tmp" "$env_file"
+        chmod 644 "$env_file"
+        echo "  Removed $pruned stale ping env var(s) from $env_file (CARRIER_FILE no longer used)"
+    else
+        rm -f "$tmp"
+    fi
 }
 
 # --- Cleanup Legacy Scripts --------------------------------------------------
