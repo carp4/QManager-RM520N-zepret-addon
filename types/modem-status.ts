@@ -40,6 +40,8 @@ export interface ModemStatus {
   sim_failover: SimFailoverStatus;
   /** SIM swap detection (physical SIM card change at boot) */
   sim_swap: SimSwapStatus;
+  /** Persistent data-usage counter (optional — absent on older firmware or before first poller write) */
+  data_used?: DataUsedBlock;
 }
 
 // --- Enums & Unions ----------------------------------------------------------
@@ -251,6 +253,41 @@ export interface TrafficStatus {
   total_rx_bytes: number;
   /** Total uploaded bytes since boot */
   total_tx_bytes: number;
+}
+
+/**
+ * Persistent data-usage counter maintained by the poller across modem reboots
+ * and interface flaps. Sourced from AT+QGDCNT / AT+QGDNRCNT.
+ * Served by /cgi-bin/quecmanager/network/data_used.sh
+ */
+export interface DataUsedBlock {
+  /** Cumulative received bytes (persisted across reboots) */
+  accumulated_rx_bytes: number;
+  /** Cumulative transmitted bytes (persisted across reboots) */
+  accumulated_tx_bytes: number;
+  /**
+   * Which AT counter the poller is currently using.
+   * "qgdcnt" = LTE, "qgdnrcnt" = 5G SA/NSA, "" = not yet selected.
+   */
+  selected_counter: string;
+  /** Unix epoch (seconds) of the last poller write to this block */
+  last_update_ts: number;
+  /**
+   * Unix epoch (seconds) of the last user-triggered reset.
+   * 0 means never reset (fresh install).
+   */
+  last_reset_ts: number;
+  /** Number of times the poller detected a counter divergence */
+  divergence_count: number;
+  /** Number of times the modem has been reset since the last user reset */
+  modem_reset_count: number;
+  /** Number of LTE↔5G mode transitions since the last user reset */
+  mode_transition_count: number;
+  /**
+   * True when the poller has not updated this block recently (cache is stale).
+   * CGI sets this flag when the on-disk file is older than expected.
+   */
+  stale: boolean;
 }
 
 /**

@@ -4,9 +4,11 @@
 
 ## ✨ New Features
 
-_None this release._
+- **Data Used counter now survives modem reboots and rmnet driver reloads.** The previous Data Used display read directly from the kernel's `rmnet_ipa0` byte counter, which silently zeroed every time the modem subsystem reset or the data session re-attached — making the displayed total unreliable for tracking usage over days. QManager now maintains its own persistent total at `/usrdata/qmanager/data_used.json`, accumulated from the modem's own `AT+QGDCNT` (LTE) or `AT+QGDNRCNT` (5G SA / NSA) byte counters depending on the current network mode. The counter is cross-validated against the kernel counter every poll cycle and tolerates modem-side counter resets (e.g. carrier-initiated session refreshes) without losing your accumulated total. A new **Reset** button on the Device Metrics card lets you zero the counter on demand — useful for tracking usage within a specific billing window — and the dashboard surfaces both the counter source (QGDCNT vs QGDNRCNT) and the time of the last reset for transparency.
 
 ## 🛠️ Improvements
+
+- **Live Traffic now works correctly on x5x-class modems (RM501, RM502, RG502Q).** The traffic daemon previously assumed `rmnet_ipa0` as primary and hardcoded `rmnet_data0` as the only fallback — but on devices where the active data bearer is `rmnet_data1` or higher (which varies by platform, carrier, and PDP context state), the daemon either fell back to the wrong interface or showed zeroed counters. The active interface is now auto-detected per tick by scanning `/proc/net/route` for the first `rmnet_data*` entry with a live route, cached for steady-state efficiency, and re-detected only when the cache invalidates (interface vanishes, or 5+ consecutive idle ticks). Detection is fork-free pure shell, so the per-tick cost is unchanged.
 
 - **Connectivity status no longer gets stuck on "Offline" when internet is working.** The ping daemon was gating every probe on a hardcoded sysfs carrier file (`rmnet_data0`) — on devices where the active data bearer is `rmnet_data1` or higher, the carrier read always returned empty and the daemon skipped probing entirely, locking the UI on disconnected indefinitely. The carrier sysfs check has been removed; the daemon now relies solely on the HTTP probes to Cloudflare and Google, which is the correct and portable signal. The installer automatically cleans up any stale `CARRIER_FILE` setting left in `/etc/qmanager/environment` on upgrade.
 

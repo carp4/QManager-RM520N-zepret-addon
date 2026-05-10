@@ -984,3 +984,54 @@ parse_ippt_dhcpv4dns() {
 
     qlog_debug "ippt_dhcpv4dns: $boot_ippt_dhcpv4dns"
 }
+
+# -----------------------------------------------------------------------------
+# Parse AT+QMAP="LANIP" — DHCP range and device LAN gateway
+#
+# Response format (canonical):
+#   +QMAP: "LANIP",<dhcp_start_ip>,<dhcp_end_ip>,<gateway_ip>
+# Example:
+#   +QMAP: "LANIP",192.168.225.100,192.168.227.99,192.168.225.1
+#
+# Some firmwares may quote the IPs or omit fields; treat anything that
+# doesn't dot-decimal-shape as missing rather than emitting garbage.
+#
+# Populates: boot_lan_ip (gateway = device IP), boot_lan_gateway
+#
+# Note: field 2 is the DHCP start range, NOT the device's own IP. The device
+# IP is the gateway (field 4). Both boot_lan_ip and boot_lan_gateway are set
+# to that gateway so consumers don't have to know the QMAP semantics.
+# -----------------------------------------------------------------------------
+parse_lan_ip() {
+    local raw="$1"
+    local line gateway
+
+    boot_lan_ip=""
+    boot_lan_gateway=""
+
+    line=$(printf '%s\n' "$raw" | grep '+QMAP:.*"LANIP"' | head -1 | tr -d '\r')
+    [ -z "$line" ] && {
+        qlog_debug "lan_ip: no +QMAP LANIP line in response (firmware may not support it)"
+        return 0
+    }
+
+    # Strip prefix and surrounding spaces, drop quotes around values.
+    line=$(printf '%s' "$line" | sed 's/+QMAP: //; s/"//g' | tr -d ' ')
+
+    # Field 4 = gateway (the device's own LAN IP). awk over $0 because
+    # BusyBox `cut -d, -f4` returns empty silently when the field is absent.
+    gateway=$(printf '%s' "$line" | awk -F',' 'NF>=4 {print $4}')
+
+    # Sanity: must look like a dotted-quad. Reject anything else.
+    case "$gateway" in
+        [0-9]*.[0-9]*.[0-9]*.[0-9]*)
+            boot_lan_gateway="$gateway"
+            boot_lan_ip="$gateway"
+            ;;
+        *)
+            qlog_warn "lan_ip: unexpected LANIP format, gateway not parsed: $line"
+            ;;
+    esac
+
+    qlog_debug "lan_ip: gateway=$boot_lan_gateway"
+}
