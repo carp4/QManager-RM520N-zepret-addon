@@ -556,6 +556,7 @@ export function TailscaleConnectionCard({
               </Badge>
             </div>
             {bootToggle}
+            {sshToggle}
             <Separator />
             <div className="flex items-center gap-2 flex-wrap pt-1">
               <Button
@@ -662,6 +663,7 @@ export function TailscaleConnectionCard({
             )}
 
             {bootToggle}
+            {sshToggle}
             <Separator />
             <div className="pt-1">
               <Button
@@ -759,6 +761,7 @@ export function TailscaleConnectionCard({
             {staleWarning}
             {/* Boot toggle */}
             {bootToggle}
+            {sshToggle}
             {/* Health warnings */}
             {health.length > 0 && (
               <>
@@ -902,6 +905,7 @@ export function TailscaleConnectionCard({
           </div>
 
           {bootToggle}
+          {sshToggle}
 
           <Separator />
           <div className="flex items-center gap-2 flex-wrap pt-1">
