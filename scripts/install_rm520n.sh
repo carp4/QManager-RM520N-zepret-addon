@@ -421,7 +421,43 @@ install_dependencies() {
         useradd -r -M -s /sbin/nologin -g www-data www-data 2>/dev/null || true
         info "Created user: www-data"
     fi
-    addgroup www-data dialout 2>/dev/null || usermod -aG dialout www-data 2>/dev/null || true
+    # Add www-data to dialout (needed to access /dev/smd11 with mode 660 root:dialout).
+    # Try every known helper, then VERIFY — silent failure here was the root cause of
+    # the x5* (PRAIRE/sdxprairie) compatibility regression where /dev/smd11 ended up
+    # unreachable through the dialout group on platforms whose addgroup/usermod
+    # variants don't accept the "add user to group" syntax.
+    addgroup www-data dialout 2>/dev/null || \
+    usermod -aG dialout www-data 2>/dev/null || \
+    gpasswd -a www-data dialout 2>/dev/null || true
+
+    # Membership check: `id -Gn` prints group NAMES space-separated (e.g. "www-data dialout").
+    # `id www-data` alone prints `groups=33(www-data),20(dialout)` — splitting that on commas
+    # gives tokens like "20(dialout)" not "dialout", which is why a naive grep -qx fails
+    # (verified live on RM520N-GL BusyBox v1.31.1).
+    if ! id -Gn www-data 2>/dev/null | tr ' ' '\n' | grep -qx 'dialout'; then
+        warn "addgroup/usermod/gpasswd did not add www-data to dialout — falling back to direct /etc/group edit"
+        if grep -q '^dialout:' /etc/group 2>/dev/null; then
+            # Group exists — append www-data to its member list. Safe to run only
+            # because the surrounding `id -Gn ... | grep -qx` already proved
+            # www-data is NOT yet a member; otherwise this would duplicate.
+            # Two-step sed handles the empty-member-list case (trailing colon):
+            #   "dialout:x:20:"            → ",www-data" appended → ":,"  → ":"
+            #   "dialout:x:20:user1"       → ",www-data" appended (no :, to clean)
+            sed -i \
+                -e '/^dialout:/s/$/,www-data/' \
+                -e '/^dialout:/s/:,/:/' \
+                /etc/group
+        else
+            # Group missing entirely. GID 20 is the canonical Debian dialout GID
+            # and matches every Quectel image we have evidence for.
+            echo 'dialout:x:20:www-data' >> /etc/group
+        fi
+        sync
+        if ! id -Gn www-data 2>/dev/null | tr ' ' '\n' | grep -qx 'dialout'; then
+            die "Could not add www-data to dialout group — manual /etc/group fix required"
+        fi
+        info "www-data added to dialout via /etc/group fallback"
+    fi
 
     # --- atcli_smd11 (AT command transport — direct /dev/smd11 access) --------
     if [ -f "$SRC_DEPS/atcli_smd11" ]; then
@@ -1175,6 +1211,54 @@ cleanup_legacy_scripts() {
 
 # --- Install udev Rules ------------------------------------------------------
 
+# scrub_vendor_smd11_rules: remove third-party smd11 entries from vendor udev files.
+#
+# Background: rgmii-toolkit and various community fixes (e.g. 1alessandro1's
+# upstream advice) edit Quectel's /etc/udev/rules.d/data_udev_rules.rules and
+# /etc/udev/scripts/data_udev_script.sh to chown /dev/smd11 to www-data:www-data.
+# Vanilla Quectel firmware does NOT claim smd11 (confirmed on RM520N-GL —
+# vendor's data_udev_rules.rules only lists smd7..smd10), so any smd11 entry
+# we find is from a previous third-party install and will race our own rule.
+#
+# Removing them eliminates the race so our 99-qmanager-smd11.rules is the sole
+# writer of /dev/smd11 permissions. A one-time backup (.qmanager.bak) is kept
+# per file so a curious operator can restore the original.
+scrub_vendor_smd11_rules() {
+    local vendor_rules="/etc/udev/rules.d/data_udev_rules.rules"
+    local vendor_script="/etc/udev/scripts/data_udev_script.sh"
+    local scrubbed=0
+
+    if [ -f "$vendor_rules" ] && grep -q 'KERNEL=="smd11"' "$vendor_rules" 2>/dev/null; then
+        [ -f "$vendor_rules.qmanager.bak" ] || cp "$vendor_rules" "$vendor_rules.qmanager.bak"
+        sed -i '/KERNEL=="smd11"/d' "$vendor_rules"
+        info "Removed competing smd11 rule from $vendor_rules (backup: .qmanager.bak)"
+        scrubbed=1
+    fi
+
+    if [ -f "$vendor_script" ] && grep -qE '^[[:space:]]*smd11\)' "$vendor_script" 2>/dev/null; then
+        [ -f "$vendor_script.qmanager.bak" ] || cp "$vendor_script" "$vendor_script.qmanager.bak"
+        # Delete the smd11) case in two passes for safety:
+        #   Pass 1 — one-liner form:  "    smd11) cmd ;;"
+        #            Match the whole line at once.
+        #   Pass 2 — multi-line form: "smd11)" alone, then body, then "    ;;" alone.
+        #            End anchor requires a line whose ENTIRE non-whitespace content
+        #            is ";;", so any nested "case ... ;;" inside the block can't
+        #            close the range early and over-delete (defensive — vanilla
+        #            Quectel scripts and the known third-party edits don't nest,
+        #            but this future-proofs us).
+        sed -i '/^[[:space:]]*smd11)[^)]*;;[[:space:]]*$/d' "$vendor_script"
+        sed -i '/^[[:space:]]*smd11)[[:space:]]*$/,/^[[:space:]]*;;[[:space:]]*$/d' "$vendor_script"
+        info "Removed competing smd11 case from $vendor_script (backup: .qmanager.bak)"
+        scrubbed=1
+    fi
+
+    if [ "$scrubbed" -eq 1 ]; then
+        sync
+        command -v udevadm >/dev/null 2>&1 && udevadm control --reload-rules 2>/dev/null || true
+    fi
+    return 0
+}
+
 install_udev_rules() {
     step "Installing udev rules for /dev/smd11"
 
@@ -1192,6 +1276,10 @@ install_udev_rules() {
     mount -o remount,rw / 2>/dev/null || true
 
     mkdir -p /etc/udev/rules.d /usr/lib/qmanager
+
+    # Strip any third-party smd11 entries from vendor files first, so our rule
+    # is the only one firing on smd11 add events (no race for ownership).
+    scrub_vendor_smd11_rules
 
     # helper lives outside install_backend's LIB_DIR glob to preserve 755
     install_file "$helper_src" "$helper_dst" 755 \
