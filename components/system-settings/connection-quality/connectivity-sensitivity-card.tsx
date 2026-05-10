@@ -311,11 +311,29 @@ export default function ConnectivitySensitivityCard() {
 
           {/* ── Probe target inputs ──────────────────────────────────── */}
           <motion.div variants={staggerItem} className="grid gap-3 pt-2 border-t border-border/50">
-            <div>
-              <p className="text-sm font-medium">Probe Targets</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Primary is checked first. Secondary is only used if primary fails. URLs without a scheme default to https.
-              </p>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h4 className="text-sm font-medium">Probe Targets</h4>
+                <p id="probe-targets-help" className="text-xs text-muted-foreground mt-0.5">
+                  Primary is checked first. Secondary is only used if primary fails. URLs without a scheme default to https.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="shrink-0"
+                onClick={() => {
+                  setTarget1Input(DEFAULT_TARGET_1);
+                  setTarget2Input(DEFAULT_TARGET_2);
+                  setTarget1Err(null);
+                  setTarget2Err(null);
+                }}
+                aria-label="Reset probe targets to defaults"
+                title="Reset to defaults"
+              >
+                <RotateCcwIcon />
+              </Button>
             </div>
 
             <div className="grid gap-1.5">
@@ -329,10 +347,18 @@ export default function ConnectivitySensitivityCard() {
                 }}
                 placeholder="youtube.com or https://example.com/"
                 aria-invalid={target1Err !== null}
-                aria-describedby={target1Err ? "target-primary-err" : undefined}
+                aria-describedby={
+                  target1Err
+                    ? "probe-targets-help target-primary-err"
+                    : "probe-targets-help"
+                }
               />
               {target1Err && (
-                <p id="target-primary-err" className="text-xs text-destructive">
+                <p
+                  id="target-primary-err"
+                  role="alert"
+                  className="text-xs text-destructive"
+                >
                   {target1Err}
                 </p>
               )}
@@ -349,31 +375,21 @@ export default function ConnectivitySensitivityCard() {
                 }}
                 placeholder="cloudflare.com or http://example.com/generate_204"
                 aria-invalid={target2Err !== null}
-                aria-describedby={target2Err ? "target-secondary-err" : undefined}
+                aria-describedby={
+                  target2Err
+                    ? "probe-targets-help target-secondary-err"
+                    : "probe-targets-help"
+                }
               />
               {target2Err && (
-                <p id="target-secondary-err" className="text-xs text-destructive">
+                <p
+                  id="target-secondary-err"
+                  role="alert"
+                  className="text-xs text-destructive"
+                >
                   {target2Err}
                 </p>
               )}
-            </div>
-
-            <div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
-                onClick={() => {
-                  setTarget1Input(DEFAULT_TARGET_1);
-                  setTarget2Input(DEFAULT_TARGET_2);
-                  setTarget1Err(null);
-                  setTarget2Err(null);
-                }}
-              >
-                <RotateCcwIcon className="size-3 mr-1.5" />
-                Reset to defaults
-              </Button>
             </div>
           </motion.div>
 
