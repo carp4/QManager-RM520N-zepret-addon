@@ -299,14 +299,14 @@ QManager runs 10 systemd services on the modem:
 ## Tips for the Project
 
 <div align="center">
-  <h3>Tip QManager's Development</h3>
-  <p>Your tips help maintain the project and fund continued development, testing on new cellular networks, and hardware costs.</p>
+  <h3>Support QManager's Development</h3>
+  <p>Your contribution helps maintain the project and fund continued development, testing on new cellular networks, and hardware costs.</p>
   <br/>
   <a href="https://wise.com/pay/business/blackcatdev?currency=USD" target="_blank">
-    <img height="40" src="https://img.shields.io/badge/Send%20a%20Tip%20%C2%B7%20Wise-163300?style=for-the-badge&logo=wise&logoColor=white" alt="Send a Tip · Wise" />
+    <img height="40" src="https://img.shields.io/badge/Donate-Wise-9FE870?style=for-the-badge&logo=wise&logoColor=white" alt="Donate via Wise" />
   </a>
   <br/><br/>
-  <p>You can also tip via <a href="https://github.com/sponsors/dr-dolomite" target="_blank">GitHub Sponsors</a>.</p>
+  <p>You can also <a href="https://github.com/sponsors/dr-dolomite" target="_blank">sponsor on GitHub</a>.</p>
 </div>
 
 ---

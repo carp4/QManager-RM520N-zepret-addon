@@ -48,11 +48,6 @@ Bug reports and feature requests welcome on [GitHub Issues](https://github.com/d
 
 Like what's new? QManager is built and maintained for free — if these updates have made your setup a little better, you can show your support via [Wise](https://wise.com/pay/business/blackcatdev?currency=USD). Every bit helps keep this project alive and growing. [GitHub Sponsors](https://github.com/sponsors/dr-dolomite) is also an option if that works better for you.
 
-<div align="center">
-  <a href="https://wise.com/pay/business/blackcatdev?currency=USD" target="_blank">
-    <img height="40" src="https://img.shields.io/badge/Send%20a%20Tip%20%C2%B7%20Wise-163300?style=for-the-badge&logo=wise&logoColor=white" alt="Send a Tip · Wise" />
-  </a>
-</div>
 
 **License:** MIT + Commons Clause — **Happy connecting!**
 
