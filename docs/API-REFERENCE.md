@@ -777,6 +777,50 @@ Get the currently active scenario.
 }
 ```
 
+### GET/POST `/settings/ping_profile.sh`
+
+Connectivity probe sensitivity and target configuration. Controls the `qmanager_ping` daemon's check interval, failure thresholds, and the two probe URLs.
+
+**GET Response:**
+```json
+{
+  "success": true,
+  "settings": {
+    "profile": "regular",
+    "target_1": "http://cp.cloudflare.com/",
+    "target_2": "http://www.gstatic.com/generate_204"
+  }
+}
+```
+
+**POST (save_settings):**
+```json
+{
+  "action": "save_settings",
+  "profile": "regular",
+  "target_1": "youtube.com",
+  "target_2": "google.com"
+}
+```
+
+- `profile`: one of `"aggressive"`, `"regular"`, `"relaxed"` — controls the sensitivity preset (check interval, streak thresholds) applied by `qmanager_ping`.
+- `target_1`: primary probe URL. Probed on every tick.
+- `target_2`: secondary probe URL. Only probed when `target_1` returns `Disconnected` (primary-then-fallback, not alternating).
+
+**Validation rules for `target_1` / `target_2`:**
+- Both fields are required on every `save_settings` POST.
+- Each must be nonempty after whitespace trim, at most 256 characters, and contain only URL-safe characters (no shell metacharacters).
+- Bare hostnames are accepted (`youtube.com` → daemon auto-prefixes `https://`); hostnames with paths are also accepted (`example.com/health` → `https://example.com/health`).
+- `http://` and `https://` schemes are accepted. Other schemes (`ftp://`, `file://`, etc.) are rejected.
+
+**Error codes:**
+
+| Code | Meaning |
+|------|---------|
+| `invalid_target` | `target_1` or `target_2` failed validation (empty, too long, bad scheme, or disallowed characters) |
+| `missing_field` | Required POST field absent |
+| `invalid_profile` | `profile` value not in the accepted set |
+
 ---
 
 ## Device
