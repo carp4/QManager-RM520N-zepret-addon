@@ -352,7 +352,14 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
         # --reset clears any lingering flags from a prior `tailscale up`
         # (matches the rgmii-toolkit/SimpleAdmin convention validated across
         # PRAIRE and SDXLEMUR modem platforms).
-        ( ts_cmd up --reset --accept-dns=false > "$TS_UP_OUTPUT" 2>&1 ) &
+        # Flag-aware SSH: --reset would wipe RunSSH on every connect, so we
+        # re-append --ssh here when the QManager-owned intent flag is set.
+        ssh_flag_arg=""
+        if [ "$(get_ssh_pref)" = "true" ]; then
+            ssh_flag_arg="--ssh"
+        fi
+        # shellcheck disable=SC2086 # $ssh_flag_arg intentionally unquoted: empty→zero words (POSIX opt-arg idiom)
+        ( ts_cmd up --reset --accept-dns=false $ssh_flag_arg > "$TS_UP_OUTPUT" 2>&1 ) &
         ts_up_pid=$!
         echo "$ts_up_pid" > "$TS_UP_PID_FILE"
 
