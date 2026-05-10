@@ -1,12 +1,12 @@
 # 🚀 QManager RM520N BETA v0.1.8 (DRAFT)
 
-A small reliability release that broadens modem compatibility. Network Priority Settings now reads correctly on Quectel x6x firmwares (RM521F-GL and friends), where the modem echoes the response under a different internal key.
+The connectivity engine got a real fix: it now uses a primary-then-fallback probe with configurable URLs, defaults to Cloudflare so installs in regions that block Google still come up clean, and finally speaks HTTPS. Also fixes Network Priority on Quectel x6x firmwares.
 
 > One-click OTA from **System Settings → Software Update** if you're on v0.1.5 or newer. SSH/ADB is not required.
 
 ## ✨ New Features
 
-- **Configurable connectivity probe targets.** The connectivity engine now exposes Primary and Secondary URLs in System Settings → Connectivity Sensitivity. Defaults to Cloudflare-primary and Google-secondary so installs in regions that block Google still come up clean. Targets accept full URLs (`https://...`, `http://...`) or bare hostnames (e.g. `youtube.com`) which default to HTTPS. The probe now uses primary-then-fallback instead of alternating, so a single broken endpoint can never lock the device in a "failed" state.
+- **Configurable connectivity probe targets with HTTPS.** System Settings → Connectivity Sensitivity now exposes Primary and Secondary URLs — paste anything from `youtube.com` to `https://example.com/health` and it just works. Defaults are Cloudflare primary, Google secondary, and the probe falls through to the secondary when the primary fails so a single blocked endpoint can never lock the device on "failed" again.
 
 ## 🛠️ Improvements
 
