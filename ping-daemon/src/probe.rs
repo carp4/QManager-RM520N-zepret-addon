@@ -45,7 +45,7 @@ impl KeepAliveClient {
 
     /// Probe a target URL. Returns the outcome enum.
     pub fn probe(&mut self, url: &str) -> ProbeOutcome {
-        let parsed = match parse_http_url(url) {
+        let parsed = match crate::url::parse(url) {
             Some(p) => p,
             None => return ProbeOutcome::Disconnected { reason: DownReason::Malformed },
         };
@@ -167,30 +167,6 @@ impl KeepAliveClient {
             ProbeOutcome::Limited { rtt_ms, http_code: code, tcp_reused }
         }
     }
-}
-
-#[derive(Debug)]
-struct ParsedUrl {
-    host: String,
-    port: u16,
-    path: String,
-}
-
-fn parse_http_url(url: &str) -> Option<ParsedUrl> {
-    let rest = url.strip_prefix("http://")?;
-    let (host_part, path) = match rest.find('/') {
-        Some(i) => (&rest[..i], &rest[i..]),
-        None => (rest, "/"),
-    };
-    let (host, port) = match host_part.rsplit_once(':') {
-        Some((h, p)) => {
-            let port: u16 = p.parse().ok()?;
-            (h.to_string(), port)
-        }
-        None => (host_part.to_string(), 80),
-    };
-    if host.is_empty() { return None; }
-    Some(ParsedUrl { host, port, path: path.to_string() })
 }
 
 fn parse_status_code(line: &str) -> Option<u16> {
@@ -386,33 +362,6 @@ mod tests {
             ProbeOutcome::Connected { tcp_reused, .. } => assert!(!tcp_reused),
             _ => panic!("expected Connected, got {:?}", r),
         }
-    }
-
-    #[test]
-    fn parse_url_with_path_and_no_port() {
-        let p = parse_http_url("http://www.gstatic.com/generate_204").unwrap();
-        assert_eq!(p.host, "www.gstatic.com");
-        assert_eq!(p.port, 80);
-        assert_eq!(p.path, "/generate_204");
-    }
-
-    #[test]
-    fn parse_url_with_explicit_port() {
-        let p = parse_http_url("http://127.0.0.1:8080/foo").unwrap();
-        assert_eq!(p.host, "127.0.0.1");
-        assert_eq!(p.port, 8080);
-        assert_eq!(p.path, "/foo");
-    }
-
-    #[test]
-    fn parse_url_no_path_defaults_to_slash() {
-        let p = parse_http_url("http://example.com").unwrap();
-        assert_eq!(p.path, "/");
-    }
-
-    #[test]
-    fn parse_url_rejects_https() {
-        assert!(parse_http_url("https://example.com").is_none());
     }
 
     #[test]

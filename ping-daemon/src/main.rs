@@ -7,6 +7,7 @@ mod probe;
 mod qlog;
 mod reload;
 mod state;
+mod url;
 
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
