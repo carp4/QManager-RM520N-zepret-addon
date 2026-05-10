@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertTriangleIcon, RotateCcwIcon } from "lucide-react";
 import { TbAlertTriangleFilled } from "react-icons/tb";
@@ -310,7 +311,8 @@ export default function ConnectivitySensitivityCard() {
           )}
 
           {/* ── Probe target inputs ──────────────────────────────────── */}
-          <motion.div variants={staggerItem} className="grid gap-3 pt-2 border-t border-border/50">
+          <Separator className="my-2" />
+          <motion.div variants={staggerItem} className="grid gap-3">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h4 className="text-sm font-medium">Probe Targets</h4>
