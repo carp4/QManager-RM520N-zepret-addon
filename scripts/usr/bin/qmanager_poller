@@ -271,6 +271,8 @@ sh_coredump_present="false"
 sh_last_crash_at="null"
 sh_total_logged_crashes=0
 sh_load_1m="null"
+sh_load_5m="null"
+sh_load_15m="null"
 sh_core_count="null"
 sh_freq_khz="null"
 sh_max_freq_khz="null"
@@ -528,10 +530,12 @@ update_system_health() {
         sh_last_crash_at=$(jq 'if length > 0 then last.ts else null end' "$SH_CRASH_LOG" 2>/dev/null) || sh_last_crash_at="null"
     fi
 
-    # --- load_1m (1-minute load average) ------------------------------------
+    # --- load averages (1m / 5m / 15m) --------------------------------------
     sh_load_1m="null"
+    sh_load_5m="null"
+    sh_load_15m="null"
     if [ -r /proc/loadavg ]; then
-        sh_load_1m=$(awk '{print $1}' /proc/loadavg)
+        read sh_load_1m sh_load_5m sh_load_15m _rest < /proc/loadavg
     fi
 
     # --- core_count (cache after first read — value never changes at runtime)
@@ -1829,6 +1833,8 @@ write_cache() {
         --argjson sh_last_crash_at  "${sh_last_crash_at:-null}" \
         --argjson sh_total_crashes  "${sh_total_logged_crashes:-0}" \
         --argjson sh_load_1m        "${sh_load_1m:-null}" \
+        --argjson sh_load_5m        "${sh_load_5m:-null}" \
+        --argjson sh_load_15m       "${sh_load_15m:-null}" \
         --argjson sh_core_count     "${sh_core_count:-null}" \
         --argjson sh_freq_khz       "${sh_freq_khz:-null}" \
         --argjson sh_max_freq_khz   "${sh_max_freq_khz:-null}" \
@@ -1968,6 +1974,8 @@ write_cache() {
                 total_logged_crashes: $sh_total_crashes,
                 cpu: {
                     load_1m:      $sh_load_1m,
+                    load_5m:      $sh_load_5m,
+                    load_15m:     $sh_load_15m,
                     core_count:   $sh_core_count,
                     usage_pct:    $cpu,
                     freq_khz:     $sh_freq_khz,

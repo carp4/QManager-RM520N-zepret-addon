@@ -7,6 +7,7 @@ import {
   TriangleAlertIcon,
   AlertTriangleIcon,
 } from "lucide-react";
+import { TbInfoCircleFilled } from "react-icons/tb";
 import { motion, type Variants } from "motion/react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
 import { MetricBar } from "@/components/ui/metric-bar";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useModemSubsys } from "@/hooks/use-modem-subsys";
 import type { ModemSubsysState } from "@/types/modem-subsys";
 
@@ -136,12 +142,21 @@ export default function ModemSubsystemCard() {
               <Skeleton className="h-5 w-28" />
               <Skeleton className="h-5 w-16" />
             </div>
-            {/* CPU Load */}
+            {/* CPU Usage */}
             <Separator />
             <div className="flex flex-col gap-1.5">
               <div className="flex items-center justify-between">
                 <Skeleton className="h-5 w-20" />
                 <Skeleton className="h-5 w-12" />
+              </div>
+              <Skeleton className="h-1 w-full" />
+            </div>
+            {/* Load Average */}
+            <Separator />
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between">
+                <Skeleton className="h-5 w-28" />
+                <Skeleton className="h-5 w-28" />
               </div>
               <Skeleton className="h-1 w-full" />
             </div>
@@ -193,11 +208,27 @@ export default function ModemSubsystemCard() {
   }
 
   // --- Derived metric values ---
-  const cpuLoad = data?.cpu?.load_1m ?? null;
+  const load1m = data?.cpu?.load_1m ?? null;
+  const load5m = data?.cpu?.load_5m ?? null;
+  const load15m = data?.cpu?.load_15m ?? null;
   const coreCount = data?.cpu?.core_count ?? null;
   const cpuUsagePct = data?.cpu?.usage_pct ?? null;
 
   const freqKhz = data?.cpu?.freq_khz ?? null;
+
+  // Load-average bar tuning, anchored to core count so the bar means the same
+  // thing on 1-core and N-core devices. On a 1-core RM520N-GL these resolve to
+  // warn=1.5, danger=2.0, max=3.0 — matches the "above 2 = problem" rule of
+  // thumb and leaves visual headroom so the bar isn't pegged at 100%.
+  const loadBarMax = coreCount !== null ? coreCount * 3 : null;
+  const loadWarnAt = coreCount !== null ? coreCount * 1.5 : null;
+  const loadDangerAt = coreCount !== null ? coreCount * 2 : null;
+  const showLoadRow =
+    load1m !== null &&
+    coreCount !== null &&
+    loadBarMax !== null &&
+    loadWarnAt !== null &&
+    loadDangerAt !== null;
 
   const memTotalKb = data?.memory?.total_kb ?? 0;
   const memUsedKb = data?.memory?.used_kb ?? 0;
@@ -273,19 +304,12 @@ export default function ModemSubsystemCard() {
             </p>
           </motion.div>
 
-          {/* ── CPU Load ───────────────────────────────────────────── */}
+          {/* ── CPU Usage ──────────────────────────────────────────── */}
           <Separator />
           <motion.div variants={itemVariants} className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between">
-              <p className="font-semibold text-muted-foreground text-sm">CPU Load</p>
-              <p
-                className="text-sm font-medium tabular-nums"
-                title={
-                  cpuLoad !== null && coreCount !== null
-                    ? `1-minute load average: ${cpuLoad.toFixed(2)} on ${coreCount} core${coreCount === 1 ? "" : "s"}`
-                    : undefined
-                }
-              >
+              <p className="font-semibold text-muted-foreground text-sm">CPU Usage</p>
+              <p className="text-sm font-medium tabular-nums">
                 {cpuUsagePct !== null ? `${Math.round(cpuUsagePct)}%` : "—"}
               </p>
             </div>
@@ -298,6 +322,52 @@ export default function ModemSubsystemCard() {
               />
             )}
           </motion.div>
+
+          {/* ── Load Average ───────────────────────────────────────── */}
+          {showLoadRow && (
+            <>
+              <Separator />
+              <motion.div variants={itemVariants} className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button type="button" className="inline-flex" aria-label="More info">
+                          <TbInfoCircleFilled className="size-5 text-info" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>
+                          Average number of processes waiting on the CPU over the{" "}
+                          <span className="font-semibold">last 1, 5, and 15 minutes</span>.
+                          <br />
+                          On this {coreCount}-core device, sustained values above{" "}
+                          <span className="font-semibold">{loadDangerAt?.toFixed(1)}</span>{" "}
+                          mean tasks are queueing.
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
+                    <p className="font-semibold text-muted-foreground text-sm">
+                      Load Average
+                    </p>
+                  </div>
+                  <p className="text-sm font-medium tabular-nums">
+                    {load1m!.toFixed(2)}
+                    <span className="text-muted-foreground"> / </span>
+                    {load5m !== null ? load5m.toFixed(2) : "—"}
+                    <span className="text-muted-foreground"> / </span>
+                    {load15m !== null ? load15m.toFixed(2) : "—"}
+                  </p>
+                </div>
+                <MetricBar
+                  value={load1m!}
+                  max={loadBarMax!}
+                  warnAt={loadWarnAt!}
+                  dangerAt={loadDangerAt!}
+                />
+              </motion.div>
+            </>
+          )}
 
           {/* ── Memory ─────────────────────────────────────────────── */}
           <Separator />

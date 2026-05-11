@@ -28,6 +28,10 @@ export interface ModemSubsysData {
   cpu: {
     /** 1-minute load average from /proc/loadavg */
     load_1m: number | null;
+    /** 5-minute load average from /proc/loadavg */
+    load_5m: number | null;
+    /** 15-minute load average from /proc/loadavg */
+    load_15m: number | null;
     /** Number of logical CPU cores */
     core_count: number | null;
     /** Instantaneous CPU utilization percent (0-100) computed from /proc/stat delta; null on first poll or when sample window is unavailable */
