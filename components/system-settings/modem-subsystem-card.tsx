@@ -39,7 +39,11 @@ const containerVariants: Variants = {
 
 const itemVariants: Variants = {
   hidden: { opacity: 0, y: 8 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.25, ease: "easeOut" } },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.25, ease: "easeOut" },
+  },
 };
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -199,7 +203,12 @@ export default function ModemSubsystemCard() {
             <AlertTriangleIcon className="size-4" />
             <AlertDescription>{error}</AlertDescription>
           </Alert>
-          <Button variant="outline" size="sm" onClick={refetch} className="self-start">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={refetch}
+            className="self-start"
+          >
             Retry
           </Button>
         </CardContent>
@@ -256,7 +265,10 @@ export default function ModemSubsystemCard() {
         >
           {/* ── State ──────────────────────────────────────────────── */}
           <Separator />
-          <motion.div variants={itemVariants} className="flex items-center justify-between">
+          <motion.div
+            variants={itemVariants}
+            className="flex items-center justify-between"
+          >
             <p className="font-semibold text-muted-foreground text-sm">State</p>
             {data ? (
               <ModemStateBadge state={data.state} />
@@ -273,7 +285,10 @@ export default function ModemSubsystemCard() {
 
           {/* ── Crashes since boot ─────────────────────────────────── */}
           <Separator />
-          <motion.div variants={itemVariants} className="flex items-center justify-between">
+          <motion.div
+            variants={itemVariants}
+            className="flex items-center justify-between"
+          >
             <p className="font-semibold text-muted-foreground text-sm">
               Crashes since boot
             </p>
@@ -284,7 +299,10 @@ export default function ModemSubsystemCard() {
 
           {/* ── Last crashed ───────────────────────────────────────── */}
           <Separator />
-          <motion.div variants={itemVariants} className="flex items-center justify-between">
+          <motion.div
+            variants={itemVariants}
+            className="flex items-center justify-between"
+          >
             <p className="font-semibold text-muted-foreground text-sm">
               Last crashed
             </p>
@@ -297,10 +315,17 @@ export default function ModemSubsystemCard() {
 
           {/* ── CPU Frequency ──────────────────────────────────────── */}
           <Separator />
-          <motion.div variants={itemVariants} className="flex items-center justify-between">
-            <p className="font-semibold text-muted-foreground text-sm">CPU Frequency</p>
+          <motion.div
+            variants={itemVariants}
+            className="flex items-center justify-between"
+          >
+            <p className="font-semibold text-muted-foreground text-sm">
+              CPU Frequency
+            </p>
             <p className="text-sm font-medium tabular-nums">
-              {freqKhz !== null ? `${(freqKhz / 1_000_000).toFixed(1)} GHz` : "—"}
+              {freqKhz !== null
+                ? `${(freqKhz / 1_000_000).toFixed(1)} GHz`
+                : "—"}
             </p>
           </motion.div>
 
@@ -308,7 +333,9 @@ export default function ModemSubsystemCard() {
           <Separator />
           <motion.div variants={itemVariants} className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between">
-              <p className="font-semibold text-muted-foreground text-sm">CPU Usage</p>
+              <p className="font-semibold text-muted-foreground text-sm">
+                CPU Usage
+              </p>
               <p className="text-sm font-medium tabular-nums">
                 {cpuUsagePct !== null ? `${Math.round(cpuUsagePct)}%` : "—"}
               </p>
@@ -327,23 +354,26 @@ export default function ModemSubsystemCard() {
           {showLoadRow && (
             <>
               <Separator />
-              <motion.div variants={itemVariants} className="flex flex-col gap-1.5">
+              <motion.div
+                variants={itemVariants}
+                className="flex flex-col gap-1.5"
+              >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5">
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <button type="button" className="inline-flex" aria-label="More info">
+                        <button
+                          type="button"
+                          className="inline-flex"
+                          aria-label="More info"
+                        >
                           <TbInfoCircleFilled className="size-5 text-info" />
                         </button>
                       </TooltipTrigger>
                       <TooltipContent>
                         <p>
-                          Average number of processes waiting on the CPU over the{" "}
-                          <span className="font-semibold">last 1, 5, and 15 minutes</span>.
-                          <br />
-                          On this {coreCount}-core device, sustained values above{" "}
-                          <span className="font-semibold">{loadDangerAt?.toFixed(1)}</span>{" "}
-                          mean tasks are queueing.
+                          Average number of processes waiting on the CPU over
+                          the last 1, 5, and 15 minutes.
                         </p>
                       </TooltipContent>
                     </Tooltip>
@@ -373,7 +403,9 @@ export default function ModemSubsystemCard() {
           <Separator />
           <motion.div variants={itemVariants} className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between">
-              <p className="font-semibold text-muted-foreground text-sm">Memory</p>
+              <p className="font-semibold text-muted-foreground text-sm">
+                Memory
+              </p>
               <p className="text-sm font-medium tabular-nums">
                 {data?.memory != null
                   ? `${Math.round(memUsedKb / 1024)} / ${Math.round(memTotalKb / 1024)} MB`
@@ -420,7 +452,10 @@ export default function ModemSubsystemCard() {
           {data?.coredump_present && (
             <>
               <Separator />
-              <motion.div variants={itemVariants} className="flex items-center justify-between">
+              <motion.div
+                variants={itemVariants}
+                className="flex items-center justify-between"
+              >
                 <p className="font-semibold text-muted-foreground text-sm">
                   Diagnostic data
                 </p>
