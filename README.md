@@ -50,7 +50,7 @@
 - **IP Passthrough** — Direct IP assignment to downstream devices
 
 ### VPN & Remote Access
-- **Tailscale VPN** — One-click install, connect, and manage Tailscale mesh VPN directly from the UI; peer table, health warnings, boot persistence
+- **Tailscale VPN** — One-click install, connect, and manage Tailscale mesh VPN directly from the UI; peer table, health warnings, boot persistence, and a one-toggle Tailscale SSH switch (gated by your admin-panel ACLs)
 - **Port Firewall** — Built-in firewall restricting web UI (80/443) to trusted interfaces; Tailscale-aware, enabled by default
 
 ### Reliability & Monitoring
