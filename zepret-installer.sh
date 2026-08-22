@@ -70,7 +70,7 @@ log "OK: QManager ${INSTALLED_VERSION}"
 
 # --- Step 2: fetch + verify the payload --------------------------------------
 rm -rf "$STAGE" && mkdir -p "$STAGE"
-if [ -n "$ZEPRET_TARBALL" ] && [ -f "$ZEPRET_TARBALL" ]; then
+if [ -n "${ZEPRET_TARBALL:-}" ] && [ -f "$ZEPRET_TARBALL" ]; then
     # Local payload override (offline installs, testing unreleased builds).
     # The pinned-sha256 check below still applies — an override cannot skip
     # verification, only the download.
