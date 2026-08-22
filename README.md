@@ -24,6 +24,8 @@ curl -fsSL -o /tmp/zepret-installer.sh \
 
 Then open the QManager web UI → **Local Network → Traffic Engine** (hard-refresh with Ctrl+F5) → **Install engine binary**, and follow the onboarding cards.
 
+> **Non-interactive / scripted installs:** append `--yes` (or `-y`) to skip the confirmation prompt — plain `ssh host sh installer.sh` has no terminal to ask on and aborts cleanly without it.
+
 ## Uninstall
 
 ADB or SSH into the modem:
@@ -32,6 +34,7 @@ ADB or SSH into the modem:
 sh /usrdata/qmanager/zepret-addon-backup/uninstall-zepret.sh
 ```
 
+Scripted runs can pass `--yes`; piping `echo 1 |` also works. Expect LAN web connections to hiccup for about 5 seconds while the engine drains.
 Restores the original v0.1.13 UI and backend from the backup taken at install time.
 
 > **Heads-up:** while the Traffic Engine is active, all LAN web traffic flows

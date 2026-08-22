@@ -19,11 +19,16 @@ log()  { echo "[$(date '+%H:%M:%S')] $*"; }
 echo ""
 echo "This removes the Traffic Engine add-on and restores your original"
 echo "QManager v0.1.13 state from the install-time backup."
-printf "Proceed? 1 = yes, 0 = exit\n> "
-# Read stdin in every context: interactive tty, `echo 1 | sh uninstall...`,
-# and plain `ssh host sh ...` (closed stdin -> clean abort instead of the
-# old behaviour of blocking forever on a nonexistent /dev/tty).
-if [ -t 0 ]; then read -r A; else read -r A || A=""; fi
+# Confirmation in every context: --yes/-y for automation, the tty for
+# interactive use, stdin for `echo 1 | sh uninstall-zepret.sh`. Closed stdin
+# (plain `ssh host sh ...`) aborts cleanly instead of blocking forever on a
+# nonexistent /dev/tty.
+if [ "${1:-}" = "--yes" ] || [ "${1:-}" = "-y" ]; then
+    A=1
+else
+    printf "Proceed? 1 = yes, 0 = exit\n> "
+    if [ -t 0 ]; then read -r A; else read -r A || A=""; fi
+fi
 [ "$A" = "1" ] || { echo "Aborted."; exit 0; }
 
 # --- 1. Stop + disarm the engine ----------------------------------------------

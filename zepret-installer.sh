@@ -40,11 +40,19 @@ echo "==============================================================="
 echo "This add-on is meant for QManager-RM520N ${REQUIRED_QMANAGER}."
 echo "It adds the Traffic Engine (DPI bypass) to your existing install."
 echo ""
-printf "Do you wish to proceed?\n  1 = yes\n  0 = exit\n> "
-if [ -t 0 ]; then
+if [ "${1:-}" = "--yes" ] || [ "${1:-}" = "-y" ]; then
+    ANSWER=1
+elif [ -t 0 ]; then
+    printf "Do you wish to proceed?\n  1 = yes\n  0 = exit\n> "
     read -r ANSWER
 else
-    read -r ANSWER < /dev/tty || fail "no terminal available to confirm"
+    # Piped invocation (curl ... | sh): stdin carries the script itself, so
+    # ask the controlling terminal. With NO terminal (plain `ssh host sh ...`,
+    # CI), fail loudly with the escape hatch instead of blocking forever.
+    printf "Do you wish to proceed?\n  1 = yes\n  0 = exit\n> "
+    if ! read -r ANSWER < /dev/tty 2>/dev/null; then
+        fail "cannot prompt for confirmation (no terminal) — rerun with --yes to skip this check"
+    fi
 fi
 [ "$ANSWER" = "1" ] || { echo "Aborted."; exit 0; }
 
