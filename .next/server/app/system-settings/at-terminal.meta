@@ -1,0 +1,16 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/system-settings/layout,_N_T_/system-settings/at-terminal/layout,_N_T_/system-settings/at-terminal/page,_N_T_/system-settings/at-terminal/"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/system-settings/at-terminal/__PAGE__",
+    "/system-settings/at-terminal",
+    "/system-settings",
+    "/_index",
+    "/_head"
+  ]
+}

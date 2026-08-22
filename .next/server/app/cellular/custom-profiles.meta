@@ -1,0 +1,16 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/cellular/layout,_N_T_/cellular/custom-profiles/layout,_N_T_/cellular/custom-profiles/page,_N_T_/cellular/custom-profiles/"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/cellular/custom-profiles/__PAGE__",
+    "/cellular/custom-profiles",
+    "/cellular",
+    "/_index",
+    "/_head"
+  ]
+}

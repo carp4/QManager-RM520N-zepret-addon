@@ -1,0 +1,16 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/monitoring/layout,_N_T_/monitoring/latency/layout,_N_T_/monitoring/latency/page,_N_T_/monitoring/latency/"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/monitoring/latency/__PAGE__",
+    "/monitoring/latency",
+    "/monitoring",
+    "/_index",
+    "/_head"
+  ]
+}

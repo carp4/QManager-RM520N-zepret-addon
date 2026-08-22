@@ -1,0 +1,166 @@
+#!/bin/sh
+# =============================================================================
+# QManager-RM520N Traffic Engine Add-on Installer (zepret)
+# -----------------------------------------------------------------------------
+# Layer the Traffic Engine (zapret/tpws DPI bypass) onto an EXISTING
+# QManager-RM520N v0.1.13 installation.
+#
+# HARD CONTRACT: this add-on targets QManager v0.1.13 EXACTLY. It refuses to
+# install on anything else. Once Traffic Engine ships inside an official
+# QManager release, this add-on is obsolete.
+#
+# Run on the modem (ADB or SSH):
+#   curl -fsSL -o /tmp/zepret-installer.sh \
+#     https://github.com/carp4/QManager-RM520N-zepret-addon/raw/refs/heads/main/zepret-installer.sh && \
+#     sh /tmp/zepret-installer.sh
+# =============================================================================
+
+set -u
+
+ADDON_VERSION="v0.1.13-zepret.1"
+REQUIRED_QMANAGER="v0.1.13"
+RELEASE_BASE="https://github.com/carp4/QManager-RM520N-zepret-addon/releases/download/${ADDON_VERSION}"
+TARBALL="qmanager-zepret-addon-${ADDON_VERSION}.tar.gz"
+SHA256="8c6417f35911b34c24d96da033f72b0ff3c2914822546d1a9d67e3ea2c1be529"
+
+STAGE="/tmp/zepret_addon_stage"
+BACKUP="/usrdata/qmanager/zepret-addon-backup"
+WWW_DIR="/usrdata/qmanager/www"
+
+log()  { echo "[$(date '+%H:%M:%S')] $*"; }
+fail() { echo "ERROR: $*" >&2; exit 1; }
+
+# --- Step 0: consent ---------------------------------------------------------
+# When piped (curl | sh), stdin is the pipe — read the answer from the tty.
+echo ""
+echo "==============================================================="
+echo " QManager Traffic Engine Add-on ${ADDON_VERSION}"
+echo "==============================================================="
+echo "This add-on is meant for QManager-RM520N ${REQUIRED_QMANAGER}."
+echo "It adds the Traffic Engine (DPI bypass) to your existing install."
+echo ""
+printf "Do you wish to proceed?\n  1 = yes\n  0 = exit\n> "
+if [ -t 0 ]; then
+    read -r ANSWER
+else
+    read -r ANSWER < /dev/tty || fail "no terminal available to confirm"
+fi
+[ "$ANSWER" = "1" ] || { echo "Aborted."; exit 0; }
+
+# --- Step 1: version gate ----------------------------------------------------
+log "Checking QManager version..."
+[ -f /etc/qmanager/VERSION ] || fail "/etc/qmanager/VERSION not found — is QManager installed?"
+INSTALLED_VERSION="$(cat /etc/qmanager/VERSION)"
+if [ "$INSTALLED_VERSION" != "$REQUIRED_QMANAGER" ]; then
+    echo ""
+    fail "QManager ${INSTALLED_VERSION} detected, but this add-on only supports ${REQUIRED_QMANAGER}.
+If you are on a newer QManager, Traffic Engine may already be built in — check
+Local Network in the web UI before trying any add-on."
+fi
+log "OK: QManager ${INSTALLED_VERSION}"
+
+# --- Step 2: fetch + verify the payload --------------------------------------
+log "Downloading ${TARBALL}..."
+rm -rf "$STAGE" && mkdir -p "$STAGE"
+if command -v curl >/dev/null 2>&1; then
+    curl -fsSL -o "$STAGE/$TARBALL" "$RELEASE_BASE/$TARBALL" \
+        || fail "download failed (curl)"
+elif command -v wget >/dev/null 2>&1; then
+    wget -qO "$STAGE/$TARBALL" "$RELEASE_BASE/$TARBALL" \
+        || fail "download failed (wget)"
+else
+    fail "neither curl nor wget available"
+fi
+
+if [ -n "$SHA256" ]; then
+    echo "$SHA256  $STAGE/$TARBALL" | sha256sum -c - >/dev/null 2>&1 \
+        || fail "sha256 mismatch — refusing to install"
+    log "OK: sha256 verified"
+fi
+
+tar -xzf "$STAGE/$TARBALL" -C "$STAGE" || fail "extract failed"
+[ -f "$STAGE/addon/uninstall-zepret.sh" ] || fail "payload incomplete"
+
+# --- Step 3: backup everything we will touch ---------------------------------
+log "Backing up current state to $BACKUP ..."
+mkdir -p "$BACKUP"
+cp -f /usr/lib/qmanager/config.sh        "$BACKUP/config.sh.orig"      2>/dev/null
+cp -f /usr/bin/qmanager_setup            "$BACKUP/qmanager_setup.orig" 2>/dev/null
+cp -f /etc/sudoers.d/qmanager            "$BACKUP/sudoers.qmanager.orig" 2>/dev/null \
+    || cp -f /usrdata/qmanager/etc/sudoers.d/qmanager "$BACKUP/sudoers.qmanager.orig" 2>/dev/null
+if [ ! -f "$BACKUP/www.tar.gz" ]; then
+    tar -czf "$BACKUP/www.tar.gz" -C "$(dirname "$WWW_DIR")" "$(basename "$WWW_DIR")" \
+        || fail "www backup failed — aborting rather than risk an unrestorable state"
+fi
+log "OK: backup complete"
+
+# --- Step 4: backend overlay --------------------------------------------------
+log "Installing backend files..."
+A="$STAGE/addon"
+cp -f "$A/usr/bin/qmanager_dpi_install"  /usr/bin/ && chmod 755 /usr/bin/qmanager_dpi_install
+cp -f "$A/usr/bin/qmanager_dpi_run"      /usr/bin/ && chmod 755 /usr/bin/qmanager_dpi_run
+cp -f "$A/usr/bin/qmanager_dpi_verify"   /usr/bin/ && chmod 755 /usr/bin/qmanager_dpi_verify
+cp -f "$A/usr/lib/qmanager/dpi_state.sh" /usr/lib/qmanager/ && chmod 644 /usr/lib/qmanager/dpi_state.sh
+cp -f "$A/usr/lib/qmanager/config.sh"    /usr/lib/qmanager/config.sh
+cp -f "$A/usr/bin/qmanager_setup"        /usr/bin/qmanager_setup && chmod 755 /usr/bin/qmanager_setup
+
+CGI_NET="$WWW_DIR/cgi-bin/quecmanager/network"
+mkdir -p "$CGI_NET"
+cp -f "$A/www/cgi-bin/quecmanager/network/video_optimizer.sh" "$CGI_NET/" && chmod 755 "$CGI_NET/video_optimizer.sh"
+
+for u in qmanager-dpi.service qmanager-dpi-ensure.service qmanager-dpi-ensure.timer; do
+    cp -f "$A/lib/systemd/system/$u" /lib/systemd/system/
+done
+# Boot persistence: this firmware never scans *.wants re-created by systemctl
+# enable — symlink manually into the persistent units directory.
+ln -sf /lib/systemd/system/qmanager-dpi-ensure.service /lib/systemd/system/multi-user.target.wants/
+ln -sf /lib/systemd/system/qmanager-dpi-ensure.timer   /lib/systemd/system/timers.target.wants/
+
+# Sudoers: append the two bare-path lines if not already present.
+SUDOERS="/etc/sudoers.d/qmanager"
+[ -f "$SUDOERS" ] || SUDOERS="/usrdata/qmanager/etc/sudoers.d/qmanager"
+if [ -f "$SUDOERS" ] && ! grep -q "qmanager_dpi_install" "$SUDOERS"; then
+    cat "$A/etc/sudoers-fragment.txt" >> "$SUDOERS"
+    log "OK: sudoers entries appended"
+fi
+
+# --- Step 5: frontend overlay -------------------------------------------------
+log "Installing frontend (merged UI)..."
+cp -rf "$A/out/." "$WWW_DIR/" || fail "frontend copy failed"
+
+# --- Step 6: immediate seeds (don't wait for next boot) -----------------------
+log "Seeding hostlist + runtime state files..."
+touch /tmp/qmanager_dpi_install.json /tmp/qmanager_dpi_install.pid \
+      /tmp/qmanager_dpi_verify.json  /tmp/qmanager_dpi_verify.pid
+chown root:root /tmp/qmanager_dpi_install.json /tmp/qmanager_dpi_install.pid \
+                /tmp/qmanager_dpi_verify.json  /tmp/qmanager_dpi_verify.pid
+chmod 666 /tmp/qmanager_dpi_install.json /tmp/qmanager_dpi_install.pid \
+          /tmp/qmanager_dpi_verify.json  /tmp/qmanager_dpi_verify.pid
+if [ ! -f /etc/qmanager/video_domains.txt ]; then
+    if [ -f "$A/video_domains.txt" ]; then
+        cp -f "$A/video_domains.txt" /etc/qmanager/video_domains.txt
+        chown www-data:www-data /etc/qmanager/video_domains.txt
+        chmod 644 /etc/qmanager/video_domains.txt
+    fi
+fi
+[ -f /etc/qmanager/video_domains_default.txt ] || \
+    cp -f /etc/qmanager/video_domains.txt /etc/qmanager/video_domains_default.txt 2>/dev/null
+
+# --- Step 7: activate ----------------------------------------------------------
+log "Activating services..."
+systemctl daemon-reload 2>/dev/null
+systemctl start qmanager-dpi-ensure.service 2>/dev/null
+systemctl restart lighttpd 2>/dev/null || /etc/init.d/lighttpd restart 2>/dev/null
+
+echo ""
+echo "==============================================================="
+echo " DONE — Traffic Engine add-on ${ADDON_VERSION} installed"
+echo "==============================================================="
+echo "Next steps:"
+echo "  1. Open the QManager web UI (hard-refresh: Ctrl+F5)"
+echo "  2. Local Network -> Traffic Engine"
+echo "  3. Click 'Install engine binary' (downloads the pinned zapret"
+echo "     release, ~200 KB) and follow the onboarding cards"
+echo ""
+echo "Rollback any time: sh $BACKUP/uninstall-zepret.sh"
+echo "==============================================================="

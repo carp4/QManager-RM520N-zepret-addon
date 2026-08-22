@@ -1,0 +1,16 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/cellular/layout,_N_T_/cellular/sms/layout,_N_T_/cellular/sms/page,_N_T_/cellular/sms/"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/cellular/sms/__PAGE__",
+    "/cellular/sms",
+    "/cellular",
+    "/_index",
+    "/_head"
+  ]
+}

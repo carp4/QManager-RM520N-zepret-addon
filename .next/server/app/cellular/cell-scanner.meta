@@ -1,0 +1,16 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/cellular/layout,_N_T_/cellular/cell-scanner/layout,_N_T_/cellular/cell-scanner/page,_N_T_/cellular/cell-scanner/"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/cellular/cell-scanner/__PAGE__",
+    "/cellular/cell-scanner",
+    "/cellular",
+    "/_index",
+    "/_head"
+  ]
+}

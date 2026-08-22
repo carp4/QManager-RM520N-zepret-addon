@@ -1,0 +1,17 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/cellular/layout,_N_T_/cellular/cell-locking/layout,_N_T_/cellular/cell-locking/frequency-locking/layout,_N_T_/cellular/cell-locking/frequency-locking/page,_N_T_/cellular/cell-locking/frequency-locking/"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/cellular/cell-locking/frequency-locking/__PAGE__",
+    "/cellular/cell-locking/frequency-locking",
+    "/cellular/cell-locking",
+    "/cellular",
+    "/_index",
+    "/_head"
+  ]
+}

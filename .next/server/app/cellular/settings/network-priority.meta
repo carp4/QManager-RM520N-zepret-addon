@@ -1,0 +1,17 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/cellular/layout,_N_T_/cellular/settings/layout,_N_T_/cellular/settings/network-priority/layout,_N_T_/cellular/settings/network-priority/page,_N_T_/cellular/settings/network-priority/"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/cellular/settings/network-priority/__PAGE__",
+    "/cellular/settings/network-priority",
+    "/cellular/settings",
+    "/cellular",
+    "/_index",
+    "/_head"
+  ]
+}

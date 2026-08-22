@@ -1,0 +1,16 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/local-network/layout,_N_T_/local-network/ttl-settings/layout,_N_T_/local-network/ttl-settings/page,_N_T_/local-network/ttl-settings/"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/local-network/ttl-settings/__PAGE__",
+    "/local-network/ttl-settings",
+    "/local-network",
+    "/_index",
+    "/_head"
+  ]
+}

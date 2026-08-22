@@ -1,0 +1,17 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/cellular/layout,_N_T_/cellular/cell-locking/layout,_N_T_/cellular/cell-locking/tower-locking/layout,_N_T_/cellular/cell-locking/tower-locking/page,_N_T_/cellular/cell-locking/tower-locking/"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/cellular/cell-locking/tower-locking/__PAGE__",
+    "/cellular/cell-locking/tower-locking",
+    "/cellular/cell-locking",
+    "/cellular",
+    "/_index",
+    "/_head"
+  ]
+}
