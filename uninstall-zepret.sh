@@ -20,7 +20,10 @@ echo ""
 echo "This removes the Traffic Engine add-on and restores your original"
 echo "QManager v0.1.13 state from the install-time backup."
 printf "Proceed? 1 = yes, 0 = exit\n> "
-if [ -t 0 ]; then read -r A; else read -r A < /dev/tty; fi
+# Read stdin in every context: interactive tty, `echo 1 | sh uninstall...`,
+# and plain `ssh host sh ...` (closed stdin -> clean abort instead of the
+# old behaviour of blocking forever on a nonexistent /dev/tty).
+if [ -t 0 ]; then read -r A; else read -r A || A=""; fi
 [ "$A" = "1" ] || { echo "Aborted."; exit 0; }
 
 # --- 1. Stop + disarm the engine ----------------------------------------------
@@ -41,10 +44,28 @@ rm -f /lib/systemd/system/qmanager-dpi.service \
       /lib/systemd/system/qmanager-dpi-ensure.service \
       /lib/systemd/system/qmanager-dpi-ensure.timer
 
+# The engine binary and its persisted enable-state must go too, or a later
+# reinstall silently resurrects a running engine ("already present and
+# running"). qm_config_set writes enable flags to this JSON store — NOT to
+# /usr/lib/qmanager/config.sh (the shell library restored below).
+log "Removing engine binary and persisted state..."
+rm -f /usrdata/qmanager/bin/tpws
+rm -f /etc/qmanager/video_domains.txt
+QM_CONF="/etc/qmanager/qmanager.conf"
+if [ -f "$QM_CONF" ] && command -v jq >/dev/null 2>&1; then
+    if jq 'del(.video_optimizer, .traffic_masquerade)' "$QM_CONF" > "${QM_CONF}.tmp" 2>/dev/null; then
+        mv "${QM_CONF}.tmp" "$QM_CONF"
+        log "Scrubbed video_optimizer/masquerade state from qmanager.conf"
+    else
+        rm -f "${QM_CONF}.tmp"
+        echo "WARNING: could not scrub $QM_CONF — check it manually"
+    fi
+fi
+
 # --- 3. Restore originals -------------------------------------------------------
 if [ -f "$BACKUP/config.sh.orig" ]; then
     cp -f "$BACKUP/config.sh.orig" /usr/lib/qmanager/config.sh
-    log "Restored config.sh"
+    log "Restored shell library /usr/lib/qmanager/config.sh"
 fi
 if [ -f "$BACKUP/qmanager_setup.orig" ]; then
     cp -f "$BACKUP/qmanager_setup.orig" /usr/bin/qmanager_setup
