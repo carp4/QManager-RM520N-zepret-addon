@@ -19,6 +19,7 @@ import {
   TerminalIcon,
   DownloadIcon,
   EthernetPort,
+  Monitor,
 } from "lucide-react";
 
 import QManagerLogo from "@/public/qmanager-logo.svg";
@@ -173,6 +174,11 @@ const data = {
       t_key: "ethernet_status",
       url: "/local-network/ethernet",
       icon: EthernetPort,
+    },
+    {
+      t_key: "traffic_engine",
+      url: "/local-network/traffic-engine",
+      icon: Monitor,
     },
     {
       t_key: "local_network_settings",
