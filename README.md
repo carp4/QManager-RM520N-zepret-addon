@@ -70,6 +70,16 @@ Enable state, hostlist edits, and an existing engine binary all survive reinstal
 
 **v0.1.13-zepret.2** — validated on live hardware (RM520N-GL on T-Mobile/Verizon): install, engine binary download, Masquerade and Video Optimizer modes all verified end-to-end; measured bypass uplift 9.9 → 23 Mbps throttled-link, larger on clean links.
 
+## Development workflow
+
+Changes land in this order — never straight to `main`:
+
+1. **Local build + validation** (syntax checks, on-device test units)
+2. **Push to `development`** — install from the branch for testing:
+   `curl -fsSL .../raw/refs/heads/development/zepret-installer.sh | sh` (or `--yes`)
+3. **Human sign-off** on the dev branch
+4. **Merge to `main` + tag a release** — `main` always tracks the latest published version; releases are cut from it only after step 3
+
 ## Credits
 
 The Traffic Engine is a port of [carp4's PR #11](https://github.com/dr-dolomite/QManager-RM520N/pull/11) against upstream [QManager-RM520N](https://github.com/dr-dolomite/QManager-RM520N) by [dr-dolomite](https://github.com/dr-dolomite), which this add-on layers onto. The engine itself uses [zapret](https://github.com/bol-van/zapret)'s `tpws`.
