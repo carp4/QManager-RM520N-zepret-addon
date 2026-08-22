@@ -56,7 +56,9 @@ echo "Packaged: $DIST/$TARBALL ($(du -h "$DIST/$TARBALL" | cut -f1))"
 echo "sha256:   $SUM"
 
 # Pin the hash into the installer so installs verify the download.
+# (Only touches SHA256 — RELEASE_BASE must keep its ZEPRET_RELEASE_BASE
+# env-override wrapper for offline/local staging.)
 if grep -q '^SHA256=' zepret-installer.sh; then
-    sed -i "s|^SHA256=.*|SHA256=\"$SUM\"|; s|^RELEASE_BASE=.*|RELEASE_BASE=\"https://github.com/carp4/QManager-RM520N-zepret-addon/releases/download/\${ADDON_VERSION}\"|" zepret-installer.sh
+    sed -i "s|^SHA256=.*|SHA256=\"$SUM\"|" zepret-installer.sh
     echo "Pinned sha256 into zepret-installer.sh"
 fi

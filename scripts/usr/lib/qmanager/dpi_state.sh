@@ -190,7 +190,11 @@ dpi_remove_rule() {
 # =============================================================================
 dpi_service_status() {
     local st
-    st=$($_SUDO $_SYSTEMCTL show qmanager-dpi -p ActiveState --value 2>/dev/null)
+    # Read-only query, deliberately NOT wrapped in $_SUDO: www-data has no
+    # sudoers rule for systemctl (a password is required), while a direct
+    # `systemctl show` works for any user. Sudo-wrapping made every CGI
+    # status read report "stopped" even while the engine ran.
+    st=$($_SYSTEMCTL show qmanager-dpi -p ActiveState --value 2>/dev/null)
     case "$st" in
         active) echo "running" ;;
         activating) echo "restarting" ;;
@@ -205,7 +209,7 @@ dpi_service_status() {
 # =============================================================================
 dpi_uptime_str() {
     local mono now_usec secs h m
-    mono=$($_SUDO $_SYSTEMCTL show qmanager-dpi -p ActiveEnterTimestampMonotonic --value 2>/dev/null) || mono=0
+    mono=$($_SYSTEMCTL show qmanager-dpi -p ActiveEnterTimestampMonotonic --value 2>/dev/null) || mono=0
     case "$mono" in
         ''|*[!0-9]*) mono=0 ;;
     esac

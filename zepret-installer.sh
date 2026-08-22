@@ -19,9 +19,10 @@ set -u
 
 ADDON_VERSION="v0.1.13-zepret.2"
 REQUIRED_QMANAGER="v0.1.13"
-RELEASE_BASE="https://github.com/carp4/QManager-RM520N-zepret-addon/releases/download/${ADDON_VERSION}"
+RELEASE_BASE_DEFAULT="https://github.com/carp4/QManager-RM520N-zepret-addon/releases/download/${ADDON_VERSION}"
+RELEASE_BASE="${ZEPRET_RELEASE_BASE:-$RELEASE_BASE_DEFAULT}"
 TARBALL="qmanager-zepret-addon-${ADDON_VERSION}.tar.gz"
-SHA256="2a15631c90f3c97e6bcaaa265c2dd79cc8d7f519e87bcfc785d01bd67b4e50f0"
+SHA256="88bd14c2c8ee1cb1756b1754add01dd6e432eb1917d6b8fecaba02a66c546f2d"
 
 STAGE="/tmp/zepret_addon_stage"
 BACKUP="/usrdata/qmanager/zepret-addon-backup"
@@ -95,6 +96,8 @@ if [ ! -f "$BACKUP/www.tar.gz" ]; then
     tar -czf "$BACKUP/www.tar.gz" -C "$(dirname "$WWW_DIR")" "$(basename "$WWW_DIR")" \
         || fail "www backup failed — aborting rather than risk an unrestorable state"
 fi
+# Ship the rollback tool next to the backups — the DONE banner points here.
+cp -f "$STAGE/addon/uninstall-zepret.sh" "$BACKUP/uninstall-zepret.sh"
 log "OK: backup complete"
 
 # --- Step 4: backend overlay --------------------------------------------------
