@@ -17,11 +17,11 @@
 
 set -u
 
-ADDON_VERSION="v0.1.13-zepret.1"
+ADDON_VERSION="v0.1.13-zepret.2"
 REQUIRED_QMANAGER="v0.1.13"
 RELEASE_BASE="https://github.com/carp4/QManager-RM520N-zepret-addon/releases/download/${ADDON_VERSION}"
 TARBALL="qmanager-zepret-addon-${ADDON_VERSION}.tar.gz"
-SHA256="8c6417f35911b34c24d96da033f72b0ff3c2914822546d1a9d67e3ea2c1be529"
+SHA256="2a15631c90f3c97e6bcaaa265c2dd79cc8d7f519e87bcfc785d01bd67b4e50f0"
 
 STAGE="/tmp/zepret_addon_stage"
 BACKUP="/usrdata/qmanager/zepret-addon-backup"
@@ -86,8 +86,11 @@ log "Backing up current state to $BACKUP ..."
 mkdir -p "$BACKUP"
 cp -f /usr/lib/qmanager/config.sh        "$BACKUP/config.sh.orig"      2>/dev/null
 cp -f /usr/bin/qmanager_setup            "$BACKUP/qmanager_setup.orig" 2>/dev/null
-cp -f /etc/sudoers.d/qmanager            "$BACKUP/sudoers.qmanager.orig" 2>/dev/null \
-    || cp -f /usrdata/qmanager/etc/sudoers.d/qmanager "$BACKUP/sudoers.qmanager.orig" 2>/dev/null
+for cand in /etc/sudoers.d/qmanager /usrdata/qmanager/etc/sudoers.d/qmanager /opt/etc/sudoers; do
+    if [ -f "$cand" ] && [ ! -f "$BACKUP/sudoers.orig" ]; then
+        cp -f "$cand" "$BACKUP/sudoers.orig"
+    fi
+done
 if [ ! -f "$BACKUP/www.tar.gz" ]; then
     tar -czf "$BACKUP/www.tar.gz" -C "$(dirname "$WWW_DIR")" "$(basename "$WWW_DIR")" \
         || fail "www backup failed — aborting rather than risk an unrestorable state"
@@ -116,13 +119,33 @@ done
 ln -sf /lib/systemd/system/qmanager-dpi-ensure.service /lib/systemd/system/multi-user.target.wants/
 ln -sf /lib/systemd/system/qmanager-dpi-ensure.timer   /lib/systemd/system/timers.target.wants/
 
-# Sudoers: append the two bare-path lines if not already present.
-SUDOERS="/etc/sudoers.d/qmanager"
-[ -f "$SUDOERS" ] || SUDOERS="/usrdata/qmanager/etc/sudoers.d/qmanager"
-if [ -f "$SUDOERS" ] && ! grep -q "qmanager_dpi_install" "$SUDOERS"; then
-    cat "$A/etc/sudoers-fragment.txt" >> "$SUDOERS"
-    log "OK: sudoers entries appended"
+# Sudoers: locate the active mechanism — and FAIL LOUD if none is found.
+# Layouts seen in the wild:
+#   a) /etc/sudoers.d/qmanager            (upstream drop-in file)
+#   b) Entware sudo, monolithic /opt/etc/sudoers WITH
+#      "#includedir /opt/etc/sudoers.d"   -> write our own drop-in there
+#   c) Entware sudo, monolithic without includedir -> append fragment
+SUDOERS_TARGET=""
+if [ -f /etc/sudoers.d/qmanager ]; then
+    SUDOERS_TARGET="/etc/sudoers.d/qmanager"
+elif [ -f /opt/etc/sudoers ] && grep -q "^#includedir /opt/etc/sudoers.d" /opt/etc/sudoers; then
+    mkdir -p /opt/etc/sudoers.d
+    SUDOERS_TARGET="/opt/etc/sudoers.d/qmanager-zepret"
+    : > "$SUDOERS_TARGET"
+elif [ -f /opt/etc/sudoers ]; then
+    SUDOERS_TARGET="/opt/etc/sudoers"
 fi
+
+if [ -z "$SUDOERS_TARGET" ]; then
+    fail "no sudoers mechanism found (looked for /etc/sudoers.d/qmanager and /opt/etc/sudoers).
+The Traffic Engine CGI cannot escalate without it — aborting. Nothing was changed."
+fi
+
+if ! grep -q "qmanager_dpi_install" "$SUDOERS_TARGET"; then
+    cat "$A/etc/sudoers-fragment.txt" >> "$SUDOERS_TARGET"
+fi
+echo "$SUDOERS_TARGET" > "$BACKUP/sudoers-target.txt"
+log "OK: sudoers configured via $SUDOERS_TARGET"
 
 # --- Step 5: frontend overlay -------------------------------------------------
 log "Installing frontend (merged UI)..."
@@ -149,6 +172,9 @@ fi
 # --- Step 7: activate ----------------------------------------------------------
 log "Activating services..."
 systemctl daemon-reload 2>/dev/null
+# Start BOTH the timer (periodic REDIRECT re-assertion for THIS session —
+# the symlink only arms it for future boots) and a first ensure pass.
+systemctl start qmanager-dpi-ensure.timer 2>/dev/null
 systemctl start qmanager-dpi-ensure.service 2>/dev/null
 systemctl restart lighttpd 2>/dev/null || /etc/init.d/lighttpd restart 2>/dev/null
 

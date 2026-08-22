@@ -51,12 +51,23 @@ if [ -f "$BACKUP/qmanager_setup.orig" ]; then
     chmod 755 /usr/bin/qmanager_setup
     log "Restored qmanager_setup"
 fi
-SUDOERS="/etc/sudoers.d/qmanager"
-[ -f "$SUDOERS" ] || SUDOERS="/usrdata/qmanager/etc/sudoers.d/qmanager"
-if [ -f "$BACKUP/sudoers.qmanager.orig" ] && [ -f "$SUDOERS" ]; then
-    cp -f "$BACKUP/sudoers.qmanager.orig" "$SUDOERS"
-    log "Restored sudoers"
+# Sudoers reversal — covers every layout the installer can produce:
+#   - our drop-in /opt/etc/sudoers.d/qmanager-zepret  -> delete it
+#   - appended fragment inside a monolith/drop-in     -> restore from backup
+rm -f /opt/etc/sudoers.d/qmanager-zepret
+if [ -f "$BACKUP/sudoers-target.txt" ]; then
+    TARGET="$(cat "$BACKUP/sudoers-target.txt")"
+    if [ "$TARGET" = "/opt/etc/sudoers" ] && [ -f "$BACKUP/sudoers.orig" ]; then
+        cp -f "$BACKUP/sudoers.orig" /opt/etc/sudoers
+        log "Restored /opt/etc/sudoers"
+    fi
 fi
+for f in /etc/sudoers.d/qmanager /usrdata/qmanager/etc/sudoers.d/qmanager; do
+    if [ -f "$BACKUP/sudoers.qmanager.orig" ] && [ -f "$f" ] && grep -q qmanager_dpi "$f"; then
+        cp -f "$BACKUP/sudoers.qmanager.orig" "$f"
+        log "Restored $f"
+    fi
+done
 if [ -f "$BACKUP/www.tar.gz" ]; then
     log "Restoring original web UI (this is the slow part)..."
     rm -rf "$WWW_DIR"
