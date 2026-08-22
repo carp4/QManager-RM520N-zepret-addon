@@ -92,7 +92,10 @@ const EngineOnboarding = ({
                 </>
               )}
             </Button>
-            <Badge variant={failed ? "destructive" : "muted"}>
+            <Badge
+              variant={failed ? "destructive" : "outline"}
+              className={failed ? "" : "bg-muted/50 text-muted-foreground border-muted-foreground/30"}
+            >
               {failed ? <TriangleAlertIcon /> : <DownloadIcon />}
               {failed
                 ? t("trafficEngine.status.error")

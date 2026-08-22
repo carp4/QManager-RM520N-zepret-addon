@@ -28,14 +28,16 @@ import type { MasqueradeStatus, VideoOptimizerStatus } from "@/types/traffic-eng
 // from successive samples.
 // =============================================================================
 
+const MUTED_BADGE = "bg-muted/50 text-muted-foreground border-muted-foreground/30";
+
 const ENGINE_TONE: Record<
   string,
-  { variant: "success" | "warning" | "destructive" | "muted"; icon: ReactNode }
+  { variant: "success" | "warning" | "destructive" | "outline"; icon: ReactNode; className?: string }
 > = {
   running: { variant: "success", icon: <CheckCircle2Icon /> },
   restarting: { variant: "warning", icon: <TriangleAlertIcon /> },
   error: { variant: "destructive", icon: <XCircleIcon /> },
-  stopped: { variant: "muted", icon: <MinusCircleIcon /> },
+  stopped: { variant: "outline", icon: <MinusCircleIcon />, className: MUTED_BADGE },
 };
 
 export interface EngineStatusCardProps {
@@ -95,7 +97,10 @@ const EngineStatusCard = ({ data, loading }: EngineStatusCardProps) => {
             <span className="text-xs text-muted-foreground">
               {t("trafficEngine.status.state")}
             </span>
-            <Badge variant={tone.variant} className="w-fit">
+            <Badge
+              variant={tone.variant}
+              className={`w-fit ${tone.className ?? ""}`}
+            >
               {tone.icon}
               {t(`trafficEngine.status.${data.status}`)}
             </Badge>
@@ -146,8 +151,8 @@ const EngineStatusCard = ({ data, loading }: EngineStatusCardProps) => {
               {t("trafficEngine.status.rule")}
             </span>
             <Badge
-              variant={data.kernel_module_loaded ? "success" : "muted"}
-              className="w-fit"
+              variant={data.kernel_module_loaded ? "success" : "outline"}
+              className={`w-fit ${data.kernel_module_loaded ? "" : MUTED_BADGE}`}
             >
               {data.kernel_module_loaded ? (
                 <CheckCircle2Icon />

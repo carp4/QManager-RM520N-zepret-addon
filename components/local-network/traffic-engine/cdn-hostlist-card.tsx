@@ -155,7 +155,7 @@ const CdnHostlistCard = ({ hostlist }: CdnHostlistCardProps) => {
           )}
 
           <div className="flex items-center justify-between gap-2">
-            <Badge variant="muted" className="tabular-nums">
+            <Badge variant="outline" className="bg-muted/50 text-muted-foreground border-muted-foreground/30 tabular-nums">
               {t("trafficEngine.status.domains")}: {hostlist.domains.length}
             </Badge>
             {hostlist.isSaving && (
