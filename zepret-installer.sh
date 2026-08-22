@@ -85,8 +85,12 @@ tar -xzf "$STAGE/$TARBALL" -C "$STAGE" || fail "extract failed"
 # --- Step 3: backup everything we will touch ---------------------------------
 log "Backing up current state to $BACKUP ..."
 mkdir -p "$BACKUP"
-cp -f /usr/lib/qmanager/config.sh        "$BACKUP/config.sh.orig"      2>/dev/null
-cp -f /usr/bin/qmanager_setup            "$BACKUP/qmanager_setup.orig" 2>/dev/null
+# Pristine-only snapshots: on UPGRADE (installer re-run over an existing
+# install) the live files are already add-on modified — copying them again
+# would taint the rollback set, and a later uninstall would then "restore"
+# add-on state instead of stock v0.1.13.
+[ -f "$BACKUP/config.sh.orig" ]      || cp -f /usr/lib/qmanager/config.sh "$BACKUP/config.sh.orig"       2>/dev/null
+[ -f "$BACKUP/qmanager_setup.orig" ] || cp -f /usr/bin/qmanager_setup     "$BACKUP/qmanager_setup.orig" 2>/dev/null
 for cand in /etc/sudoers.d/qmanager /usrdata/qmanager/etc/sudoers.d/qmanager /opt/etc/sudoers; do
     if [ -f "$cand" ] && [ ! -f "$BACKUP/sudoers.orig" ]; then
         cp -f "$cand" "$BACKUP/sudoers.orig"
@@ -99,6 +103,32 @@ fi
 # Ship the rollback tool next to the backups — the DONE banner points here.
 cp -f "$STAGE/addon/uninstall-zepret.sh" "$BACKUP/uninstall-zepret.sh"
 log "OK: backup complete"
+
+# --- Step 3.5: upgrade path — stop a running engine gracefully -----------------
+# A previous install may have the engine active. Overlaying files without
+# stopping it leaves the OLD tpws process running stale code under replaced
+# units until some arbitrary later restart. Tear down through the canonical
+# helpers instead: rule out first (new LAN connections go direct immediately),
+# 5s grace for established flows to churn, then stop. Remember whether it was
+# active — Step 7 brings it back on the new code.
+QM_CONF="/etc/qmanager/qmanager.conf"
+WAS_ENGINE=0
+if [ -f /usr/lib/qmanager/dpi_state.sh ] && [ -f "$QM_CONF" ]; then
+    WAS_ENGINE=$(jq -r '[(.video_optimizer.enabled // 0), (.traffic_masquerade.enabled // 0)] | max' \
+        "$QM_CONF" 2>/dev/null || echo 0)
+fi
+if [ "${WAS_ENGINE:-0}" = "1" ] && [ -f /usr/lib/qmanager/platform.sh ]; then
+    . /usr/lib/qmanager/config.sh    2>/dev/null || true
+    . /usr/lib/qmanager/platform.sh  2>/dev/null || true
+    . /usr/lib/qmanager/dpi_state.sh 2>/dev/null || true
+    log "Running engine detected — stopping it gracefully..."
+    echo "      (LAN web connections will hiccup for about 5 seconds)"
+    command -v dpi_remove_rule >/dev/null 2>&1 && { dpi_remove_rule 2>/dev/null || true; }
+    sleep 5
+    command -v svc_stop >/dev/null 2>&1 && { svc_stop qmanager-dpi 2>/dev/null || true; }
+    systemctl stop qmanager-dpi.service qmanager-dpi-ensure.timer qmanager-dpi-ensure.service 2>/dev/null
+    pkill -x tpws 2>/dev/null
+fi
 
 # --- Step 4: backend overlay --------------------------------------------------
 log "Installing backend files..."
@@ -179,6 +209,22 @@ systemctl daemon-reload 2>/dev/null
 # the symlink only arms it for future boots) and a first ensure pass.
 systemctl start qmanager-dpi-ensure.timer 2>/dev/null
 systemctl start qmanager-dpi-ensure.service 2>/dev/null
+
+# Upgrade resume: if the engine was active before Step 3.5 stopped it,
+# restart it NOW on the new code rather than waiting for ensure's first
+# tick. Enabled-but-never-installed gets its stale flags scrubbed so the
+# UI doesn't advertise an engine that cannot run.
+if [ "${WAS_ENGINE:-0}" = "1" ]; then
+    if [ -x /usrdata/qmanager/bin/tpws ]; then
+        log "Restoring Traffic Engine (was active before upgrade)..."
+        systemctl start qmanager-dpi.service 2>/dev/null
+    else
+        log "Engine was enabled but no binary installed — clearing stale flags"
+        jq 'del(.video_optimizer, .traffic_masquerade)' "$QM_CONF" > "${QM_CONF}.tmp" 2>/dev/null \
+            && mv "${QM_CONF}.tmp" "$QM_CONF"
+    fi
+fi
+
 systemctl restart lighttpd 2>/dev/null || /etc/init.d/lighttpd restart 2>/dev/null
 
 echo ""

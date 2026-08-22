@@ -34,6 +34,17 @@ sh /usrdata/qmanager/zepret-addon-backup/uninstall-zepret.sh
 
 Restores the original v0.1.13 UI and backend from the backup taken at install time.
 
+> **Heads-up:** while the Traffic Engine is active, all LAN web traffic flows
+> through the proxy on the modem — so uninstalling (or upgrading) it makes LAN
+> web connections hiccup for about 5 seconds while the teardown drains.
+> Everything is removed: engine binary, persisted enable state, hostlist file.
+
+Upgrading over an existing install is safe and preserves your engine state:
+an active Traffic Engine is stopped gracefully, files are replaced, and the
+engine restarts automatically on the new version with the same mode/settings.
+Backups taken at first install are never overwritten by upgrades, so rollback
+to stock v0.1.13 stays possible at any time.
+
 ## Troubleshooting
 
 **"Install engine binary" fails** — the message under the button names the cause. The common ones:
