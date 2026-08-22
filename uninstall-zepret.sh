@@ -39,21 +39,14 @@ fi
 # every proxied connection at once, which reads as "the internet went down".
 log "Stopping engine..."
 echo "      (LAN web connections will hiccup for about 5 seconds)"
-[ -f /usr/lib/qmanager/platform.sh ] && . /usr/lib/qmanager/platform.sh 2>/dev/null || true
-[ -f /usr/lib/qmanager/dpi_state.sh ] && . /usr/lib/qmanager/dpi_state.sh 2>/dev/null || true
-if command -v dpi_remove_rule >/dev/null 2>&1; then
-    dpi_remove_rule 2>/dev/null || true
-else
-    # Fallbacks cover installs old enough to predate dpi_state.sh, plus any
-    # partial states (legacy OUTPUT-era rule, bare catch-all redirect).
-    iptables -t nat -D OUTPUT -p tcp --dport 443 -m set --match-set dpi_bypass dst -j REDIRECT --to-ports 989 2>/dev/null
-    for i in 1 2 3; do iptables -t nat -D OUTPUT -p tcp --dport 443 -j REDIRECT --to-ports 989 2>/dev/null && break; done
-    for i in 1 2 3; do iptables -t nat -D PREROUTING -i bridge0 -p tcp -m multiport --dports 80,443 -j REDIRECT --to-ports 989 2>/dev/null && break; done
-fi
+# Lib-free teardown — sourcing platform.sh/dpi_state.sh here kills the
+# shell in some on-device contexts (rc=2, silent), so the rule deletions
+# dpi_remove_rule would perform are inlined. Rule out FIRST: new LAN
+# connections go direct immediately; established flows keep their
+# conntrack binding until the engine stops after the grace window.
+iptables -t nat -D PREROUTING -i bridge0 -p tcp -m multiport --dports 80,443 -j REDIRECT --to-ports 989 2>/dev/null
+for i in 1 2 3; do iptables -t nat -D OUTPUT -p tcp --dport 443 -j REDIRECT --to-ports 989 2>/dev/null && break; done
 sleep 5
-if command -v svc_stop >/dev/null 2>&1; then
-    svc_stop qmanager-dpi 2>/dev/null || true
-fi
 systemctl stop qmanager-dpi.service qmanager-dpi-ensure.timer qmanager-dpi-ensure.service 2>/dev/null
 # Backstop: exact-name match so we can never kill an innocent process whose
 # cmdline merely mentions tpws.

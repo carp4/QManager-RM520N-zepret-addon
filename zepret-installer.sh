@@ -125,15 +125,17 @@ if [ -f /usr/lib/qmanager/dpi_state.sh ] && [ -f "$QM_CONF" ]; then
     WAS_ENGINE=$(jq -r '[(.video_optimizer.enabled // 0), (.traffic_masquerade.enabled // 0)] | max' \
         "$QM_CONF" 2>/dev/null || echo 0)
 fi
-if [ "${WAS_ENGINE:-0}" = "1" ] && [ -f /usr/lib/qmanager/platform.sh ]; then
-    . /usr/lib/qmanager/config.sh    2>/dev/null || true
-    . /usr/lib/qmanager/platform.sh  2>/dev/null || true
-    . /usr/lib/qmanager/dpi_state.sh 2>/dev/null || true
+if [ "${WAS_ENGINE:-0}" = "1" ]; then
+    # Lib-free teardown, mirroring the uninstaller verbatim. (Sourcing
+    # platform.sh/dpi_state.sh here kills the shell on-device — rc=2, silent,
+    # unreproducible standalone — so the helpers are inlined instead.)
     log "Running engine detected — stopping it gracefully..."
     echo "      (LAN web connections will hiccup for about 5 seconds)"
-    command -v dpi_remove_rule >/dev/null 2>&1 && { dpi_remove_rule 2>/dev/null || true; }
+    # Rule out FIRST so new LAN connections go direct immediately; existing
+    # flows keep their conntrack binding until the engine stops below.
+    iptables -t nat -D PREROUTING -i bridge0 -p tcp -m multiport --dports 80,443 -j REDIRECT --to-ports 989 2>/dev/null
+    for i in 1 2 3; do iptables -t nat -D OUTPUT -p tcp --dport 443 -j REDIRECT --to-ports 989 2>/dev/null && break; done
     sleep 5
-    command -v svc_stop >/dev/null 2>&1 && { svc_stop qmanager-dpi 2>/dev/null || true; }
     systemctl stop qmanager-dpi.service qmanager-dpi-ensure.timer qmanager-dpi-ensure.service 2>/dev/null
     pkill -x tpws 2>/dev/null
 fi
