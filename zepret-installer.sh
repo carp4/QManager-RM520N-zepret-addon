@@ -17,12 +17,12 @@
 
 set -u
 
-ADDON_VERSION="v0.1.13-zepret.2"
+ADDON_VERSION="v0.1.13-zepret.3"
 REQUIRED_QMANAGER="v0.1.13"
 RELEASE_BASE_DEFAULT="https://github.com/carp4/QManager-RM520N-zepret-addon/releases/download/${ADDON_VERSION}"
 RELEASE_BASE="${ZEPRET_RELEASE_BASE:-$RELEASE_BASE_DEFAULT}"
 TARBALL="qmanager-zepret-addon-${ADDON_VERSION}.tar.gz"
-SHA256="e5687a48ea2a945af77fefaefefa4c356a8a5bda9fbafbfb6bcf080df70d6040"
+SHA256="df61ef85a6dff964259f26b3af56556e8ae2d7ff829b38c49cf4f03cd2ab0b10"
 
 STAGE="/tmp/zepret_addon_stage"
 BACKUP="/usrdata/qmanager/zepret-addon-backup"

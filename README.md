@@ -34,9 +34,27 @@ sh /usrdata/qmanager/zepret-addon-backup/uninstall-zepret.sh
 
 Restores the original v0.1.13 UI and backend from the backup taken at install time.
 
+## Troubleshooting
+
+**"Install engine binary" fails** — the message under the button names the cause. The common ones:
+
+| Message | Cause | Remedy |
+|---|---|---|
+| `Install timed out…` | Download still running; the UI stops waiting before curl does | Wait a few minutes and refresh — if the binary landed, the card disappears on its own |
+| `GitHub API rate-limited` | Your carrier's shared IP hit GitHub's hourly limit (60 req/hr) | Retry up to an hour later |
+| `Failed to query zapret releases` | Modem can't reach github.com (blocked/filtered network) | Check modem WAN reachability to github.com |
+| `Download failed` | Tarball fetch dropped mid-transfer | Press install again |
+| `Checksum mismatch` | Downloaded binary doesn't match zapret's published manifest | Press install again; persistent → report it |
+| `Installer exited unexpectedly` | Installer died before recording status | Re-run; persistent → grab `/tmp/qmanager_dpi_install.json` and report |
+| `sudo unavailable` | The sudoers rule this addon installs isn't effective on your build | Report your exact model + firmware |
+
+Enable state, hostlist edits, and an existing engine binary all survive reinstalling or upgrading the addon.
+
 ## Status
 
-**v0.1.13-zepret.2 — validated on live hardware** (RM520N-GL on T-Mobile/Verizon): install, engine binary download, Masquerade and Video Optimizer modes all verified end-to-end; measured bypass uplift 9.9 → 23 Mbps throttled-link, larger on clean links.
+**v0.1.13-zepret.3 — installer observability release**: every install failure now names its cause (GitHub rate limits, unreachable network, missing curl, dead installer, sudo misconfiguration) instead of a blank "Install failed:"; live progress text under the button; liveness-aware polling so a slow download is never mistaken for a hang, and a dead one never idles to a blind timeout. Validated on RM520N-GL (T-Mobile/Verizon/AT&T test units).
+
+**v0.1.13-zepret.2** — validated on live hardware (RM520N-GL on T-Mobile/Verizon): install, engine binary download, Masquerade and Video Optimizer modes all verified end-to-end; measured bypass uplift 9.9 → 23 Mbps throttled-link, larger on clean links.
 
 ## Credits
 

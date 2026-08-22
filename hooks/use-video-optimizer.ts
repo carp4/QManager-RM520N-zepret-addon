@@ -147,7 +147,9 @@ export function useVideoOptimizer(): UseVideoOptimizerReturn {
       if (!mountedRef.current) return false;
 
       if (json.success === false) {
-        setError(json.detail || json.error || "Failed to start install");
+        const msg = json.detail || json.error || "Failed to start install";
+        setError(msg);
+        setInstallMessage(msg);
         setInstallPhase("error");
         return false;
       }
@@ -160,23 +162,62 @@ export function useVideoOptimizer(): UseVideoOptimizerReturn {
       }
 
       // Poll install_status to completion.
-      for (let i = 0; i < 60; i++) {
+      // Liveness-aware: the CGI reports worker_alive (spawned PID still
+      // running), so a dead worker surfaces immediately instead of idling
+      // to a blind timeout — while a genuinely slow download (curl allows
+      // ~330s) keeps polling well past the old fixed 180s cap.
+      let sawWorker = true; // the spawn itself reported success
+      for (let i = 0; i < 300; i++) {
         await new Promise((r) => setTimeout(r, 3000));
         if (!mountedRef.current) return false;
         const stResp = await authFetch(`${CGI_ENDPOINT}?action=install_status`);
         if (!stResp.ok) continue;
-        const st = await stResp.json();
+        let st: {
+          status?: string;
+          message?: string;
+          detail?: string;
+          worker_alive?: boolean;
+        };
+        try {
+          st = await stResp.json();
+        } catch {
+          // Truncated/half-written marker file — transient. Keep the last
+          // known message on screen rather than blanking it.
+          continue;
+        }
         if (!mountedRef.current) return false;
-        setInstallPhase(st.status);
+
+        if (!st.status || st.status === "idle") {
+          // No usable marker content. If the worker is gone too, it died
+          // before recording anything — say so instead of idling.
+          if (sawWorker && st.worker_alive === false) {
+            setInstallPhase("error");
+            const msg = "Installer exited unexpectedly (no status recorded)";
+            setError(msg);
+            setInstallMessage(msg);
+            await fetchStatus(true);
+            return false;
+          }
+          continue;
+        }
+
+        sawWorker = true;
+        setInstallPhase(st.status as InstallPhase);
         setInstallMessage(st.message || st.detail || null);
         if (st.status === "complete" || st.status === "error") {
-          if (st.status === "error") setError(st.detail || st.message || "Install failed");
+          if (st.status === "error") {
+            const msg = st.detail || st.message || "Install failed";
+            setError(msg);
+            setInstallMessage(msg);
+          }
           await fetchStatus(true);
           return st.status === "complete";
         }
       }
       setInstallPhase("error");
-      setError("Install timed out");
+      const msg = "Install timed out — the downloader may still finish in the background; refresh in a few minutes";
+      setError(msg);
+      setInstallMessage(msg);
       return false;
     } catch (err) {
       if (!mountedRef.current) return false;
