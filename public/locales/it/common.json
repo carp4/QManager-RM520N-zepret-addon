@@ -1,0 +1,251 @@
+{
+  "actions": {
+    "save": "Salva",
+    "saving": "Salvataggio…",
+    "saved": "Salvato!",
+    "cancel": "Annulla",
+    "confirm": "Conferma",
+    "apply": "Applica",
+    "close": "Chiudi",
+    "retry": "Riprova",
+    "reboot": "Riavvia",
+    "log_out": "Esci",
+    "reboot_device": "Riavvia il dispositivo",
+    "reconnect_modem": "Riconnetti modem",
+    "change_display_name": "Modifica nome visualizzato",
+    "change_password": "Cambia password"
+  },
+  "state": {
+    "loading": "Caricamento…",
+    "saving": "Salvataggio…",
+    "applying": "Applicazione…",
+    "disconnecting": "Disconnessione…",
+    "reconnecting": "Riconnessione…",
+    "installing": "Installazione…",
+    "removing": "Rimozione…",
+    "enabled": "Abilita",
+    "disabled": "Disabilita",
+    "on": "Attivo",
+    "off": "Disattivo"
+  },
+  "connection": {
+    "reconnecting": "Connessione al dispositivo persa. Riconnessione…"
+  },
+  "profile_override": {
+    "banner": "{{controls}} è gestito dal profilo SIM personalizzato <strong>{{profile_name}}</strong>."
+  },
+  "time": {
+    "just_now": "Proprio adesso",
+    "now": "Ora",
+    "unknown": "Sconosciuto",
+    "minutes_ago_one": "{{count}}m fa",
+    "minutes_ago_other": "{{count}}m fa",
+    "hours_ago_one": "{{count}}h fa",
+    "hours_ago_other": "{{count}}h fa",
+    "days_ago_one": "{{count}}d fa",
+    "days_ago_other": "{{count}}d fa"
+  },
+  "language": {
+    "label": "Lingua",
+    "switch_aria": "Cambia lingua",
+    "page_title": "Lingua",
+    "page_description": "Scegli la lingua di visualizzazione di QManager. La selezione viene salvata su questo dispositivo.",
+    "active": "Attivo",
+    "select_prompt": "Seleziona una lingua"
+  },
+  "login": {
+    "brand_label": "Console operatore QManager",
+    "welcome": "Benvenuto in QManager",
+    "password_label": "Password",
+    "submit": "Accedi",
+    "signing_in": "Accesso in corso…",
+    "locked": "Bloccato ({{seconds}}s)",
+    "show_password": "Mostra password",
+    "hide_password": "Nascondi password",
+    "session_expired": "La sessione è terminata perché il dispositivo è stato irraggiungibile troppo a lungo.",
+    "signing_in_to": "Accesso a {{hostname}}",
+    "signing_in_as": "Accedi come {{hostname}}",
+    "recovery": {
+      "toggle": "Non riesci ad accedere?",
+      "intro": "Se hai perso la password di amministratore, hai due opzioni di ripristino:",
+      "option_reset": "Apri una sessione SSH sul dispositivo ed esegui <code>qmanager_reset_password</code> per impostare una nuova password di amministratore. (Richiede l'accesso SSH già abilitato.)",
+      "option_backup": "Se hai salvato un file .qmbackup, riprogramma il firmware del dispositivo e ripristina da quel file."
+    }
+  },
+  "overview": {
+    "title": "QManager",
+    "tagline": "Stato del modem in tempo reale",
+    "login_button": "Accedi",
+    "header": {
+      "carrier": "Operatore",
+      "network": "Rete",
+      "bands": "Larghezza di banda"
+    },
+    "status": {
+      "overall": "Generale",
+      "connectivity": "Internet",
+      "temperature": "Temperatura"
+    },
+    "actions": {
+      "login": "Accedi",
+      "theme_toggle_aria": "Cambia tema",
+      "theme_light": "Chiaro",
+      "theme_dark": "Scuro",
+      "theme_system": "Sistema"
+    },
+    "field": {
+      "carrier": "Operatore",
+      "aggregation": "Bande",
+      "uptime": "Tempo di attività",
+      "temperature": "Temp",
+      "temp_warn": "Surriscaldamento lieve",
+      "temp_danger": "Surriscaldamento",
+      "empty": "—"
+    },
+    "aggregation": {
+      "band_with_bw": "{{band}} ({{bandwidth}} MHz)",
+      "band_only": "{{band}}",
+      "pci_label": "PCI"
+    },
+    "bands": {
+      "toggle_multi_band": "Bande attive",
+      "toggle_single_band": "Operatore singolo",
+      "section": "Bande",
+      "count_one": "{{count}} attiva",
+      "count_other": "{{count}} attive",
+      "bandwidth": "{{bandwidth}} MHz",
+      "rsrp_unit": "{{rsrp}} dBm"
+    },
+    "metrics": {
+      "rsrp": "RSRP",
+      "rsrq": "RSRQ",
+      "sinr": "SINR",
+      "rsrp_value": "{{rsrp}} dBm",
+      "rsrq_value": "{{rsrq}} dB",
+      "sinr_value": "{{sinr}} dB",
+      "toggle_aria": "Cambia metrica del segnale della banda"
+    },
+    "signal": {
+      "dual": "{{rsrp}} dBm · {{sinr}} dB SINR",
+      "rsrp_only": "{{rsrp}} dBm",
+      "sinr_only": "{{sinr}} dB SINR",
+      "none": "—"
+    },
+    "quality": {
+      "overall_label": "Generale",
+      "excellent": "Eccellente",
+      "good": "Buono",
+      "fair": "Discreto",
+      "poor": "Scarso",
+      "none": "Nessun segnale"
+    },
+    "connection": {
+      "connected": "Connesso",
+      "searching": "Ricerca in corso",
+      "limited": "Limitato",
+      "inactive": "Inattivo",
+      "error": "Errore",
+      "disconnected": "Disconnesso",
+      "unknown": "Sconosciuto",
+      "modem_unreachable": "Modem irraggiungibile"
+    },
+    "stale_indicator": "I dati potrebbero non essere aggiornati",
+    "redirecting_setup": "Reindirizzamento alla configurazione iniziale…",
+    "loading_status": "Caricamento dello stato del modem…",
+    "empty": {
+      "title": "Stato del modem non disponibile",
+      "subtitle": "Accedi per i dettagli diagnostici.",
+      "fetch_error": "Impossibile raggiungere il dispositivo.",
+      "retry": "Riprova"
+    },
+    "uptime": {
+      "days": "{{days}}g {{hours}}h",
+      "hours": "{{hours}}h {{minutes}}m",
+      "minutes": "{{minutes}}m"
+    },
+    "copyright": "© {{year}} QManager"
+  },
+  "trafficEngine": {
+    "page": {
+      "title": "Motore di traffico",
+      "description": "Aggira la limitazione DPI dell'operatore su streaming video e altro traffico con il motore di bypass integrato."
+    },
+    "load_error": "Impossibile caricare lo stato del motore.",
+    "tabs": {
+      "video_optimizer": "Ottimizzazione video",
+      "masquerade": "Mascheramento del traffico"
+    },
+    "status": {
+      "title": "Stato del motore",
+      "description": "Stato in tempo reale del motore di bypass.",
+      "state": "Stato del motore",
+      "running": "In esecuzione",
+      "stopped": "Fermato",
+      "restarting": "Riavvio",
+      "error": "Errore",
+      "uptime": "Attivo da",
+      "packets": "Pacchetti elaborati",
+      "packets_per_sec": "{{n}} pkt/s",
+      "domains": "Domini caricati",
+      "sni": "SNI falsificato",
+      "rule": "Regola di reindirizzamento",
+      "rule_active": "Attiva",
+      "rule_inactive": "Non applicata",
+      "binary_installed": "Binario del motore installato",
+      "binary_missing": "Binario del motore non installato",
+      "masq_scope": "Ambito",
+      "masq_all": "Ogni connessione TCP 80/443"
+    },
+    "enable": {
+      "video_optimizer": "Abilita Ottimizzazione video",
+      "masquerade": "Abilita Mascheramento del traffico",
+      "description_vo": "Desincronizza le connessioni ai domini di streaming e video nell'hostlist, contrastando la limitazione DPI dell'operatore.",
+      "description_masq": "Invia un falso ClientHello TLS con SNI falsificato per ogni connessione, nascondendo la destinazione reale al DPI.",
+      "toast_enabled_vo": "Ottimizzazione video abilitata",
+      "toast_disabled_vo": "Ottimizzazione video disabilitata",
+      "toast_enabled_masq": "Mascheramento del traffico abilitato",
+      "toast_disabled_masq": "Mascheramento del traffico disabilitato",
+      "toast_error": "Salvataggio impostazioni motore non riuscito"
+    },
+    "masquerade": {},
+    "hostlist": {
+      "title": "Domini video",
+      "description": "Domini che ricevono il trattamento di desincronizzazione. I sottodomini di un dominio elencato corrispondono automaticamente. Il motore ricarica l'elenco al volo: le modifiche si applicano subito.",
+      "empty": "Nessun dominio ancora — aggiungine uno per iniziare.",
+      "invalid": "Inserisci un dominio valido (lettere, cifre, punti, trattini).",
+      "duplicate": "Questo dominio è già nell'elenco.",
+      "limit": "L'elenco può contenere al massimo 300 domini.",
+      "add": "Aggiungi dominio",
+      "remove": "Rimuovi {{domain}}",
+      "saved": "Elenco domini salvato"
+    },
+    "verify": {
+      "title": "Prova il bypass",
+      "description": "Esegui un test di velocità in due fasi — senza il motore, poi con il motore — per misurare il miglioramento del bypass.",
+      "run": "Avvia test",
+      "running": "Test in corso…",
+      "timeout": "Il test non è terminato in tempo.",
+      "error": "Impossibile avviare il test",
+      "needs_binary": "Installa prima il binario del motore.",
+      "improvement": "Miglioramento",
+      "without": "Senza bypass",
+      "with": "Con bypass",
+      "throttled": "limitato",
+      "unthrottled": "non limitato"
+    },
+    "takeover": {
+      "title": "Passare a {{mode}}?",
+      "description": "Può essere attiva una sola modalità alla volta. Abilitarne una disabilita l'altra.",
+      "confirm": "Passa",
+      "cancel": "Annulla"
+    },
+    "onboarding": {
+      "title": "Installa il binario del motore",
+      "description": "Il motore necessita del binario tpws, scaricato dalla release ufficiale di zapret e verificato tramite checksum.",
+      "install": "Scarica e installa",
+      "installing": "Download in corso…",
+      "done": "Motore pronto",
+      "error": "Installazione non riuscita: {{detail}}"
+    }
+  }
+}

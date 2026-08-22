@@ -1,0 +1,284 @@
+"use client";
+
+import { useState, useCallback, useRef, useEffect } from "react";
+import { toast } from "sonner";
+import { authFetch } from "@/lib/auth-fetch";
+import type {
+  SystemSettings,
+  ScheduleConfig,
+  SystemSettingsResponse,
+  ScheduledRebootSaveResult,
+} from "@/types/system-settings";
+
+export type { ScheduledRebootSaveResult } from "@/types/system-settings";
+
+// =============================================================================
+// useSystemSettings — Fetch & Save Hook for System Settings
+// =============================================================================
+// Fetches all system settings on mount (preferences + schedules).
+// Provides separate save functions for each settings group.
+//
+// Backend: GET/POST /cgi-bin/quecmanager/system/settings.sh
+// =============================================================================
+
+const CGI_ENDPOINT = "/cgi-bin/quecmanager/system/settings.sh";
+
+// ─── Save Payload Types ───────────────────────────────────────────────────
+
+export interface SaveSettingsPayload {
+  action: "save_settings";
+  hostname?: string;
+  temp_unit?: "celsius" | "fahrenheit";
+  distance_unit?: "km" | "miles";
+  timezone?: string;
+  zonename?: string;
+  sms_tool_device?: string; // "" = default (smd11), "/dev/smd7" = alternate
+}
+
+export interface SaveScheduledRebootPayload {
+  action: "save_scheduled_reboot";
+  enabled: boolean;
+  time: string;
+  days: number[];
+}
+
+// ─── Save Response Types ──────────────────────────────────────────────────
+
+// Outcome of pushing the configured timezone to the live device clock.
+// "failed" = config saved, but the clock apply did not take (e.g. sudoers not
+// yet rolled out, or zone data missing).
+export type TimezoneApplyStatus =
+  | "applied"
+  | "failed"
+  | "not_attempted"
+  | "invalid";
+
+// Shared shape for the POST responses handled by postAction(). Fields are
+// optional because they vary by action (save_settings vs save_scheduled_reboot).
+interface SaveResponse {
+  success: boolean;
+  detail?: string;
+  error?: string;
+  scheduled_reboot?: ScheduleConfig;
+  // Whether save_scheduled_reboot actually armed a live systemd timer on this
+  // device (vs. merely persisting config). See ScheduledRebootSaveResult.
+  armed?: boolean;
+  reason?: string;
+  timezone_apply_status?: TimezoneApplyStatus;
+}
+
+// Internal outcome returned by postAction — carries the raw success plus the
+// arm status so saveScheduledReboot can surface an honest toast.
+interface PostActionResult {
+  success: boolean;
+  armed?: boolean;
+  reason?: string;
+}
+
+export interface UseSystemSettingsReturn {
+  settings: SystemSettings | null;
+  scheduledReboot: ScheduleConfig | null;
+  isLoading: boolean;
+  isSaving: boolean;
+  error: string | null;
+  saveSettings: (payload: SaveSettingsPayload) => Promise<boolean>;
+  saveScheduledReboot: (
+    payload: SaveScheduledRebootPayload,
+  ) => Promise<ScheduledRebootSaveResult>;
+  refresh: () => void;
+}
+
+// ─── Hook ──────────────────────────────────────────────────────────────────
+
+export function useSystemSettings(): UseSystemSettingsReturn {
+  const [settings, setSettings] = useState<SystemSettings | null>(null);
+  const [scheduledReboot, setScheduledReboot] =
+    useState<ScheduleConfig | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  // ---------------------------------------------------------------------------
+  // Fetch current settings
+  // ---------------------------------------------------------------------------
+  const fetchSettings = useCallback(async (silent = false) => {
+    if (!silent) setIsLoading(true);
+    setError(null);
+
+    try {
+      const resp = await authFetch(CGI_ENDPOINT);
+      if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+      }
+
+      const json: SystemSettingsResponse = await resp.json();
+      if (!mountedRef.current) return;
+
+      if (!json.success) {
+        setError("Failed to fetch system settings");
+        return;
+      }
+
+      setSettings(json.settings);
+      setScheduledReboot(json.scheduled_reboot);
+    } catch (err) {
+      if (!mountedRef.current) return;
+      setError(
+        err instanceof Error ? err.message : "Failed to fetch system settings",
+      );
+    } finally {
+      if (mountedRef.current && !silent) {
+        setIsLoading(false);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchSettings();
+  }, [fetchSettings]);
+
+  // ---------------------------------------------------------------------------
+  // Generic POST helper
+  // ---------------------------------------------------------------------------
+  const postAction = useCallback(
+    async (
+      payload:
+        | SaveSettingsPayload
+        | SaveScheduledRebootPayload,
+    ): Promise<PostActionResult> => {
+      setError(null);
+      setIsSaving(true);
+
+      try {
+        const resp = await authFetch(CGI_ENDPOINT, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        if (!resp.ok) {
+          throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+        }
+
+        const json: SaveResponse = await resp.json();
+        if (!mountedRef.current) return { success: false };
+
+        if (!json.success) {
+          setError(json.detail || json.error || "Failed to save settings");
+          return { success: false };
+        }
+
+        // Use response data directly when available (avoids re-fetch race),
+        // fall back to silent re-fetch for actions that don't return full state.
+        if (json.scheduled_reboot) {
+          setScheduledReboot(json.scheduled_reboot);
+        }
+
+        // Re-fetch for save_settings (preferences) which doesn't return
+        // schedule data — and to sync any other state we didn't capture above.
+        // The silent re-fetch also pulls the fresh timezone ground-truth fields
+        // (effective_offset / timezone_applied) so the card can render its badge.
+        if (payload.action === "save_settings") {
+          // Config saved, but the zone did not reach the live clock. Warn the
+          // user honestly (partial success); the settings themselves persisted.
+          if (json.timezone_apply_status === "failed") {
+            toast.warning(
+              "Timezone saved, but couldn't apply to the device clock — check again in a moment",
+            );
+          }
+          await fetchSettings(true);
+        }
+
+        // Thread through the arm status so save_scheduled_reboot can warn the
+        // user when the schedule persisted but no live timer was installed.
+        return { success: true, armed: json.armed, reason: json.reason };
+      } catch (err) {
+        if (!mountedRef.current) return { success: false };
+        setError(
+          err instanceof Error ? err.message : "Failed to save settings",
+        );
+        return { success: false };
+      } finally {
+        if (mountedRef.current) {
+          setIsSaving(false);
+        }
+      }
+    },
+    [fetchSettings],
+  );
+
+  // ---------------------------------------------------------------------------
+  // Per-action save wrappers
+  // ---------------------------------------------------------------------------
+  const saveSettings = useCallback(
+    async (payload: SaveSettingsPayload) =>
+      (await postAction(payload)).success,
+    [postAction],
+  );
+
+  const saveScheduledReboot = useCallback(
+    (payload: SaveScheduledRebootPayload): Promise<ScheduledRebootSaveResult> =>
+      postAction(payload),
+    [postAction],
+  );
+
+  return {
+    settings,
+    scheduledReboot,
+    isLoading,
+    isSaving,
+    error,
+    saveSettings,
+    saveScheduledReboot,
+    refresh: fetchSettings,
+  };
+}
+
+// =============================================================================
+// useUnitPreferences — Lightweight hook for dashboard unit display
+// =============================================================================
+// Fetches unit preferences on mount. Used by device-metrics.tsx to display
+// temperature in °F and distance in miles when configured.
+// =============================================================================
+
+interface UnitPreferences {
+  tempUnit: "celsius" | "fahrenheit";
+  distanceUnit: "km" | "miles";
+}
+
+export function useUnitPreferences(): UnitPreferences | null {
+  const [prefs, setPrefs] = useState<UnitPreferences | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    authFetch(CGI_ENDPOINT)
+      .then((r) => r.json())
+      .then((json: SystemSettingsResponse) => {
+        if (!cancelled && json.success && json.settings) {
+          setPrefs({
+            tempUnit: json.settings.temp_unit || "celsius",
+            distanceUnit: json.settings.distance_unit || "km",
+          });
+        }
+      })
+      .catch(() => {
+        // Fallback to defaults on error
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return prefs;
+}
