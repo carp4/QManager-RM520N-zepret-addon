@@ -17,12 +17,12 @@
 
 set -u
 
-ADDON_VERSION="v0.1.13-zepret.3"
+ADDON_VERSION="v0.1.13-zepret.4"
 REQUIRED_QMANAGER="v0.1.13"
 RELEASE_BASE_DEFAULT="https://github.com/carp4/QManager-RM520N-zepret-addon/releases/download/${ADDON_VERSION}"
 RELEASE_BASE="${ZEPRET_RELEASE_BASE:-$RELEASE_BASE_DEFAULT}"
 TARBALL="qmanager-zepret-addon-${ADDON_VERSION}.tar.gz"
-SHA256="df61ef85a6dff964259f26b3af56556e8ae2d7ff829b38c49cf4f03cd2ab0b10"
+SHA256="250b7812c1fc536f41bc6864d6789d0f71d59dcb63adb26e6a0af4361878da02"
 
 STAGE="/tmp/zepret_addon_stage"
 BACKUP="/usrdata/qmanager/zepret-addon-backup"
@@ -69,16 +69,24 @@ fi
 log "OK: QManager ${INSTALLED_VERSION}"
 
 # --- Step 2: fetch + verify the payload --------------------------------------
-log "Downloading ${TARBALL}..."
 rm -rf "$STAGE" && mkdir -p "$STAGE"
-if command -v curl >/dev/null 2>&1; then
-    curl -fsSL -o "$STAGE/$TARBALL" "$RELEASE_BASE/$TARBALL" \
-        || fail "download failed (curl)"
-elif command -v wget >/dev/null 2>&1; then
-    wget -qO "$STAGE/$TARBALL" "$RELEASE_BASE/$TARBALL" \
-        || fail "download failed (wget)"
+if [ -n "$ZEPRET_TARBALL" ] && [ -f "$ZEPRET_TARBALL" ]; then
+    # Local payload override (offline installs, testing unreleased builds).
+    # The pinned-sha256 check below still applies — an override cannot skip
+    # verification, only the download.
+    log "Using local payload: $ZEPRET_TARBALL"
+    cp -f "$ZEPRET_TARBALL" "$STAGE/$TARBALL" || fail "local payload copy failed"
 else
-    fail "neither curl nor wget available"
+    log "Downloading ${TARBALL}..."
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsSL -o "$STAGE/$TARBALL" "$RELEASE_BASE/$TARBALL" \
+            || fail "download failed (curl)"
+    elif command -v wget >/dev/null 2>&1; then
+        wget -qO "$STAGE/$TARBALL" "$RELEASE_BASE/$TARBALL" \
+            || fail "download failed (wget)"
+    else
+        fail "neither curl nor wget available"
+    fi
 fi
 
 if [ -n "$SHA256" ]; then
