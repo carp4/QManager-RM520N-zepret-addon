@@ -155,6 +155,12 @@ dpi_packets_processed() {
 # Returns 0 on success (the -I exit status).
 # =============================================================================
 dpi_apply_rule() {
+    # Idempotent: if the rule is already installed, leave it alone.
+    # Re-creating it every ensure pass would reset its packet counter,
+    # making "Packets processed" visibly collapse to 0 once a minute.
+    if dpi_rule_present; then
+        return 0
+    fi
     local i=0
     while [ "$i" -lt 16 ]; do
         run_iptables -w 5 -t nat -D PREROUTING \
@@ -188,36 +194,49 @@ dpi_remove_rule() {
 #   failed    → error
 #   else      → stopped
 # =============================================================================
+# =============================================================================
+# dpi_service_status — map engine liveness to the API contract
+# Contract values: running | stopped | restarting | error
+#
+# PORTABILITY NOTE — deliberately does NOT ask systemd. `systemctl show`
+# needs privileges that differ by model: on RM520N-GL an unprivileged query
+# works, but www-data has no sudoers rule for systemctl; on RM502Q-GL
+# (sdxprairie) unprivileged property reads are denied outright ("Failed to
+# get properties: Access denied"). The one probe every user can do is a
+# process check: pgrep -f on the binary path.
+# Unit-level restarting/error states degrade to stopped here — cosmetic,
+# and self-heals on the next poll once the unit settles.
+# =============================================================================
 dpi_service_status() {
-    local st
-    # Read-only query, deliberately NOT wrapped in $_SUDO: www-data has no
-    # sudoers rule for systemctl (a password is required), while a direct
-    # `systemctl show` works for any user. Sudo-wrapping made every CGI
-    # status read report "stopped" even while the engine ran.
-    st=$($_SYSTEMCTL show qmanager-dpi -p ActiveState --value 2>/dev/null)
-    case "$st" in
-        active) echo "running" ;;
-        activating) echo "restarting" ;;
-        failed) echo "error" ;;
-        *) echo "stopped" ;;
-    esac
+    # Do NOT trust $DPI_BINARY from config.sh: sibling QManager builds
+    # (e.g. RM502Q-GL) ship different/empty names for it. Fall back to the
+    # path this add-on itself installs to.
+    local _bin="${DPI_BINARY:-/usrdata/qmanager/bin/tpws}"
+    if pgrep -f "^$_bin " >/dev/null 2>&1; then
+        echo "running"
+    else
+        echo "stopped"
+    fi
 }
 
 # =============================================================================
-# dpi_uptime_str — human uptime of the qmanager-dpi unit, "2h 34m" style
-# Uses ActiveEnterTimestampMonotonic vs /proc/uptime (no clock-step issues).
+# dpi_uptime_str — human uptime of the running engine, "2h 34m" style
+# Same portability reasoning as dpi_service_status: derive from
+# /proc/<pid>/stat field 22 (starttime, jiffies at HZ=100 on these SoCs)
+# against /proc/uptime — no clock-step issues, no systemd access needed.
 # =============================================================================
 dpi_uptime_str() {
-    local mono now_usec secs h m
-    mono=$($_SYSTEMCTL show qmanager-dpi -p ActiveEnterTimestampMonotonic --value 2>/dev/null) || mono=0
-    case "$mono" in
-        ''|*[!0-9]*) mono=0 ;;
+    local pid start_jiffies up_now secs h m _bin
+    _bin="${DPI_BINARY:-/usrdata/qmanager/bin/tpws}"
+    pid=$(pgrep -f "^$_bin " | head -n1)
+    [ -z "$pid" ] && { echo "—"; return; }
+    start_jiffies=$(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null)
+    case "$start_jiffies" in
+        ''|*[!0-9]*) echo "—"; return ;;
     esac
-    [ "$mono" -le 0 ] && { echo "—"; return; }
-    now_usec=$(cut -d' ' -f1 /proc/uptime | cut -d. -f1)
-    secs=$(( now_usec * 1000000 - mono ))
+    up_now=$(cut -d' ' -f1 /proc/uptime | cut -d. -f1)
+    secs=$(( up_now - start_jiffies / 100 ))
     [ "$secs" -lt 0 ] && secs=0
-    secs=$(( secs / 1000000 ))
     if [ "$secs" -lt 60 ]; then
         echo "${secs}s"
         return

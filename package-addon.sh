@@ -7,12 +7,12 @@
 # zepret-installer.sh.
 #
 # Run from repo root AFTER `bun run build`:
-#   ./package-addon.sh [version]     # default v0.1.13-zepret.1
+#   ./package-addon.sh [version]     # default v0.1.13-zepret.2
 # =============================================================================
 
 set -eu
 
-VERSION="${1:-v0.1.13-zepret.1}"
+VERSION="${1:-v0.1.13-zepret.2}"
 TARBALL="qmanager-zepret-addon-${VERSION}.tar.gz"
 STAGE="$(mktemp -d /tmp/zepret_pkg.XXXXXX)"
 DIST="dist"
