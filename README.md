@@ -36,7 +36,7 @@ Restores the original v0.1.13 UI and backend from the backup taken at install ti
 
 ## Status
 
-**v0.1.13-zepret.2 — validated on live hardware** (RM520N-GL on T-Mobile/Verizon): install, engine binary download, Masquerade and Video Optimizer modes all verified end-to-end; measured bypass uplift 9.9 → 23 Mbps throttled-link, larger on clean links.
+**v0.1.13-zepret.1 — validated on live hardware** (RM520N-GL on T-Mobile/Verizon): install, engine binary download, Masquerade and Video Optimizer modes all verified end-to-end; measured bypass uplift 9.9 → 23 Mbps throttled-link, larger on clean links.
 
 ## Credits
 
