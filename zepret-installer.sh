@@ -28,7 +28,7 @@ RELEASE_BASE_DEFAULT="https://github.com/carp4/QManager-RM520N-zepret-addon/rele
 DEV_FALLBACK_BASE="https://raw.githubusercontent.com/carp4/QManager-RM520N-zepret-addon/refs/heads/development/dist"
 RELEASE_BASE="${ZEPRET_RELEASE_BASE:-$RELEASE_BASE_DEFAULT}"
 TARBALL="qmanager-zepret-addon-${ADDON_VERSION}.tar.gz"
-SHA256="c48a9c13b9d1096977597e21cf5bb3d5b4ae028aa34c2f3926a3bbdabe1cef92"
+SHA256="31142acfe91d89c561a12ce5e9ad711bae21d472fca40defc4e2e52ae2f67a3a"
 
 STAGE="/tmp/zepret_addon_stage"
 BACKUP="/usrdata/qmanager/zepret-addon-backup"
