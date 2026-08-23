@@ -18,6 +18,7 @@
 set -u
 
 ADDON_VERSION="v0.1.13-zepret.5-dev.1"
+REQUIRED_QMANAGER="v0.1.13"
 
 # Payload resolution: release asset first (main-branch installs). Dev builds
 # carry a -dev suffix that has no release — those fall back to the tarball
