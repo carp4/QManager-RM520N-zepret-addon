@@ -17,7 +17,26 @@ TARBALL="qmanager-zepret-addon-${VERSION}.tar.gz"
 STAGE="$(mktemp -d /tmp/zepret_pkg.XXXXXX)"
 DIST="dist"
 
-[ -d out ] || { echo "ERROR: out/ missing — run the frontend build first"; exit 1; }
+# Reproducibility guards: packaging from a dirty tree or the wrong branch
+# mixes source generations (this shipped once as a stale backend beside a
+# fresh frontend). Fail loudly instead of building an unverifiable payload.
+[ -z "$(git status --porcelain)" ] \
+    || { echo "ERROR: working tree is dirty — commit or stash before packaging"; exit 1; }
+BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+case "$VERSION" in
+    *-dev*) [ "$BRANCH" = "development" ] \
+        || { echo "ERROR: dev payloads must be packaged on 'development' (currently on '$BRANCH')"; exit 1; } ;;
+    *)      [ "$BRANCH" = "main" ] \
+        || { echo "ERROR: release payloads must be packaged on 'main' (currently on '$BRANCH')"; exit 1; } ;;
+esac
+
+# Always build the frontend from the checked-out sources so out/ can never
+# carry artifacts from a previous tree. SKIP_BUILD=1 opts out for re-runs.
+if [ "${SKIP_BUILD:-0}" != "1" ]; then
+    echo "Building frontend from current sources..."
+    bun run build
+fi
+[ -d out ] || { echo "ERROR: out/ missing — frontend build failed"; exit 1; }
 
 mkdir -p "$STAGE/addon/usr/bin" \
          "$STAGE/addon/usr/lib/qmanager" \
@@ -48,6 +67,13 @@ sed -n '/cat > "\$DPI_HOSTLIST"/,/^EOF$/p' scripts/usr/bin/qmanager_setup \
     || { echo "ERROR: hostlist extraction looks wrong"; exit 1; }
 
 tar -czf "$DIST/$TARBALL" -C "$STAGE" addon
+
+# Verify the tarball actually contains the sources we meant to ship: extract
+# the CGI back out and byte-compare. Cheap insurance against generation mix.
+tar -xzf "$DIST/$TARBALL" -C "$STAGE" addon/www/cgi-bin/quecmanager/network/video_optimizer.sh
+cmp scripts/www/cgi-bin/quecmanager/network/video_optimizer.sh \
+    "$STAGE/addon/www/cgi-bin/quecmanager/network/video_optimizer.sh" \
+    || { echo "ERROR: packaged CGI does not match the repo source"; exit 1; }
 rm -rf "$STAGE"
 
 SUM="$(sha256sum "$DIST/$TARBALL" | awk '{print $1}')"
@@ -55,12 +81,13 @@ echo ""
 echo "Packaged: $DIST/$TARBALL ($(du -h "$DIST/$TARBALL" | cut -f1))"
 echo "sha256:   $SUM"
 
-# Pin the hash into the installer so installs verify the download.
-# (Only touches SHA256 — RELEASE_BASE must keep its ZEPRET_RELEASE_BASE
-# env-override wrapper for offline/local staging.)
+# Pin the version AND hash into the installer so installs verify the
+# download. (RELEASE_BASE keeps its ZEPRET_RELEASE_BASE env-override wrapper
+# for offline/local staging.)
 if grep -q '^SHA256=' zepret-installer.sh; then
+    sed -i "s|^ADDON_VERSION=.*|ADDON_VERSION=\"$VERSION\"|" zepret-installer.sh
     sed -i "s|^SHA256=.*|SHA256=\"$SUM\"|" zepret-installer.sh
-    echo "Pinned sha256 into zepret-installer.sh"
+    echo "Pinned ADDON_VERSION=$VERSION and sha256 into zepret-installer.sh"
 fi
 
 # Dev builds: commit the tarball onto the development branch so the dev
