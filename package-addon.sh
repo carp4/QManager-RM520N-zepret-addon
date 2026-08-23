@@ -7,12 +7,12 @@
 # zepret-installer.sh.
 #
 # Run from repo root AFTER `bun run build`:
-#   ./package-addon.sh [version]     # default v0.1.13-zepret.4
+#   ./package-addon.sh [version]     # default v0.1.13-zepret.5-dev.1
 # =============================================================================
 
 set -eu
 
-VERSION="${1:-v0.1.13-zepret.4}"
+VERSION="${1:-v0.1.13-zepret.5-dev.1}"
 TARBALL="qmanager-zepret-addon-${VERSION}.tar.gz"
 STAGE="$(mktemp -d /tmp/zepret_pkg.XXXXXX)"
 DIST="dist"
@@ -62,3 +62,19 @@ if grep -q '^SHA256=' zepret-installer.sh; then
     sed -i "s|^SHA256=.*|SHA256=\"$SUM\"|" zepret-installer.sh
     echo "Pinned sha256 into zepret-installer.sh"
 fi
+
+# Dev builds: commit the tarball onto the development branch so the dev
+# one-liner (raw development installer) can fetch its payload with the same
+# sha256 pin enforcement as a release install. Release builds (-dev absent)
+# skip this — their payload lives in GitHub Releases instead.
+case "$VERSION" in
+    *-dev*)
+        # dist/ is gitignored by convention; the dev payload is the one
+        # deliberate exception tracked on this branch.
+        git add zepret-installer.sh
+        git add -f dist/"$TARBALL"
+        git commit -m "package: ${TARBALL} for development-branch installs (sha ${SUM%%\ *})" \
+            && echo "Committed payload to the branch — push 'development' to publish the dev build" \
+            || echo "Nothing to commit (payload unchanged?)"
+        ;;
+esac
