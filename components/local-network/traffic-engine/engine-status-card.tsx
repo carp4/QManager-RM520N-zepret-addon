@@ -10,11 +10,25 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   CheckCircle2Icon,
+  Loader2Icon,
   MinusCircleIcon,
+  Trash2Icon,
   TriangleAlertIcon,
   XCircleIcon,
 } from "lucide-react";
@@ -43,9 +57,11 @@ const ENGINE_TONE: Record<
 export interface EngineStatusCardProps {
   data: VideoOptimizerStatus | MasqueradeStatus | null;
   loading: boolean;
+  onUninstall?: () => Promise<boolean>;
+  isUninstalling?: boolean;
 }
 
-const EngineStatusCard = ({ data, loading }: EngineStatusCardProps) => {
+const EngineStatusCard = ({ data, loading, onUninstall, isUninstalling }: EngineStatusCardProps) => {
   const { t } = useTranslation("common");
 
   const prevRef = useRef<{ ts: number; pkts: number } | null>(null);
@@ -86,9 +102,48 @@ const EngineStatusCard = ({ data, loading }: EngineStatusCardProps) => {
 
   return (
     <Card className="@container/card">
-      <CardHeader>
-        <CardTitle>{t("trafficEngine.status.title")}</CardTitle>
-        <CardDescription>{t("trafficEngine.status.description")}</CardDescription>
+      <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
+        <div className="space-y-1.5">
+          <CardTitle>{t("trafficEngine.status.title")}</CardTitle>
+          <CardDescription>{t("trafficEngine.status.description")}</CardDescription>
+        </div>
+        {data.binary_installed && onUninstall && (
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="destructive" size="sm" disabled={isUninstalling}>
+                {isUninstalling ? (
+                  <Loader2Icon className="animate-spin" />
+                ) : (
+                  <Trash2Icon />
+                )}
+                {t("trafficEngine.uninstall.button")}
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  {t("trafficEngine.uninstall.title")}
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  {t("trafficEngine.uninstall.description")}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={isUninstalling}>
+                  {t("trafficEngine.uninstall.cancel")}
+                </AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => {
+                    onUninstall();
+                  }}
+                  disabled={isUninstalling}
+                >
+                  {t("trafficEngine.uninstall.confirm")}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        )}
       </CardHeader>
       <CardContent>
         <div className="grid gap-3 sm:grid-cols-2 @3xl/card:grid-cols-4">

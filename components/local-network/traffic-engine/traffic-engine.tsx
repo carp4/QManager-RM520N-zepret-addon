@@ -103,7 +103,12 @@ const TrafficEngine = () => {
         />
       ) : (
         <div className="grid grid-cols-1 gap-4">
-          <EngineStatusCard data={engineData} loading={false} />
+          <EngineStatusCard
+            data={engineData}
+            loading={false}
+            onUninstall={videoOptimizer.uninstallBinary}
+            isUninstalling={videoOptimizer.isUninstalling}
+          />
 
           <Tabs defaultValue="video_optimizer" className="w-full">
             <TabsList>

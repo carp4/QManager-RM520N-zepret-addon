@@ -196,6 +196,13 @@
       "masq_scope": "Cakupan",
       "masq_all": "Semua koneksi TCP 80/443"
     },
+    "uninstall": {
+      "button": "Uninstal biner mesin",
+      "title": "Uninstal biner mesin?",
+      "description": "Tindakan ini akan menghentikan Traffic Engine (jika sedang berjalan) dan menghapus biner mesin. Apakah Anda yakin ingin melanjutkan? Biner dapat dipasang kembali nanti jika Anda berubah pikiran.",
+      "confirm": "Uninstal",
+      "cancel": "Batal"
+    },
     "enable": {
       "video_optimizer": "Aktifkan Optimasi Video",
       "masquerade": "Aktifkan Penyamaran Lalu Lintas",

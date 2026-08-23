@@ -22,6 +22,8 @@
 #       → spawn the two-phase speed comparison
 #   POST {"action":"install"}
 #       → spawn the tpws binary installer
+#   POST {"action":"uninstall"}
+#       → graceful engine stop + tpws binary removal (marker-protocol twin)
 #
 # Status values: running | stopped | restarting | error
 # "kernel_module_loaded" reports whether the REDIRECT rule is applied — the
@@ -311,6 +313,27 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
                 exit 0
             fi
             $_SUDO /usr/bin/qmanager_dpi_install install </dev/null >/dev/null 2>&1 &
+            echo '{"success":true,"status":"started"}'
+            exit 0
+            ;;
+        uninstall)
+            # --- Spawn tpws binary removal ---
+            # Mirror of install: same pre-flight (the EXACT whitelisted
+            # command line, so a broken sudoers setup fails visibly here),
+            # same detached spawn, same marker protocol for install_status.
+            if ! $_SUDO -n /usr/bin/qmanager_dpi_install --probe >/dev/null 2>&1; then
+                cgi_error "sudo_unavailable" "cannot escalate via sudo — see README troubleshooting"
+                exit 0
+            fi
+            if [ -f "$DPI_INSTALL_PID" ] && pid_alive "$(cat "$DPI_INSTALL_PID" 2>/dev/null)"; then
+                echo '{"success":true,"status":"running"}'
+                exit 0
+            fi
+            if ! dpi_binary_installed; then
+                echo '{"success":true,"status":"already"}'
+                exit 0
+            fi
+            $_SUDO /usr/bin/qmanager_dpi_install uninstall </dev/null >/dev/null 2>&1 &
             echo '{"success":true,"status":"started"}'
             exit 0
             ;;
