@@ -178,8 +178,12 @@ export function useVideoOptimizer(): UseVideoOptimizerReturn {
           return false;
         }
         if (json.status === "already") {
-          setInstallPhase("complete");
-          setInstallMessage(copy.already);
+          if (isInstall) {
+            setInstallPhase("complete");
+            setInstallMessage(copy.already);
+          }
+          // Uninstall flavor: leave zero residue — if the binary was already
+          // gone the onboarding card must render exactly like a fresh install.
           await fetchStatus(true);
           return true;
         }
@@ -236,6 +240,14 @@ export function useVideoOptimizer(): UseVideoOptimizerReturn {
               setInstallMessage(msg);
             }
             await fetchStatus(true);
+            if (!isInstall && st.status === "complete") {
+              // Removal finished: clear phase/message residue. The onboarding
+              // card reappearing after a successful removal must look exactly
+              // like a fresh install — "complete" would render as the green
+              // "Engine ready" alert with the removal log line beneath it.
+              setInstallPhase("idle");
+              setInstallMessage(null);
+            }
             return st.status === "complete";
           }
         }
