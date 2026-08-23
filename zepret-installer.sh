@@ -17,12 +17,17 @@
 
 set -u
 
-ADDON_VERSION="v0.1.13-zepret.4"
-REQUIRED_QMANAGER="v0.1.13"
+ADDON_VERSION="v0.1.13-zepret.5-dev.1"
+
+# Payload resolution: release asset first (main-branch installs). Dev builds
+# carry a -dev suffix that has no release — those fall back to the tarball
+# committed alongside this script on the development branch, so a dev
+# one-liner works with the same sha256 verification as a release install.
 RELEASE_BASE_DEFAULT="https://github.com/carp4/QManager-RM520N-zepret-addon/releases/download/${ADDON_VERSION}"
+DEV_FALLBACK_BASE="https://raw.githubusercontent.com/carp4/QManager-RM520N-zepret-addon/refs/heads/development/dist"
 RELEASE_BASE="${ZEPRET_RELEASE_BASE:-$RELEASE_BASE_DEFAULT}"
 TARBALL="qmanager-zepret-addon-${ADDON_VERSION}.tar.gz"
-SHA256="250b7812c1fc536f41bc6864d6789d0f71d59dcb63adb26e6a0af4361878da02"
+SHA256="38c73870e2f760a4dd5715c503791f872ebfa5bf27e5089694f0d448e32bfee9"
 
 STAGE="/tmp/zepret_addon_stage"
 BACKUP="/usrdata/qmanager/zepret-addon-backup"
@@ -80,9 +85,11 @@ else
     log "Downloading ${TARBALL}..."
     if command -v curl >/dev/null 2>&1; then
         curl -fsSL -o "$STAGE/$TARBALL" "$RELEASE_BASE/$TARBALL" \
+            || curl -fsSL -o "$STAGE/$TARBALL" "$DEV_FALLBACK_BASE/$TARBALL" \
             || fail "download failed (curl)"
     elif command -v wget >/dev/null 2>&1; then
         wget -qO "$STAGE/$TARBALL" "$RELEASE_BASE/$TARBALL" \
+            || wget -qO "$STAGE/$TARBALL" "$DEV_FALLBACK_BASE/$TARBALL" \
             || fail "download failed (wget)"
     else
         fail "neither curl nor wget available"
