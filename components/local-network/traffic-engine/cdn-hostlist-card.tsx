@@ -60,6 +60,10 @@ const CdnHostlistCard = ({ hostlist }: CdnHostlistCardProps) => {
         setDraft("");
         markSaved();
         toast.success(t("trafficEngine.hostlist.saved"));
+      } else {
+        // Backend failures must never be silent: the hook records the error
+        // (rendered inline below) and the toast makes the failure immediate.
+        toast.error(t("trafficEngine.hostlist.save_failed"));
       }
     });
   };
@@ -69,6 +73,8 @@ const CdnHostlistCard = ({ hostlist }: CdnHostlistCardProps) => {
       if (ok) {
         markSaved();
         toast.success(t("trafficEngine.hostlist.saved"));
+      } else {
+        toast.error(t("trafficEngine.hostlist.save_failed"));
       }
     });
   };
@@ -151,6 +157,12 @@ const CdnHostlistCard = ({ hostlist }: CdnHostlistCardProps) => {
           {localError && (
             <p className="text-sm text-destructive" role="alert">
               {localError}
+            </p>
+          )}
+
+          {hostlist.error && (
+            <p className="text-sm text-destructive" role="alert">
+              {hostlist.error}
             </p>
           )}
 

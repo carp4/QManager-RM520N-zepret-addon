@@ -224,7 +224,8 @@
       "limit": "Daftar maksimal berisi 300 domain.",
       "add": "Tambah domain",
       "remove": "Hapus {{domain}}",
-      "saved": "Daftar host tersimpan"
+      "saved": "Daftar host tersimpan",
+      "save_failed": "Gagal menyimpan daftar domain"
     },
     "verify": {
       "title": "Uji bypass",

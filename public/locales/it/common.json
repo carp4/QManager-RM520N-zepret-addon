@@ -224,7 +224,8 @@
       "limit": "L'elenco può contenere al massimo 300 domini.",
       "add": "Aggiungi dominio",
       "remove": "Rimuovi {{domain}}",
-      "saved": "Elenco domini salvato"
+      "saved": "Elenco domini salvato",
+      "save_failed": "Impossibile salvare la lista dei domini"
     },
     "verify": {
       "title": "Prova il bypass",

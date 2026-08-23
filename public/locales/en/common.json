@@ -224,7 +224,8 @@
       "limit": "The list can hold at most 300 domains.",
       "add": "Add domain",
       "remove": "Remove {{domain}}",
-      "saved": "Hostlist saved"
+      "saved": "Hostlist saved",
+      "save_failed": "Couldn't save the hostlist"
     },
     "verify": {
       "title": "Test bypass",

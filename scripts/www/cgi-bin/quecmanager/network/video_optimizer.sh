@@ -158,14 +158,14 @@ if [ "$REQUEST_METHOD" = "GET" ]; then
             ;;
         hostlist)
             # UI-support endpoint (extension beyond the documented contract):
-            # read the hostlist file as a domain array, comments stripped.
+            # read the hostlist file as a domain array — comments stripped,
+            # lines trimmed. sed/grep only: this firmware's jq lacks regex
+            # (no Oniguruma), so gsub()-based parsing aborts at runtime.
             if [ -f "$DPI_HOSTLIST" ]; then
-                jq -R -s '
-                    split("\n") |
-                    map(gsub("\r"; "") | select(length > 0)) |
-                    map(select(startswith("#") | not)) |
-                    {success:true, domains:.}
-                ' "$DPI_HOSTLIST" 2>/dev/null
+                domains=$(sed -e 's/\r$//' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' "$DPI_HOSTLIST" \
+                          | grep -v '^#' | grep -v '^$' | jq -R . | jq -s .)
+                [ -n "$domains" ] || domains='[]'
+                jq -n --argjson domains "$domains" '{success:true,domains:$domains}'
             else
                 echo '{"success":true,"domains":[]}'
             fi
@@ -344,25 +344,66 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
             # write. www-data owns the file, so no sudo is involved.
             DOMAINS=$(printf '%s' "$POST_DATA" | jq -r '.domains // empty' 2>/dev/null)
             [ -n "$DOMAINS" ] || {
+                qlog_info "save_hostlist rejected: no payload"
                 cgi_error "invalid_hostlist" "domains must be a non-empty array"
                 exit 0
             }
             printf '%s' "$DOMAINS" | jq -e 'type == "array" and length <= 300' >/dev/null 2>&1 || {
+                qlog_info "save_hostlist rejected: invalid array shape"
                 cgi_error "invalid_hostlist" "domains must be an array of at most 300 entries"
                 exit 0
             }
-            printf '%s' "$DOMAINS" | jq -e '
-                all(.[]; type == "string" and length > 0 and length <= 253
-                     and test("^[A-Za-z0-9._-]+$") and contains("."))' >/dev/null 2>&1 || {
+            # Per-domain validation WITHOUT jq regex functions: this firmware's
+            # jq is compiled without Oniguruma, so test()/gsub() abort at
+            # runtime and the old jq-only validator rejected EVERY payload.
+            # POSIX shell patterns are immune to the build difference.
+            N_DOMAINS=$(printf '%s' "$DOMAINS" | jq 'length')
+            VALID=1
+            _read=0
+            ENTRIES=$(printf '%s' "$DOMAINS" | jq -r '.[]')
+            for _d in $ENTRIES; do
+                _read=$((_read + 1))
+                case "$_d" in
+                    ''|*[!A-Za-z0-9._-]*)
+                        qlog_info "save_hostlist rejected: entry $_read has invalid characters"
+                        VALID=0; break ;;
+                esac
+                case "$_d" in
+                    *.*) ;;
+                    *)  qlog_info "save_hostlist rejected: entry $_read missing dot"
+                        VALID=0; break ;;
+                esac
+                [ "${#_d}" -le 253 ] || {
+                    qlog_info "save_hostlist rejected: entry $_read exceeds 253 chars"
+                    VALID=0
+                    break
+                }
+            done
+            if [ "$VALID" = "1" ] && [ "$_read" != "$N_DOMAINS" ]; then
+                # Entry count changed during extraction — a payload trick or
+                # an embedded newline/space split one domain into several.
+                qlog_info "save_hostlist rejected: extracted $_read entries from $N_DOMAINS declared"
+                VALID=0
+            fi
+            [ "$VALID" = "1" ] || {
                 cgi_error "invalid_hostlist" "each domain must be a valid hostname (letters, digits, dots, dashes)"
                 exit 0
             }
-            {
+            N_DOMAINS=$(printf '%s' "$DOMAINS" | jq 'length')
+            # Atomic write with an honest result: a failed tmp-create or mv
+            # used to fall through to success:true — reporting success while
+            # nothing was written. Now the failure is loud on both channels.
+            if {
                 printf '# QManager Video Optimizer hostlist\n'
                 printf '%s' "$DOMAINS" | jq -r '.[]'
-            } > "$DPI_HOSTLIST.tmp" && mv "$DPI_HOSTLIST.tmp" "$DPI_HOSTLIST"
-            qlog_info "save_hostlist: $(printf '%s' "$DOMAINS" | jq 'length') domains written"
-            cgi_success
+            } > "$DPI_HOSTLIST.tmp" && mv "$DPI_HOSTLIST.tmp" "$DPI_HOSTLIST"; then
+                qlog_info "save_hostlist: $N_DOMAINS domains written"
+                cgi_success
+            else
+                rm -f "$DPI_HOSTLIST.tmp"
+                qlog_error "save_hostlist: WRITE FAILED ($N_DOMAINS domains) — check permissions on $(dirname "$DPI_HOSTLIST")"
+                cgi_error "write_failed" "could not write the hostlist file"
+            fi
             exit 0
             ;;
         restore_hostlist)
