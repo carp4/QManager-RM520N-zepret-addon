@@ -17,7 +17,7 @@
 
 set -u
 
-ADDON_VERSION="v0.1.13-zepret.5-dev.3"
+ADDON_VERSION="v0.1.13-zepret.5-dev.4"
 REQUIRED_QMANAGER="v0.1.13"
 
 # Payload resolution: release asset first (main-branch installs). Dev builds
@@ -28,7 +28,7 @@ RELEASE_BASE_DEFAULT="https://github.com/carp4/QManager-RM520N-zepret-addon/rele
 DEV_FALLBACK_BASE="https://raw.githubusercontent.com/carp4/QManager-RM520N-zepret-addon/refs/heads/development/dist"
 RELEASE_BASE="${ZEPRET_RELEASE_BASE:-$RELEASE_BASE_DEFAULT}"
 TARBALL="qmanager-zepret-addon-${ADDON_VERSION}.tar.gz"
-SHA256="31142acfe91d89c561a12ce5e9ad711bae21d472fca40defc4e2e52ae2f67a3a"
+SHA256="b24bc2e4e7315b1916d56e7a7df9bbb059103f80cddf127d3b530b2a5847c480"
 
 STAGE="/tmp/zepret_addon_stage"
 BACKUP="/usrdata/qmanager/zepret-addon-backup"
