@@ -82,7 +82,8 @@ emit_status() {
         --argjson domains "$(dpi_domains_loaded)" \
         --argjson bin "$(dpi_binary_installed && echo true || echo false)" \
         --argjson kmod "$(dpi_rule_present && echo true || echo false)" \
-        '{success:true,enabled:$enabled,status:$status,uptime:$uptime,packets_processed:$pkts,domains_loaded:$domains,binary_installed:$bin,kernel_module_loaded:$kmod}')
+        --argjson dscp "$(dpi_dscp_rule_present && echo true || echo false)" \
+        '{success:true,enabled:$enabled,status:$status,uptime:$uptime,packets_processed:$pkts,domains_loaded:$domains,binary_installed:$bin,kernel_module_loaded:$kmod,dscp_marking:$dscp}')
     if [ "$1" = "masquerade" ]; then
         printf '%s' "$json" | jq --arg sni_domain "$sni" '. + {sni_domain: $sni_domain}'
     else
