@@ -203,6 +203,7 @@ fi
 if ! grep -q "qmanager_dpi_install" "$SUDOERS_TARGET"; then
     cat "$A/etc/sudoers-fragment.txt" >> "$SUDOERS_TARGET"
 fi
+chmod 0440 "$SUDOERS_TARGET" 2>/dev/null || true
 echo "$SUDOERS_TARGET" > "$BACKUP/sudoers-target.txt"
 log "OK: sudoers configured via $SUDOERS_TARGET"
 
