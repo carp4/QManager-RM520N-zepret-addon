@@ -159,6 +159,7 @@ dpi_apply_rule() {
     # Re-creating it every ensure pass would reset its packet counter,
     # making "Packets processed" visibly collapse to 0 once a minute.
     if dpi_rule_present; then
+        dpi_apply_dscp_rule
         return 0
     fi
     local i=0
@@ -171,6 +172,7 @@ dpi_apply_rule() {
     run_iptables -w 5 -t nat -I PREROUTING \
         -i bridge0 -p tcp -m multiport --dports 80,443 \
         -j REDIRECT --to-ports "$DPI_PORT"
+    dpi_apply_dscp_rule
 }
 
 # =============================================================================
@@ -182,6 +184,54 @@ dpi_remove_rule() {
         run_iptables -w 5 -t nat -D PREROUTING \
             -i bridge0 -p tcp -m multiport --dports 80,443 \
             -j REDIRECT --to-ports "$DPI_PORT" 2>/dev/null || break
+        i=$((i + 1))
+    done
+    dpi_remove_dscp_rule
+}
+
+# =============================================================================
+# DSCP marking for QUIC video traffic
+#
+# Mark all outbound UDP 443 (QUIC) traffic with DSCP EF (0x2e) so the
+# carrier's QoS system prioritizes it. This complements tpws's TCP DPI
+# bypass — tpws handles TLS/HTTP, DSCP handles QUIC.
+#
+# The rule follows the same lifecycle as the REDIRECT rule: applied when
+# the engine starts, removed when it stops. No new config keys needed.
+# =============================================================================
+
+DPI_DSCP_RULE_SIG="--set-dscp 0x2e"
+
+# dpi_dscp_rule_present — is the DSCP marking rule currently installed?
+dpi_dscp_rule_present() {
+    run_iptables -w 5 -t mangle -S POSTROUTING 2>/dev/null \
+        | grep -q -- "$DPI_DSCP_RULE_SIG"
+}
+
+# dpi_apply_dscp_rule — drain any existing DSCP rule, insert a fresh one
+dpi_apply_dscp_rule() {
+    if dpi_dscp_rule_present; then
+        return 0
+    fi
+    local i=0
+    while [ "$i" -lt 16 ]; do
+        run_iptables -w 5 -t mangle -D POSTROUTING \
+            -p udp --dport 443 \
+            -j DSCP --set-dscp 0x2e 2>/dev/null || break
+        i=$((i + 1))
+    done
+    run_iptables -w 5 -t mangle -I POSTROUTING \
+        -p udp --dport 443 \
+        -j DSCP --set-dscp 0x2e
+}
+
+# dpi_remove_dscp_rule — drain the DSCP marking rule
+dpi_remove_dscp_rule() {
+    local i=0
+    while [ "$i" -lt 16 ]; do
+        run_iptables -w 5 -t mangle -D POSTROUTING \
+            -p udp --dport 443 \
+            -j DSCP --set-dscp 0x2e 2>/dev/null || break
         i=$((i + 1))
     done
 }
