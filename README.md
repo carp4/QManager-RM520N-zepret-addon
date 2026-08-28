@@ -26,6 +26,8 @@ Then open the QManager web UI → **Local Network → Traffic Engine** (hard-ref
 
 > **Non-interactive / scripted installs:** append `--yes` (or `-y`) to skip the confirmation prompt — plain `ssh host sh installer.sh` has no terminal to ask on and aborts cleanly without it.
 
+> **Installing over an older version:** your current Video domains list will be preserved (installing over the top never overwrites a list you've already configured). To restore the default Video domain list, uninstall the older version first with `sh /usrdata/qmanager/zepret-addon-backup/uninstall-zepret.sh`, then run the installer again.
+
 ## Uninstall
 
 ADB or SSH into the modem:

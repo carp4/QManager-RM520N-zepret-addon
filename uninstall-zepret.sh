@@ -44,10 +44,39 @@ echo "      (LAN web connections will hiccup for about 5 seconds)"
 # dpi_remove_rule would perform are inlined. Rule out FIRST: new LAN
 # connections go direct immediately; established flows keep their
 # conntrack binding until the engine stops after the grace window.
-iptables -t nat -D PREROUTING -i bridge0 -p tcp -m multiport --dports 80,443 -j REDIRECT --to-ports 989 2>/dev/null
-for i in 1 2 3; do iptables -t nat -D OUTPUT -p tcp --dport 443 -j REDIRECT --to-ports 989 2>/dev/null && break; done
+# Hardened: lock-wait on every -D (-w 5), the re-assert timer stops before
+# the drain (its 60s pass would otherwise re-insert the rule inside the
+# drain→grace window and orphan it), and the drain is verified — a leftover
+# rule with a dead listener is a LAN outage and must not pass unremarked.
+drain_rules() {
+    drain_i=1
+    while [ "$drain_i" -le 5 ]; do
+        iptables -w 5 -t nat -D PREROUTING \
+            -i bridge0 -p tcp -m multiport --dports 80,443 \
+            -j REDIRECT --to-ports 989 >/dev/null 2>&1 || true
+        drain_j=1
+        while [ "$drain_j" -le 3 ]; do
+            iptables -w 5 -t nat -D OUTPUT -p tcp --dport 443 \
+                -j REDIRECT --to-ports 989 >/dev/null 2>&1 && break
+            drain_j=$((drain_j + 1))
+        done
+        iptables -w 5 -t nat -S 2>/dev/null | grep -q -- "--to-ports 989" || return 0
+        sleep 2
+        drain_i=$((drain_i + 1))
+    done
+    return 1
+}
+# Stop the re-assert timer FIRST (see hardened note above); the engine keeps
+# serving through the grace, so no traffic sees a gap.
+systemctl stop qmanager-dpi-ensure.timer qmanager-dpi-ensure.service 2>/dev/null
+if drain_rules; then
+    log "REDIRECT rule drained."
+else
+    echo "WARNING: could not clear the REDIRECT rule — LAN web traffic is cut until the next"
+    echo "         cellular re-dial or reboot (or run the iptables -D manually)."
+fi
 sleep 5
-systemctl stop qmanager-dpi.service qmanager-dpi-ensure.timer qmanager-dpi-ensure.service 2>/dev/null
+systemctl stop qmanager-dpi.service 2>/dev/null
 # Backstop: exact-name match so we can never kill an innocent process whose
 # cmdline merely mentions tpws.
 pkill -x tpws 2>/dev/null

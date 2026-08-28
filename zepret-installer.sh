@@ -17,7 +17,7 @@
 
 set -u
 
-ADDON_VERSION="v0.1.13-zepret.5-dev.6"
+ADDON_VERSION="v0.1.13-zepret.5-dev.8"
 REQUIRED_QMANAGER="v0.1.13"
 
 # Payload resolution: release asset first (main-branch installs). Dev builds
@@ -28,7 +28,7 @@ RELEASE_BASE_DEFAULT="https://github.com/carp4/QManager-RM520N-zepret-addon/rele
 DEV_FALLBACK_BASE="https://raw.githubusercontent.com/carp4/QManager-RM520N-zepret-addon/refs/heads/development/dist"
 RELEASE_BASE="${ZEPRET_RELEASE_BASE:-$RELEASE_BASE_DEFAULT}"
 TARBALL="qmanager-zepret-addon-${ADDON_VERSION}.tar.gz"
-SHA256="e133eee995149f2ac321affff6018907b9428bdc7ae8ed3316cd09d9195be127"
+SHA256="d94d592c61e08318f1cd0d414faf14c7128c2ba48a985acc6f9f8065b3345a1a"
 
 STAGE="/tmp/zepret_addon_stage"
 BACKUP="/usrdata/qmanager/zepret-addon-backup"
@@ -141,6 +141,25 @@ if [ -f /usr/lib/qmanager/dpi_state.sh ] && [ -f "$QM_CONF" ]; then
     WAS_ENGINE=$(jq -r '[(.video_optimizer.enabled // 0), (.traffic_masquerade.enabled // 0)] | max' \
         "$QM_CONF" 2>/dev/null || echo 0)
 fi
+drain_rules() {
+    drain_i=1
+    while [ "$drain_i" -le 5 ]; do
+        iptables -w 5 -t nat -D PREROUTING \
+            -i bridge0 -p tcp -m multiport --dports 80,443 \
+            -j REDIRECT --to-ports 989 >/dev/null 2>&1 || true
+        drain_j=1
+        while [ "$drain_j" -le 3 ]; do
+            iptables -w 5 -t nat -D OUTPUT -p tcp --dport 443 \
+                -j REDIRECT --to-ports 989 >/dev/null 2>&1 && break
+            drain_j=$((drain_j + 1))
+        done
+        iptables -w 5 -t nat -S 2>/dev/null | grep -q -- "--to-ports 989" || return 0
+        sleep 2
+        drain_i=$((drain_i + 1))
+    done
+    return 1
+}
+
 if [ "${WAS_ENGINE:-0}" = "1" ]; then
     # Lib-free teardown, mirroring the uninstaller verbatim. (Sourcing
     # platform.sh/dpi_state.sh here kills the shell on-device — rc=2, silent,
@@ -149,10 +168,13 @@ if [ "${WAS_ENGINE:-0}" = "1" ]; then
     echo "      (LAN web connections will hiccup for about 5 seconds)"
     # Rule out FIRST so new LAN connections go direct immediately; existing
     # flows keep their conntrack binding until the engine stops below.
-    iptables -t nat -D PREROUTING -i bridge0 -p tcp -m multiport --dports 80,443 -j REDIRECT --to-ports 989 2>/dev/null
-    for i in 1 2 3; do iptables -t nat -D OUTPUT -p tcp --dport 443 -j REDIRECT --to-ports 989 2>/dev/null && break; done
+    # Hardened: lock-wait on every -D (-w 5), the re-assert timer stops before
+    # the drain (its 60s pass would otherwise re-insert the rule inside the
+    # drain→grace window and orphan it), and the drain is verified.
+    systemctl stop qmanager-dpi-ensure.timer qmanager-dpi-ensure.service 2>/dev/null
+    drain_rules || echo "WARNING: could not clear the REDIRECT rule before upgrade — the install below re-asserts its own rule on the new code; clear it manually if it lingers"
     sleep 5
-    systemctl stop qmanager-dpi.service qmanager-dpi-ensure.timer qmanager-dpi-ensure.service 2>/dev/null
+    systemctl stop qmanager-dpi.service 2>/dev/null
     pkill -x tpws 2>/dev/null
 fi
 

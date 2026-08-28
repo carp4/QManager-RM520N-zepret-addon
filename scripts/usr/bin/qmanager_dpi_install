@@ -98,14 +98,49 @@ _dpi_is_arm32() {
 # uninstaller pattern (lib-free — see installer Step 3.5 note). End state is
 # identical to a fresh addon install: no tpws binary, engine disabled,
 # video_domains.txt preserved so a later reinstall keeps the hostlist.
+#
+# Hardened against the orphaned-rule failure mode seen on-device: a bare -D
+# failed silently under a busy xtables lock (RM520N, load ~2) and left the
+# REDIRECT redirecting LAN web traffic to a now-dead port. So:
+#   * every -D waits on the lock (-w 5),
+#   * the re-assert timer is stopped BEFORE the drain — its 60s pass would
+#     otherwise re-insert the rule in the drain→grace window (silently
+#     undoing the drain and orphaning the rule),
+#   * the drain is verified with retries, and a failure is surfaced through
+#     the status marker instead of reported as success.
+_dpi_drain_engine_rules() {
+    drain_i=1
+    while [ "$drain_i" -le 5 ]; do
+        iptables -w 5 -t nat -D PREROUTING \
+            -i bridge0 -p tcp -m multiport --dports 80,443 \
+            -j REDIRECT --to-ports 989 >/dev/null 2>&1 || true
+        drain_j=1
+        while [ "$drain_j" -le 3 ]; do
+            iptables -w 5 -t nat -D OUTPUT -p tcp --dport 443 \
+                -j REDIRECT --to-ports 989 >/dev/null 2>&1 && break
+            drain_j=$((drain_j + 1))
+        done
+        iptables -w 5 -t nat -S 2>/dev/null | grep -q -- "--to-ports 989" || return 0
+        sleep 2
+        drain_i=$((drain_i + 1))
+    done
+    return 1
+}
+
 _dpi_uninstall_run() {
+    drain_ok=1
+    # Stop the re-assert timer FIRST: with the engine enabled the ensure timer
+    # re-inserts the REDIRECT rule every 60s, so a drain ahead of its stop can
+    # be undone the moment the next pass fires — leaving the rule orphaned
+    # once the engine dies. The service keeps serving through the grace, so no
+    # traffic sees a gap.
+    systemctl stop qmanager-dpi-ensure.timer qmanager-dpi-ensure.service 2>/dev/null
     # Rule out FIRST so new LAN connections go direct immediately; existing
     # flows keep their conntrack binding until the engine stops below.
-    iptables -t nat -D PREROUTING -i bridge0 -p tcp -m multiport --dports 80,443 -j REDIRECT --to-ports 989 2>/dev/null
-    for i in 1 2 3; do iptables -t nat -D OUTPUT -p tcp --dport 443 -j REDIRECT --to-ports 989 2>/dev/null && break; done
+    _dpi_drain_engine_rules || drain_ok=0
     _dpi_marker_running "Draining connections..."
     sleep 5
-    systemctl stop qmanager-dpi.service qmanager-dpi-ensure.timer qmanager-dpi-ensure.service 2>/dev/null
+    systemctl stop qmanager-dpi.service 2>/dev/null
     pkill -x tpws 2>/dev/null
     rm -f "$DPI_BINARY"
     # An engine without its binary cannot stay enabled: drop the mode configs
@@ -116,7 +151,12 @@ _dpi_uninstall_run() {
         && jq 'del(.video_optimizer, .traffic_masquerade)' "$QM_CONF" > "${QM_CONF}.tmp" 2>/dev/null \
         && mv "${QM_CONF}.tmp" "$QM_CONF"
     qlog_info "tpws uninstalled (binary absent: $(dpi_binary_installed && echo no || echo yes))"
-    _dpi_marker_complete "Engine binary removed successfully" ""
+    if [ "$drain_ok" = "1" ]; then
+        _dpi_marker_complete "Engine binary removed successfully" ""
+    else
+        qlog_error "tpws removed, but the REDIRECT rule is still installed (iptables stayed busy) — it will flush on the next cellular re-dial or reboot"
+        _dpi_marker_error "Engine removed, but the REDIRECT rule could not be cleared" "iptables stayed busy; LAN web traffic stays cut until the next cellular re-dial or reboot, or until you run: iptables -t nat -D PREROUTING -i bridge0 -p tcp -m multiport --dports 80,443 -j REDIRECT --to-ports 989"
+    fi
     rm -f "$DPI_INSTALL_PID"
 }
 
