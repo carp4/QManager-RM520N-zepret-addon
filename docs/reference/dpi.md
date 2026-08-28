@@ -66,6 +66,16 @@ The engine is **TCP-only**: `tpws` desyncs TLS/HTTP handshakes, and the transpar
 
 `GET /cgi-bin/quecmanager/network/video_optimizer.sh` (with `?section=masquerade` for the masquerade view) returns: `enabled` (config intent), `status` (`running`/`stopped`), `uptime`, `packets_processed`, `domains_loaded`, `binary_installed`, `kernel_module_loaded` (rule present), `force_tcp`, `force_tcp_active`. Full contract in `docs/API-REFERENCE.md`.
 
+## Teardown (uninstall)
+
+Removing the engine — via the UI's **Uninstall engine binary** (`qmanager_dpi_install uninstall` → `--uninstall-run`), the rollback `uninstall-zepret.sh`, or the installer's Step 3.5 upgrade path — uses one shared lib-free drain (`_dpi_drain_engine_rules` / `drain_rules`), hardened after a real on-device failure mode:
+
+- **Lock-wait (`-w 5`)** on every `-D`. Under a busy xtables lock (QCMAP flush, concurrent ensure; measured at load ~2 on RM520N) a bare `-D` fails silently and leaves the rule installed.
+- **Re-assert timer stopped BEFORE the drain.** With an engine enabled, `qmanager-dpi-ensure.timer` re-inserts the REDIRECT every 60s; a drain ahead of its stop can be silently undone inside the drain→grace window, orphaning the rule once the engine dies.
+- **Verified drain.** `-S` is re-checked after each pass (retried, ~2s apart); if the rule still persists the teardown reports it loudly instead of claiming success — the UI surfaces an `error` marker quoting the manual `iptables -D`, and the standalone scripts print a WARNING. A leftover rule is a LAN outage (REDIRECT to a now-dead port), not a leak — the next QCMAP re-dial or reboot clears it.
+
+Ordering keeps the "rule out first" property: the rule (not the engine) is removed first so new LAN connections go direct immediately; existing flows keep their conntrack binding for the 5s grace before the service stops.
+
 ## Platform / ISP findings (tested on pilot, AT&T Wireless)
 
 - The pilot ISP throttles **by host/SNI for streaming CDNs**: fast.com (Netflix CDN) reads 2.4 Mbps on the bare path and ~30 Mbps with the tampered handshake — measured from the modem itself, direct vs socks-tpws, same signed CDN URL. Some other destinations (kernel.org, tele2) measured as IP-throttled — the engine defeats SNI-based DPI; it is not a general VPN.
