@@ -4,6 +4,10 @@ Traffic Engine add-on for [QManager-RM520N](https://github.com/dr-dolomite/QMana
 
 **This add-on targets QManager v0.1.13 exactly.** It refuses to install on any other version. When Traffic Engine ships in an official QManager release, this add-on is obsolete.
 
+## Screenshots
+
+Traffic Engine UI (Force-TCP tile, mode-switch takeover, Test bypass, Video domains list, install/uninstall): [screenshots/](screenshots/)
+
 ## Installation
 
 **Step 1 — Install QManager v0.1.13 first.** ADB or SSH into the modem and run:
