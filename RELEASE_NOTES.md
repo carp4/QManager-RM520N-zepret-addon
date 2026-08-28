@@ -1,5 +1,13 @@
 # 🚀 QManager RM520N BETA v0.1.13
 
+> ## 🚧 Unreleased (development)
+>
+> **Traffic Engine — QUIC becomes a first-class, independent control.**
+>
+> - **QUIC → Force TCP tile (standalone).** A new tile at the bottom of **Local Network → Traffic Engine** blocks QUIC (UDP 443) on the LAN bridge, so QUIC-first apps (YouTube, Discord, Instagram) fall back to HTTPS over TCP where the bypass engine can tune the stream. It applies instantly on toggle and is fully **independent of the engine** — binary install/uninstall and mode enable/disable never touch it, and it keeps working (and self-heals across reconnects) even before the engine is installed.
+> - **Automatic QUIC marking removed.** The engine no longer silently marks QUIC traffic with a DSCP priority rule when it enables. QUIC is now explicit: passthrough by default, blocked-and-forced-to-TCP only when you switch the tile on. Existing installs are cleaned up automatically on update.
+> - **Test bypass gains a "3rd opinion."** The speed comparison now also samples the raw connection through **speedtest.net** (falling back to Cloudflare) as a reference line. A slow fast.com beside a healthy reference now correctly reads *throttled*, and a slow result on both reads *not throttled* — a slow connection is no longer mistaken for DPI throttling.
+
 All your alerts finally live in one place. A new **Monitoring → Alerts** page unifies email, SMS, and Discord into a single routing grid — you pick which events reach which channel — and it can now tell you when *and why* the Connection Watchdog rebooted your modem. This release also lands a 5-language interface picker, a ground-up Watchdog rework with a tougher reboot-proof SIM-failover engine, daily Connection Scenario schedules for your SIM profiles, and fixes that finally make timezones and time-based schedules stick on this cron-less modem.
 
 > One-click OTA from **System Settings → Software Update** if you're on v0.1.5 or newer.
